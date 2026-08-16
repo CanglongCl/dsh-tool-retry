@@ -1,9 +1,10 @@
 # DeepSeek-Harness 工具调用优化实施计划（自动暂存 · 局部编辑 · 重放）
 
-> 状态：proposed（待评审）· 版本 v4（按二轮评审意见 + tool call id 实证修订）
-> 目标仓库：`/Users/canglong/Program/deepseek-harness`（pnpm monorepo，cordis 插件架构）——**本特性只新增插件包，不改动 ds harness 核心代码**
+> 状态：proposed（待评审）· 版本 v5（按三轮评审：独立插件模式，参照 limao-magic-ui）
+> 目标仓库：`/Users/canglong/Program/deepseek-harness`（pnpm monorepo，cordis 插件架构）——**本特性为独立插件仓库，不改动 ds harness 仓库任何代码**
+> 插件形态参考：`/Users/canglong/Program/limao-magic-ui`（dsh-web-review 独立插件仓库）
 > 本文档落盘位置：`docs/tool-calling-checkpoint-replay-plan.md`（本工作区）
-> 特性代号：tool-call checkpoint & replay（建议 npm 包名 `@deepseek-ai/dsh-tool-retry`）
+> 特性代号：tool-call checkpoint & replay（建议 npm 包名 `@canglongcl/dsh-tool-retry`）
 
 ---
 
@@ -94,11 +95,15 @@ ctx.emit('fs/observed', target, { kind: 'present', version: outcome.version }, e
   - code 与 both 的精确区分无法通过公开 API 获得，也**不需要**：只要 run_code 可见，就下发 PTC 版文案——both 模式下 `run_code` 同样可调用，文案成立。
 - 使用位置：(a) 静态 system prompt 段的 `text` 提供函数里，用 `context.scope` 探测并切换 A/B 两版文案；(b) post-execute 监听器里，用 `exec.agent` 探测并选择 C/D 两版通知。
 
-### 2.7 插件包脚手架与 preset 接线（要点）
+### 2.7 独立插件模式（三轮评审修正：不进 harness monorepo，参照 limao-magic-ui）
 
-- 新包位置建议 `packages/core/tool-retry`（npm 名 `@deepseek-ai/dsh-tool-retry`）。脚手架完整清单见附录 A（package.json 不变式、tsconfig 引用、tsdown 自动纳入 `packages/*/*`、`pnpm-workspace.yaml` 双级 glob）。
-- preset 是**全量拷贝的 cordis.yml**（非合并）：`apps/cli/config/agent-presets/{standard,code,cordis,minimal}/agent.cordis.yml`；PTC（code）预设 = standard + 一行 `tool-presentation`（`mode: code`，code 版 :259-262）；接线即向 standard 与 code 两个 yml 各加一行插件行（参考 tool-fs 行 standard :56-57）。注：这是 preset 配置文件的增行，不改 harness 核心代码。
-- 仓库合规要求（后续 PR 必须满足）：根 `AGENTS.md:122`（非平凡变更必须带 Agent Note，格式 `.agents/notes/proposed/feature/yyyy-mm-dd-<topic>.{md,zh.md,i18n.yaml}`，骨架 `## Problem / ## Proposal / ## Alternatives considered / ## Acceptance criteria / ## Risks`）；`packages/AGENTS.md`（插件导出形状 `name`/`inject`/`Config`/`apply`、HMR disposal 测试、`./invariant`、README 的 Model Experience 格式）；`docs/cookbook/adding-a-package.md` 逐文件清单。
+- **本特性是独立插件**，参照 `/Users/canglong/Program/limao-magic-ui`（npm 名 `@canglongcl/dsh-web-review` 的 dsh-web-review 插件仓库）的注册与发布模式：
+  - **独立仓库**（本工作区 `/Users/canglong/Program/dsh-tool-retry` 即插件仓库），**不向 harness monorepo 添加任何包、不修改 harness 任何文件**；
+  - **插件包**：`packages/dsh-tool-retry/package.json`，npm 名 `@canglongcl/dsh-tool-retry`（用户 scope + `publishConfig.access=public`），依赖 harness 的**发布版 npm 包**（`@deepseek-ai/cordis`、`@deepseek-ai/dsh-tools`、`@deepseek-ai/dsh-fs`、`@deepseek-ai/dsh-system-prompt`、`@deepseek-ai/dsh-llm`、`@deepseek-ai/dsh-session`、`@deepseek-ai/schemastery`，版本对齐 `0.1.0-rc.x`，参照 dsh-web-review 的依赖写法），**不使用 workspace 链接**；
+  - **注册机制（agent 级插件）**：本插件注册工具、监听 `tools/post-execute`，属于**会话级（agent）组成**，走**用户预设**通道：`agent-presets` 默认自动挂载 DSH home 下的用户预设根 `USER_PRESET_DIR='.agent-presets'`（`packages/preset/agent-presets/src/discovery.ts:41`、`src/index.ts:133-134`）——在 `~/.dsh/.agent-presets/<preset-id>/agent.cordis.yml` 放置「复制自 standard/code + 一行本插件」的预设（两份：native 与 PTC），会话选择该预设即生效；
+  - **开发期热迭代**（照搬 dsh-web-review 的链路）：仓库根生成 `cordis.yml`（`- insert:` 覆盖层，引用开发别名如 `@dsh-tool-retry-dev/plugin`）+ `scripts/profile-plugin-link.ts` 把插件包目录 symlink 进 `~/.dsh/profiles/<profile>/node_modules/<dev-alias>/`（参照 limao 的 `materializeProfilePluginLink`，`scripts/profile-plugin-link.ts`），再由 `scripts/dev.ts` 一键启动 harness CLI；
+  - **发布**（参照 limao 的 `scripts/package-official.ts`）：staging manifest + `cordis.patch.yml`（`- insert:` 官方包名）+ `pnpm pack`/npm publish；harness 侧 profile 的 bundle patch 机制见 `packages/boot/app-boot/tests/profile.spec.ts:121-124`（`dsh.profile.bundles` → `dsh.bundle.patch` 补丁层按序应用）。注意：bundle patch 是 profile（host）图层的渠道（limao 的 client 插件用它）；**agent 级工具插件的主渠道是用户预设**，bundle patch 仅作为官方安装器的可选辅助。
+  - 插件形态本身仍遵循 harness 惯例：导出 `name`/`inject`/`Config`/`apply`，README 带 Model Experience 格式；独立仓库自带 CI（typecheck/lint/test）而非 harness 门禁。
 
 ---
 
@@ -156,7 +161,7 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"）
   - **保留 `INVALID_ARGS`**：参数校验失败正是「长参数局部修正重放」的核心场景。
 - **流程**：每次模型直调 → 从 `tool/call` 事件取 `(turn, step)` 与 `arguments` 原串 → 写 checkpoint + 预观察（§3.2）→ 更新当前轮记录 → 若 `result.isError` → 注入通知。
 - **轮软链接集重建**：见到新的 `(turn, step)`（新轮首调）时，先用上一轮记录重建/清理 `latest@*` 集合（§3.2），再开始本轮记录。
-- **通知时机（二轮评审已定）**：**每次失败都注入**，无计数、无节流——把通知附加到 `next` 决策的 `additionalContexts`（`createUserMessage`，source `{ kind:'plugin', plugin:'@deepseek-ai/dsh-tool-retry', form:'notice' }`）。
+- **通知时机（二轮评审已定）**：**每次失败都注入**，无计数、无节流——把通知附加到 `next` 决策的 `additionalContexts`（`createUserMessage`，source `{ kind:'plugin', plugin:'@canglongcl/dsh-tool-retry', form:'notice' }`）。
 - **通知文案按模式选择**（§3.4 草稿 C/D；模式经 §2.6 的 run_code 可见性判定）：run_code 可见 → PTC 版；否则 native 版。
 - **重放自身失败的行为**：重放调用走完整管线（嵌套子调用，`parent` 存在 → 不会被再次落盘/通知），无递归风险。
 - 通知文本中的错误摘要取 `result.error.message` 截断（建议 ≤200 字符，完整错误已在 tool/result 中）。
@@ -211,50 +216,51 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"）
 ### 3.6 模式探测（评审点 3：仅用公开 API，不改 ds harness）
 
 - 实现即 §2.6：`ctx.tools.get(RUN_CODE_NAME, agent) !== undefined` ⇔ 非 native。静态段 `text` 提供函数用 `context.scope`、通知选择用 `exec.agent` 调用该探测。
-- **本特性不包含任何对 `packages/core` / `packages/llm` / `packages/fs` 等 harness 代码的修改**；全部能力在一个新插件包 + preset 配置增行内完成。
+- **本特性不包含任何对 `packages/core` / `packages/llm` / `packages/fs` 等 harness 代码的修改**；全部能力在一个独立插件仓库内完成（§2.7）。
 
-### 3.7 新插件包与 preset 接线
+### 3.7 插件包与注册/发布（独立插件，参照 dsh-web-review）
 
-- **新包**：`packages/core/tool-retry`，npm 名 `@deepseek-ai/dsh-tool-retry`。
-  - 插件导出：`export const name = 'tool-retry'`、`export const inject = ['tools', 'fs', 'systemPrompt']`、`export const Config: z<Config>`、`export function apply(ctx, config)`。
+- **插件仓库**：本工作区 `/Users/canglong/Program/dsh-tool-retry`，结构参照 `limao-magic-ui`：
+  - 根：`package.json`（repo scripts：`gen-config` / `profile-plugin-link` / `dev` / `build` / `package-official` / `test` / `typecheck`）、生成的 `cordis.yml`（`- insert:` 开发别名覆盖层）、`scripts/`（`gen-config.ts`、`development-entry.ts`、`profile-plugin-link.ts`、`dev.ts`、`package-official.ts` 等，照搬 limao 同名脚本模式）；
+  - `packages/dsh-tool-retry/`：插件包本体。
+- **插件包**（`packages/dsh-tool-retry/package.json`）：
+  - `name: '@canglongcl/dsh-tool-retry'`、`publishConfig: { access: 'public', registry: 'https://registry.npmjs.org/' }`、`type: module`、`main: lib/index.js`、exports `./package.json`；
+  - 依赖（发布版，非 workspace）：`@deepseek-ai/cordis`、`@deepseek-ai/dsh-tools`、`@deepseek-ai/dsh-fs`、`@deepseek-ai/dsh-system-prompt`、`@deepseek-ai/dsh-llm`、`@deepseek-ai/dsh-session`、`@deepseek-ai/schemastery`；
+  - 插件导出：`export const name = 'tool-retry'`、`export const inject = ['tools', 'fs', 'systemPrompt']`、`export const Config: z<Config>`、`export function apply(ctx, config)`；
   - `Config`：`{ enabled=true, checkpointDir='.dsh/tool-checkpoints', maxCheckpoints=64, excludeToolNames=['editPreviousToolCalling','read','write','edit'], excludeErrorCodes=['ABORTED','ABORTED_BEFORE_DISPATCH','UNKNOWN_TOOL'] }`。
-  - 遵循 `packages/AGENTS.md`：`./invariant`（invariant.ts）、HMR disposal 测试、README Model Experience 格式（What the model sees / Token effect / KV Cache effect）。
-- **preset 接线**（preset 文件是全量拷贝，需复制到每个目标）：
-  - `apps/cli/config/agent-presets/standard/agent.cordis.yml`（tool-fs 行 :56-57 之后）
-  - `apps/cli/config/agent-presets/code/agent.cordis.yml`（同位置；PTC 预设）
-  - （可选）`cordis/agent.cordis.yml`（创造模式）
-```yaml
-- id: tool-retry
-  name: '@deepseek-ai/dsh-tool-retry'
-```
+- **注册（agent 级，不改 harness）**：
+  - **用户预设主渠道**：`~/.dsh/.agent-presets/<id>/agent.cordis.yml`（两份：`tool-retry-standard` 与 `tool-retry-code`，即 standard/code 预设的全量拷贝 + 一行 `- id: tool-retry / name: '@canglongcl/dsh-tool-retry'`），会话选择该预设（§2.7）；
+  - **开发期**：预设行名用 dev 别名 `@dsh-tool-retry-dev/plugin`，`scripts/profile-plugin-link.ts` 把 `packages/dsh-tool-retry` symlink 进 `~/.dsh/profiles/<profile>/node_modules/@dsh-tool-retry-dev/plugin`，`pnpm dev` 起 harness（照搬 limao `scripts/dev.ts`）；
+  - **发布/安装**：`pnpm package:official`（staging + `cordis.patch.yml` insert + `pnpm pack`）→ npm publish `@canglongcl/dsh-tool-retry`；用户安装后预设行名用官方包名。bundle patch（`dsh.bundle.patch`，`packages/boot/app-boot` 的 profile 补丁层机制，`tests/profile.spec.ts:121-124`）作为官方安装器可选辅助，主渠道仍是用户预设。
 
 ---
 
 ## 4. 实施步骤（五阶段）
 
-### 阶段一：确认上述需要的所有信息 ✅（已完成，成果即本计划 v4）
+### 阶段一：确认上述需要的所有信息 ✅（已完成，成果即本计划 v5）
 
 - 全部代码事实见 §2 与附录 A；遗留决策点清单见 §7，需评审确认后进入阶段二。
 
-### 阶段二：Hook 层开发（先跑通 native 路径）
+### 阶段二：Hook 层开发（独立仓库脚手架 + 先跑通 native 路径）
 
-1. 建包 `packages/core/tool-retry`（package.json / tsconfig.json / src/index.ts / src/invariant.ts，按附录 A 脚手架清单）。
+1. 建独立插件仓库骨架（参照 limao-magic-ui）：根 `package.json` scripts、`scripts/{gen-config,development-entry,profile-plugin-link,dev,harness-path,harness-cli,package-official}.ts`、`packages/dsh-tool-retry/` 插件包（package.json / tsconfig / src/index.ts / src/invariant.ts）。
 2. 实现 `tools/post-execute` 监听器：仅模型直调（`exec.parent === undefined`）→ 排除名单过滤 → 从 `tool/call` 事件取 `(turn, step)` 与 `arguments` 原串 → checkpoint 写盘 + 预观察（§3.2）→ 轮记录与 `latest@` 软链接集重建（含 Windows 副本降级，§3.2/§3.3）→ 每次失败注入通知（§3.3）。
 3. `Config` schema 与 `inject` 声明；`apply()` 注册监听与 teardown（HMR 安全）。
 4. 静态段与动态通知先落 native 草稿（附录 B 的 A/C），PTC 版文案阶段三补齐。
-5. **验收**：单测通过（§5.1）；keyless 快照跑通「长参数工具失败 → checkpoint 落盘 → 下一步收到通知」最小链路。
+5. 用户预设两份（§3.7）+ dev 别名 symlink 链路打通。
+6. **验收**：单测通过（§5.1）；keyless 快照跑通「长参数工具失败 → checkpoint 落盘 → 下一步收到通知」最小链路。
 
-### 阶段三：插件开发（重放 + 双模式 + 接线）
+### 阶段三：插件开发（重放 + 双模式 + 注册发布）
 
 1. 实现并注册 `editPreviousToolCalling`（§3.5.2，含路径校验、`latest@` 别名解析、内置 edit 复用、嵌套重放）。
 2. 模式探测（§2.6/§3.6，仅公开 API）；静态段与通知补 PTC 版文案（附录 B 的 B/D），按 run_code 可见性切换；静态段 order 149、工具指引段 order 103。
-3. preset 接线（standard + code 两个 yml，§3.7）。
+3. `pnpm package:official` 打包链路（staging + `cordis.patch.yml`）就绪。
 4. **验收**：native 与 code 双模式集成测试通过（§5.2）；「编辑→重放→原工具成功执行」全链路在两种模式下可复现；`run_code` 程序内调用 `tools.editPreviousToolCalling` 亦能穿透 collapse。
 
 ### 阶段四：测试与验证
 
-- 完整测试清单见 §5；快照与 e2e 纳入仓库门禁（`test:snapshot` / `test:e2e`）。
-- **验收**：§5 全部通过；AGENTS/packages-AGENTS 合规检查通过（`doc-sync` / `constraints` / `typecheck` / `lint` / `build` / `hygiene`）。
+- 完整测试清单见 §5；独立仓库自身 CI：typecheck / lint / unit / 集成；keyless 快照与真实 e2e 纳入仓库脚本。
+- **验收**：§5 全部通过；插件包形态符合 harness 惯例（`name`/`inject`/`Config`/`apply` 导出、README Model Experience 格式）。
 
 ### 阶段五：评测
 
@@ -272,11 +278,11 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"）
    - 写盘失败/沙箱拒绝 → 不通知、管线不受影响。
 2. **工具单测**（模板：`packages/fs/tool-fs/tests/tools.spec.ts:38-120` 的 `FakeFs extends FileSystem` + `ctx.tools.execute`；edit 工具用例模板 :422-471）：
    - `editPreviousToolCalling`：正常编辑+重放成功；`latest@` 别名解析（软链接与副本两种形态）；`old_string` 失配报错；编辑后内容非法 JSON；`file_path`（含别名解析后的实际目标）越出 checkpoint 目录被拒；原工具未注册/重放失败透传；`fs/observed` 版本更新。
-3. **agent-loop 集成**（`packages/fs/tool-fs/tests/harness.ts:15-24` 的 `fsHarness` + `packages/test-support/agent-loop-testkit` `mountAgentLoopTestDependencies` :37-46）：真实循环内「成功调用也落盘 → 失败 → 通知 user 消息时序（位于该 tool/result 之后）→ edit+replay → 结果」全链路。
+3. **agent-loop 集成**（`packages/fs/tool-fs/tests/harness.ts:15-24` 的 `fsHarness` + `packages/test-support/agent-loop-testkit` `mountAgentLoopTestDependencies` :37-46，依赖自发布版 npm 包）：真实循环内「成功调用也落盘 → 失败 → 通知 user 消息时序（位于该 tool/result 之后）→ edit+replay → 结果」全链路。
 4. **code-mode 集成**：`run_code` 调用整体落盘（内容 = 完整程序参数）→ 未捕获失败 → 通知；内部子调用失败被捕获 → 不通知；下一步程序内 `tools.read`/`tools.edit` checkpoint（无需先 read，验证预观察生效）→ 基于旧程序重建修正程序；`additionalContexts` 经 `deferContext` 正确转发到外层结果；PTC 下模型凭 `latest@run_code.json` 定位「刚才的程序」。
-5. **keyless 快照/回放**：`packages/test-support/llm-replay` + `replay.override.json` 强制注入失败并脚本化两臂重试；纳入 `pnpm run test:snapshot`。
-6. **真实 API e2e**：`test:e2e`（无 key 自动跳过）；PTC 与 native 各一例。
-7. **合规**：根 AGENTS.md（Agent Note 三语三元组随 PR）、packages/AGENTS.md（导出形状/HMR disposal/`invariant`/Model Experience README）、`docs/cookbook/adding-a-package.md` 逐项清单、`verify-translation-pairing`。
+5. **keyless 快照/回放**：`packages/test-support/llm-replay` + `replay.override.json` 强制注入失败并脚本化两臂重试；纳入仓库自身 CI（对照 harness `pnpm run test:snapshot` 的用法）。
+6. **真实 API e2e**：PTC 与 native 各一例（无 key 自动跳过）。
+7. **插件形态合规**：导出形状/HMR disposal/`invariant`/Model Experience README 对齐 harness `packages/AGENTS.md` 惯例（独立仓库自建门禁，不提交进 harness）。
 
 ---
 
@@ -304,7 +310,7 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"）
 - 每轮结束解析产出 JSONL：聚合「重试步 token 节省 %」「重试成功率」「任务成功率」「注入开销」对比基线（特性关闭、模型全量重生成参数）。
 - 报告建议基线目标：重试步输出 token 节省 ≥ 40%；重试成功率不劣于基线；通知条数 = 失败次数。
 
-> 注：仓库目前**没有**专门 eval 框架（无 swebench/terminal-bench；`python/` 仅为 SDK+runtime，`BENCHMARK.md` 仅指向 `jsonrpc-agent`）。若后续要扩大规模，`llm-replay` 的 keyless A/B 是最贴近现成基建的扩展点。
+> 注：仓库目前**没有**专门 eval 框架（无 swebench/terminal-bench；`python/` 仅为 SDK+runtime，`BENCHMARK.md` 仅指向 `jsonrpc-agent`）。若后续要扩大规模，`llm-replay` 的 keyless A/B 是最贴近现成基建的扩展点；limao-magic-ui 的 `eval/` 目录（capture/smoke/batch/report）可作为独立插件自建评测套件的范本。
 
 ---
 
@@ -320,7 +326,7 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"）
 8. **PTC「免读编辑」风险**：`JSON.stringify` 格式化可能与模型记忆不符 → 选项 (a) 保持「可直接 edit，格式不确定时先 read」的折中措辞（推荐）；(b) 写盘时固定 `JSON.stringify(args, null, 2)` 并在文案中声明序列化规则。
 9. **进程重启后的轮状态**：轮记录为进程内状态，重启后第一轮的 `latest@` 集合会晚一轮重建（期间集合停留在重启前状态）——是否可接受；如需精确恢复可落 `manifest.json`（建议 v1 接受，后续可选）。
 10. **成功调用全量落盘**：是否对所有直调落盘（默认）还是按参数长度阈值（如 ≥64 字符才落盘）以省 I/O。
-11. **包名/位置**：`packages/core/tool-retry`（建议）vs `packages/extensions/tool-checkpoint`。
+11. **独立插件仓库**：仓库即本工作区 `/Users/canglong/Program/dsh-tool-retry`（参照 limao-magic-ui 布局）；npm 包名 `@canglongcl/dsh-tool-retry`（用户 scope）；注册主渠道 = 用户预设 `~/.dsh/.agent-presets/`（两份：standard/code）——请确认命名与渠道。
 12. **重放的安全语义**：重放走完整管线（审批策略对新参数再次生效）——确认这是期望行为（而非「已批准调用重放免审」）。
 13. **写盘/通知失败路径**：写盘失败静默跳过通知（建议）；是否需要可观测的 telemetry 事件（session-telemetry 已有 error 预映射，可扩展）。
 
@@ -328,7 +334,7 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"）
 
 ## 8. 附录 A：代码地图（文件:行号 速查）
 
-**执行管线 / 钩子 / 调用标识**
+**执行管线 / 钩子 / 调用标识（harness）**
 - `packages/core/tools/src/index.ts`：`tools/pre-execute` :152 · `tools/execute` :163 · `tools/post-execute` :175 · `tools/result` :197 · PostToolDecision :597-600 · ToolExecutionResult :556-580 · ToolExecutionInput（`parent` 字段：嵌套子调用标记）:314-338 · ToolRunContext（deferContext/concludeTurn）:404-421 · ToolRuntime.execute :1342 · get :1204 · schemas :1234 · executionMode :1276-1285 · view() 插入 run_code 条件 :1189-1191 · collapses :1324-1326 · 错误码 :469-472 · RUN_CODE_NAME re-export :104
 - `packages/core/tools/src/code-mode.ts`：run_code 工具 :292-652 · 子调用构造（携带 parent）:469-477 · 嵌套 additionalContexts 经 deferContext 转发 :560-562 · 未捕获抛 CodeRunFailedError :629-632
 - `packages/core/tools/src/schema.ts`：defineTool :545-617 · INVALID_ARGS :461-470
@@ -336,23 +342,26 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"）
 - `packages/core/agent-loop/src/tool-calls.ts`：executeToolCalls :59-101 · appendToolCall（原始参数串落盘，含 turn/step）:262-264 · appendToolResult :268-289 · additionalContexts → acceptContext :155-156
 - `packages/core/agent-loop/src/agent.ts`：preStep（assemble+pre-step 瀑布）:225-243 · step 循环 :332-401 · inbox splice :395-398 · inject :130-132
 
-**系统提示 / 上下文**
+**系统提示 / 上下文（harness）**
 - `packages/core/system-prompt/src/index.ts`：Context.systemPrompt :13-38 · AssembleContext :42-50 · PromptSection :53-75（order 约定 :56-60）· PromptContext :78-85 · section() :375-384 · context() :392-401 · assemble() :447-513 · renderContextSections :249-253
 - `packages/core/agent-loop/src/runtime-context.ts`：快照投影（仅变更时输出 user 消息）:25-75
 - 动态段/通知范例：`packages/sandbox/sandbox-policy/src/index.ts:112-123` · `packages/guard/repeat-tool-reminder/src/index.ts:203-224`（additionalContexts 通知范例）
 
-**fs / 观察策略 / 沙箱**
+**fs / 观察策略 / 沙箱（harness）**
 - `packages/fs/fs/src/index.ts`：Context.fs :44-47 · fs/edit-intent :66 · fs/observed :76 · writeText :222-228 · editText :243-249 · readText :176 · resolve :116 · processPath :126
 - `packages/fs/fs-observation-policy/src/index.ts`：ObservedStateGate :21-95 · editIntent 抛 FS_NOT_OBSERVED :78-88 · owner 推导 :36-41；`src/types.ts` FsObservationActor :23-29
 - `packages/fs/tool-fs/src/edit.ts`：注册+指引段 :77-81 · 参数 DSL :86-92 · execute（intent+editText+observed）:112-147
 - `packages/fs/fs-sandbox/src/index.ts` checkedTarget :126-148 · `packages/sandbox/sandbox/src/roots.ts` writableRoots :52-55
 
-**会话 / 事件**
+**会话 / 事件（harness）**
 - `packages/core/session/src/index.ts`：requestContext :691-699 · session/disposed :64；`src/types.ts`：tool/call（turn/step/callId/name/arguments 原串）:279 · tool/result :291-297 · assistant/message usage :266-273 · request/context :309
 
-**脚手架 / 接线 / 测试范本**
-- `packages/fs/fs-observation-policy/package.json`（包不变式范本）· 根 `tsdown.config.ts`（`packages/*/*` 自动纳入）· `pnpm-workspace.yaml`（双级 glob）
-- `apps/cli/config/agent-presets/standard/agent.cordis.yml:56-57`（tool-fs 行）· `code/agent.cordis.yml:259-262`（mode: code）
+**独立插件注册 / 发布（harness 侧机制 + limao 范本）**
+- `packages/preset/agent-presets/src/discovery.ts:41`（`USER_PRESET_DIR='.agent-presets'`）· `src/index.ts:133-134`（includeUserRoot 自动挂载 `~/.dsh/.agent-presets`）
+- `packages/boot/app-boot/tests/profile.spec.ts:121-124`（profile `dsh.profile.bundles` → `dsh.bundle.patch` 补丁层机制）
+- limao-magic-ui 范本：`packages/dsh-web-review/package.json`（npm 身份/publishConfig/发布版依赖写法）· `cordis.yml`（`- insert:` 覆盖层）· `scripts/gen-config.ts` · `scripts/development-entry.ts` · `scripts/profile-plugin-link.ts`（materializeProfilePluginLink）· `scripts/package-official.ts` · `scripts/dev.ts` · `eval/`（自建评测套件范本）
+
+**测试范本（harness）**
 - `packages/fs/tool-fs/tests/tools.spec.ts:38-120`（FakeFs+execute 范本）、:422-471（edit 用例模板）· `packages/fs/tool-fs/tests/harness.ts:15-24` · `packages/test-support/agent-loop-testkit/src/index.ts:37-46`
 - `packages/test-support/llm-replay`（keyless A/B 引擎，`replay.override.json`）· `examples/jsonrpc-agent`（BENCHMARK.md 指引的最小基准）· `packages/spill/spill-local/src/store.ts:27-30`（临时目录惯例）
 
