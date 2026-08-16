@@ -144,7 +144,7 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工�
    │                         → 嵌套 ctx.tools.execute 重放原工具（单次调用，无需先 edit）
    ├─ 历史/成功场景：bash tail history.jsonl 取 id → editPreviousToolCalling({ id, ... })
    └─ PTC：不注册工具；新 run_code 程序内 tools.read checkpoint → JSON.parse →
-              在真实程序文本上 replace → 修正程序作为下一次 run_code 提交
+              在真实程序文本上 replace → eval(fixed) 就地执行
               → 基于读到的旧程序构造修正后的新程序（或提取长参数继续）
 ```
 
@@ -191,7 +191,7 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工�
 3. 使用矩阵（两种 access，七轮评审）：**上一个**调用（无论成败）→ 顺序 id 别名（`previous/1.json`/`previous/2.json`…）；**更早**的调用 → id：失败调用的 id 在其失败时的通知里注入过（模型在 context 中可见，可直接用），也可查 `history.jsonl`；成功调用的 id 只能查 `history.jsonl`；PTC 版文案给文件路径；
 4. 明确「仅在需要小修时使用；否则直接重新调用」，防止模型滥用；说明顺序 id 别名只保留上一步、新一轮会重建指向；
 5. native 版强调 `editPreviousToolCalling` 单次调用完成「编辑+重放」，输入 id 或序号；PTC 版强调 checkpoint 里是**上一次 `run_code` 的整个程序**，重试时用 fs 读/编辑它。
-6. **已知风险（PTC 版，实现期已消解）**：程序参数经 `JSON.stringify` 后，对**文件文本**做「免读直接 edit」存在转义失配风险；实现期定稿改为「`JSON.parse` 后在 `prev.code`（真实程序文本）上 replace」——匹配串即模型记忆里的原文，无转义问题，剩余风险仅剩短片段歧义（JS replace 只替换首个匹配，文案提示换更长唯一片段）。
+6. **已知风险（PTC 版，实现期已消解）**：程序参数经 `JSON.stringify` 后，对**文件文本**做「免读直接 edit」存在转义失配风险；实现期定稿改为「`JSON.parse` 后在 `prev.code`（真实程序文本）上 replace 再 `eval(fixed)`」——匹配串即模型记忆里的原文，无转义问题；剩余风险仅剩短片段歧义（JS replace 只替换首个匹配，文案提示换更长唯一片段）与「重试再失败时 checkpoint 存 loader」的间接层（文案已提示）。
 
 ### 3.5 重放
 
@@ -199,7 +199,7 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工�
 
 - **code 模式不注册 `editPreviousToolCalling`**（五轮评审点 6：在 code 模式不注册、不注入；run_code 可见即按 code 处理，含 both）。
 - checkpoint = **上一步 `run_code` 调用的完整程序参数**（`previous/1.json`；同时有 `by-id/<id>.json` 全量文件）。失败通知（草稿 D）注入 id 与文件路径。
-- 重试流程（实现期定稿：不引导 `tools.edit`，改为 parse + replace）：模型在新 `run_code` 程序内 `tools.read` 读回 checkpoint（返回值含 `lines`，程序侧拿到的是结构化 value），`JSON.parse` 得到 `{ code, description }`，在**真实程序文本** `prev.code` 上做字面 `replace`（匹配串无 JSON 转义问题，决策点 10 由此消解），把修正后的程序作为**下一次 `run_code` 调用提交**；或提取其中的长参数片段直接作为 `tools.<name>(parsed)` 的输入。静态段 B 附完整示例。
+- 重试流程（实现期定稿：parse + replace + 就地 eval，不引导 `tools.edit`）：模型在新 `run_code` 程序内 `tools.read` 读回 checkpoint（返回值含 `lines`，程序侧拿到的是结构化 value），`JSON.parse` 得到 `{ code, description }`，在**真实程序文本** `prev.code` 上做字面 `replace`（匹配串无 JSON 转义问题，决策点 10 由此消解），再 **`eval(fixed)` 就地执行**（strict direct eval 继承 loader 的 async 上下文，`await`/顶层 `return` 可用；eval 内声明自带作用域）。若这次重试再失败，新 checkpoint 存的是 loader——其中的 `file_path` 仍指回原程序（文案已提示）。或提取其中的长参数片段直接作为 `tools.<name>(parsed)` 的输入。静态段 B 附完整示例。
 - 无失败通知时（如「成功但想重放」），模型读 `previous/1.json`（最近一次程序）或 `tail history.jsonl` 取历史 id 再读 `by-id/<id>.json`。
 - 时序（五轮评审确认）：替换发生在 `run_code` 整体执行完之后——程序执行期间先 edit/read checkpoint，随后才被替换，无冲突。
 - 失败判定：PTC 下内部子调用失败若被程序 `try/catch ToolCallError` 捕获，**不**构成「tool calling 失败」（不通知）；未捕获导致 `run_code` 整体失败才通知（§2.2）。**程序内嵌套调用的 run_code 同样不落盘**（`exec.parent` 存在）。
@@ -294,7 +294,7 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工�
 2. **工具单测**（模板：`packages/fs/tool-fs/tests/tools.spec.ts:38-120` 的 `FakeFs extends FileSystem` + `ctx.tools.execute`；edit 工具用例模板 :422-471）：
    - `editPreviousToolCalling`：`previous_ordinal` 与 `call_id` 两条路由（**二选一、恰填一个，都填/都不填报错**）；越界/不存在的序号或 id 报错；`old_string` 失配报错；编辑后内容非法 JSON；目标越出 checkpoint 目录被拒；原工具未注册/重放失败透传；`fs/observed` 版本更新；run_code 可见时工具未注册。
 3. **agent-loop 集成**（`packages/fs/tool-fs/tests/harness.ts:15-24` 的 `fsHarness` + `packages/test-support/agent-loop-testkit` `mountAgentLoopTestDependencies` :37-46，依赖自发布版 npm 包）：真实循环内「成功调用也落盘 → 失败 → 通知（含 id）时序位于该 tool/result 之后 → editPreviousToolCalling(id) 单次重放 → 结果」全链路；**上一步全部并行 block 各自可重放**；多次重试用 id 路径可复现。
-4. **code-mode 集成**：外层 `run_code` 整体落盘（`previous/1.json` + `by-id/<id>.json`）→ 未捕获失败 → 通知（含 id 与路径）；内部子调用失败被捕获 → 不通知；程序执行期间 checkpoint 旧内容可读（替换在程序结束后）；下一步程序内 `tools.read` checkpoint → `JSON.parse` → `prev.code.replace`（验证预观察生效）；**code 模式不注册 editPreviousToolCalling**。
+4. **code-mode 集成**：外层 `run_code` 整体落盘（`previous/1.json` + `by-id/<id>.json`）→ 未捕获失败 → 通知（含 id 与路径）；内部子调用失败被捕获 → 不通知；程序执行期间 checkpoint 旧内容可读（替换在程序结束后）；下一步程序内 `tools.read` checkpoint → `JSON.parse` → `prev.code.replace` → `eval`（验证预观察生效与 eval 继承 async 上下文）；**code 模式不注册 editPreviousToolCalling**。
 5. **机制验证（keyless 脚本化 A/B，llm-replay）**——**从 §6 移入（十三轮评审）**：llm-replay 回放固定剧本、模型行为是脚本化的，它验证的是**特性机制本身**而非模型行为，故属阶段四：
    - 语料：**手写构造或从本机存量 bad case 裁剪**（~/.dsh/sessions/ 真实日志，解压 .jsonl.zstd、脱敏、裁剪到「断点 + turn 边界」）的 `session.jsonl` 前缀 fixtures（native 与 PTC 各若干，含多并行 block 场景）——**与 §6 真模型 eval 共用同一套断点快照语料库**；
    - 用 `replay.override.json`（`packages/test-support/llm-replay`）在该调用后强制注入 `tool/result{error}`，并脚本化两臂完全相同的重试脚本；
@@ -368,7 +368,7 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工�
 7. **code 模式不注册、不注入**（五轮评审点 6）：run_code 可见（code 或 both）即不注册 `editPreviousToolCalling` 并用 PTC 文案——both 模式损失直调该工具的便利，请确认取舍。
 8. **重放审计**：v1 结果内嵌 `meta`（不新增 session 事件、不改 harness 核心）vs 新增 `tool/replay` 事件类型（需改 core/session——建议不做）。
 9. **保留策略**：id 文件与 history.jsonl 全量保留至会话结束（目录在 tmp 下，OS 可回收）；会话结束删除整目录（建议）。
-10. **PTC「免读编辑」风险**：✅ 已定稿（实现期）——采用「`JSON.parse` → `prev.code.replace`」路线，replace 作用在解析后的真实程序文本上，`JSON.stringify` 格式化不再进入匹配串；文案不再引导 `tools.edit`（工具仍可用，但不作为官方路径）。原选项 (a)/(b) 作废。
+10. **PTC「免读编辑」风险**：✅ 已定稿（实现期）——采用「`JSON.parse` → `prev.code.replace` → `eval(fixed)`」路线，replace 作用在解析后的真实程序文本上，`JSON.stringify` 格式化不再进入匹配串，eval 继承 async 上下文就地执行（`await` 可用）。实证（PTC 自测）：strict 模式下 eval 程序内的顶层 `return` 是规范 early error，无论 direct/indirect 一律 `SyntaxError: Illegal return statement`——被修正程序必须以值表达式或 console.log 结尾（文案已提示）；另一已知成本：重试自身再失败时新 checkpoint 存 loader（`file_path` 仍指回原程序，文案已提示）。文案不引导 `tools.edit`（工具仍可用，但不作为官方路径）。原选项 (a)/(b) 作废。
 11. **进程重启后的轮映射**：编号/轮映射为内存态，重启后从会话日志尾部 `tool/call` 事件重建（按最后一步顺序编号）；id 文件与 jsonl 在磁盘上天然可重建——建议 v1 直接实现。
 12. **独立插件仓库**：仓库即本工作区 `/Users/canglong/Program/dsh-tool-retry`（参照 limao-magic-ui 布局）；npm 包名 `@canglongcl/dsh-tool-retry`；注册主渠道 = 用户预设 `~/.dsh/.agent-presets/`（两份：standard/code）——请确认命名与渠道。
 13. **重放的安全语义**：重放走完整管线（审批策略对新参数再次生效）——确认这是期望行为（而非「已批准调用重放免审」）。
@@ -468,18 +468,21 @@ appended to history.jsonl. Tools called INSIDE a program (including nested
 - After a FAILED run, a notice tells you the call id and the checkpoint path.
 - To retry with a small correction: in a NEW `run_code` program, read the
   checkpoint with tools.read, JSON.parse it, apply a literal replace on the
-  real program text, and submit the corrected program as your next
-  `run_code` call (a program cannot call `run_code` itself):
+  real program text, then eval the corrected program in place:
       const r = await tools.read({ file_path: "<checkpoint path>" });
       const prev = JSON.parse(r.lines.map(line => line.text).join("\n"));
       // prev = your exact previous run_code call: { code, description }
       const fixed = prev.code.replace("const retries = 3", "const retries = 5");
-      console.log(fixed);
+      eval(fixed);
   The replace runs on the parsed program text, so no JSON escaping appears
   in your match; if a short fragment is ambiguous, use a longer unique
-  fragment. Alternatively extract long argument data from the checkpoint
-  and pass it to other tools. Use this only when a small correction is
-  needed; otherwise write a fresh program.
+  fragment. A top-level `return` inside the eval'd program is rejected in
+  strict mode — end the corrected program with a value expression or
+  console.log instead. If this retry also fails, the new checkpoint
+  holds this loader — its file_path still points at your original program.
+  Alternatively extract long argument data from the checkpoint and
+  pass it to other tools. Use this only when a small correction is needed;
+  otherwise write a fresh program.
 ```
 
 **B · 中文译文（评审对照）：**
@@ -489,13 +492,13 @@ appended to history.jsonl. Tools called INSIDE a program (including nested
 
 - 最近一次程序永远是 previous/1.json；更早的程序在 by-id/<id>.json 下——失败程序的 id 已在失败通知中给出，任何 id 都可以用 tail 查看 history.jsonl 获得。
 - 程序失败后，会收到一条通知，内含 call id 与 checkpoint 路径。
-- 重试（小幅修正）：在新 run_code 程序里用 tools.read 读取 checkpoint，JSON.parse 后对真实程序文本做字面 replace，再把修正后的程序作为下一次 run_code 调用提交（程序内部无法调用 run_code）：
+- 重试（小幅修正）：在新 run_code 程序里用 tools.read 读取 checkpoint，JSON.parse 后对真实程序文本做字面 replace，再就地 eval 修正后的程序：
       const r = await tools.read({ file_path: "<checkpoint path>" });
       const prev = JSON.parse(r.lines.map(line => line.text).join("\n"));
       // prev = 你上次 run_code 调用的完整 JSON：{ code, description }
       const fixed = prev.code.replace("const retries = 3", "const retries = 5");
-      console.log(fixed);
-  replace 作用在解析后的程序文本上（匹配串里没有 JSON 转义）；片段太短有歧义时换更长的唯一片段。也可以只提取其中长参数数据传给其他工具。仅当只需小幅修正时使用；否则重写一个新程序。
+      eval(fixed);
+  replace 作用在解析后的程序文本上（匹配串里没有 JSON 转义）；片段太短有歧义时换更长的唯一片段。注意：strict 模式下 eval 程序里的顶层 `return` 是语法错误（实证：Illegal return statement）——被修正的程序要以值表达式或 console.log 结尾。若这次重试再失败，新 checkpoint 存的是这个 loader——其中的 file_path 仍指回原程序。也可以只提取其中长参数数据传给其他工具。仅当只需小幅修正时使用；否则重写一个新程序。
 
 ### C. 失败通知（动态注入）—— native 模式
 
@@ -518,11 +521,9 @@ To apply a small fix and re-run the call, use `editPreviousToolCalling`
 ```text
 Your failed `run_code` program was saved.
 - path: <checkpoint-dir>/by-id/<id>.json
-To apply a small fix, read it in a new `run_code` program (JSON.parse, then
-replace the fragment) and submit the corrected program as the new run (a
-program cannot call tools.run_code itself — 实现期实测：程序内 SDK 命名空间不含
-run_code，code-mode.ts 过滤嵌套 run_code); or extract long argument data from
-it and pass it to other tools.
+To apply a small fix, read it in a new `run_code` program (JSON.parse,
+replace the fragment, eval the corrected program); or extract long argument
+data from it and pass it to other tools.
 ```
 
 **D · 中文译文（评审对照）：**

@@ -1,6 +1,6 @@
 # @canglongcl/dsh-tool-retry
 
-External DSH agent-plane plugin that checkpoints every model tool-call block (success or failure) to the OS temp directory, injects one minimal notice per failed call, and provides the editPreviousToolCalling replay tool (native mode) so the model can fix a saved call's arguments instead of regenerating them. In code mode (PTC) no tool is registered; the model replays by reading the checkpoint inside a new run_code program, JSON.parsing it, applying a literal replace on the real program text, and submitting the corrected program as the next run.
+External DSH agent-plane plugin that checkpoints every model tool-call block (success or failure) to the OS temp directory, injects one minimal notice per failed call, and provides the editPreviousToolCalling replay tool (native mode) so the model can fix a saved call's arguments instead of regenerating them. In code mode (PTC) no tool is registered; the model replays by reading the checkpoint inside a new run_code program, JSON.parsing it, applying a literal replace on the real program text, and eval'ing the corrected program in place.
 
 The harness checkout is not modified.
 
@@ -52,7 +52,7 @@ pnpm package:official  # stage the publishable tarball under dist/
 
 - Windows alias fallback is a content copy (edits through an alias diverge from by-id/).
 - both mode is treated as code mode: the replay tool is not registered.
-- PTC retry guidance is parse-first: JSON.parse + literal replace on the parsed program text (no JSON escaping in the match); the remaining risk is short-fragment ambiguity — the guidance tells the model to use a longer unique fragment.
+- PTC retry guidance is eval-in-place: JSON.parse + literal replace on the parsed program text, then eval the corrected program (no JSON escaping in the match; `await`/`return` inherit the loader's async context). When the retry itself fails, the new checkpoint holds the loader — its file_path still points at the original program.
 - v1 embeds replay audit data in tool/result meta; a dedicated tool/replay session event is deferred (requires harness core changes).
 - Non-local fs backends (e.g. e2b) skip previous/ aliases; notices still carry exact paths.
 - ABORTED boundary (verified; see AGENTS.md "Zero filtering"): ABORTED_BEFORE_DISPATCH bypasses post-execute entirely (no checkpoint, no notice); a post-body ABORTED checkpoints but its result replacement happens after our decision (no notice).

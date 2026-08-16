@@ -206,11 +206,13 @@ describe('mode detection', () => {
     const rendered = renderPrompt(assembly)
     expect(rendered).toContain('Tools called INSIDE a program')
     expect(rendered).not.toContain('editPreviousToolCalling')
-    // The PTC retry guidance: JSON.parse + literal replace, submitted as the
-    // new run — no tools.edit routing.
+    // The PTC retry guidance: JSON.parse + literal replace + eval in place,
+    // with the loader-checkpoint caveat — no tools.edit routing.
     expect(rendered).toContain('JSON.parse(r.lines.map(line => line.text)')
     expect(rendered).toContain('prev.code.replace("const retries = 3"')
-    expect(rendered).toContain('submit the corrected program as your next')
+    expect(rendered).toContain('eval(fixed);')
+    expect(rendered).toContain('A top-level `return` inside the eval')
+    expect(rendered).toContain('its file_path still points at your original program')
     expect(rendered).not.toContain('fix it in place with tools.edit')
 
     // A failing outer run_code gets the PTC notice: saved + by-id path + the
@@ -222,8 +224,7 @@ describe('mode detection', () => {
     const notice = noticeText(failed.additionalContexts)
     expect(notice).toContain('Your failed `run_code` program was saved.')
     expect(notice).toContain('/by-id/call-1.json')
-    expect(notice).toContain('a program cannot call')
-    expect(notice).toContain('tools.run_code itself')
+    expect(notice).toContain('replace the fragment, eval the corrected program')
   })
 
   it('registers the replay tool and the native section by default', async () => {
