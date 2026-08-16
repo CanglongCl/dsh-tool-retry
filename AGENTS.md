@@ -43,7 +43,7 @@ Rules for the dsh-tool-retry plugin: automatic checkpointing of every model-dire
 ### Checkpoint scope and content
 
 - **Model-direct calls only**: exec.parent === undefined. Native mode checkpoints every tool call; PTC (code) mode checkpoints only the run_code call — the whole program parameter. Sub-dispatches inside a program, **including nested run_code**, are never checkpointed.
-- **Zero filtering**: every model-direct call is checkpointed and every failure notifies, regardless of tool name or error code (ABORTED, UNKNOWN_TOOL, INVALID_ARGS included). This is safe because alias re-pointing happens in tools/post-execute — after the tool body ran.
+- **Zero filtering**: every model-direct call that reaches tools/post-execute is checkpointed and every failure visible there notifies, regardless of tool name or error code (UNKNOWN_TOOL, INVALID_ARGS included). This is safe because alias re-pointing happens in tools/post-execute — after the tool body ran. Verified registry boundary (tools/src/index.ts): a call cancelled at entry takes the `final-result` stage, which BYPASSES tools/post-execute — ABORTED_BEFORE_DISPATCH can never be checkpointed or notified; a post-body ABORTED still checkpoints (the waterfall saw the call) but its result replacement happens after our decision, so that failure gets no notice. Both are documented limits, not bugs.
 - **Content is the raw argument string** taken from the session tool/call event by callId — byte-identical to what the model sent. Never wrap it. Invalid-JSON raw strings are stored verbatim.
 
 ### Storage layout
@@ -101,6 +101,7 @@ Rules for the dsh-tool-retry plugin: automatic checkpointing of every model-dire
 
 - **Unit (plugin level)**: new Context() + ctx.plugin with a FakeFs extends FileSystem and ctx.tools.execute (mirror packages/fs/tool-fs/tests/tools.spec.ts:38-120 and the edit template :422-471). Cover: direct-only checkpointing, nested-call skip, zero filtering, alias round rebuild + EPERM copy fallback, observation pre-registration, notification content and ordering, ordinal/call_id routing, JSON-parse failure, path containment, replay passthrough, restart mapping rebuild.
 - **Integration**: real agent loop over published deps (@deepseek-ai/dsh-agent-loop-testkit, the fsHarness pattern) — success+failed checkpointing, notification lands after the tool/result, single-call edit+replay, parallel-block coverage.
+- **Built-bundle boundary**: load the BUILT lib/index.js against the real local filesystem — the bundle inlines its own class identities, so `instanceof` checks against runtime backend errors must never gate checkpoint logic (the first real e2e run caught a never-written history.jsonl this way; errors are duck-typed by `code`).
 - **Code-mode integration**: outer run_code checkpointed whole, sub-calls skipped, PTC notification text, no tool registered when dual detection hits.
 - **Keyless A/B**: @deepseek-ai/dsh-llm-replay with replay.override.json forcing a failure and scripting both retry arms; JSON summary as the snapshot assertion.
 - **Real e2e** (native + PTC) is optional, provider-key gated, and not part of the commit gate.

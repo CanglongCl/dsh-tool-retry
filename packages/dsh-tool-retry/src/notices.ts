@@ -1,0 +1,109 @@
+/**
+ * Model-facing text for the plugin: the static system-prompt section
+ * (drafts A/B, mode-conditional) and the minimal failure notices (drafts
+ * C/D). Injection language is English (the plan's reviewed drafts); the
+ * Chinese translations in the plan appendix are review aids only.
+ * @module dsh-tool-retry/notices
+ */
+
+import { createUserMessage } from '@deepseek-ai/dsh-llm/message'
+import type { UserMessage } from '@deepseek-ai/dsh-llm'
+import { PLUGIN_ID } from './invariant.ts'
+
+/** Static section name/order: tool guidance band, before the SDK section (150). */
+export const CHECKPOINT_SECTION_ORDER = 149
+/** Replay-tool guidance section name/order: right after `tool:edit` (102). */
+export const REPLAY_GUIDANCE_ORDER = 103
+export const REPLAY_TOOL_NAME = 'editPreviousToolCalling'
+
+/** Static section A (native) with the session directory filled in. */
+export function nativeSection(dir: string): string {
+  return [
+    'TOOL-CALL CHECKPOINT & REPLAY',
+    `Every tool call you make is checkpointed under ${dir}:`,
+    '- previous/1.json, previous/2.json, ... are shortcuts to the PARALLEL',
+    '  tool-call blocks of your PREVIOUS message, in your call order (your 1st',
+    '  block is previous/1.json, your 2nd block is previous/2.json, and so on).',
+    '  A new round of calls re-points them.',
+    '- Every call is also kept under its call id as by-id/<id>.json, and an index',
+    '  line is appended to history.jsonl.',
+    "- A checkpoint's content is byte-for-byte identical to the arguments you sent",
+    '  for that call.',
+    `To retry with a small correction, call \`${REPLAY_TOOL_NAME}\` once with`,
+    "either previous_ordinal (the call's position 1/2/\u2026 in your previous message)",
+    "or call_id (for an OLDER call — a failed",
+    "call's id was given in its failure notice, and any call's id can be looked",
+    'up in the tail of history.jsonl), plus old_string / new_string /',
+    'replace_all. It applies your edit and immediately re-invokes the original',
+    'tool with the edited arguments. Use this only when a small correction is',
+    'needed; otherwise call the tool again with fresh arguments.',
+  ].join('\n')
+}
+
+/** Static section B (PTC/code) with the session directory filled in. */
+export function ptcSection(dir: string): string {
+  return [
+    'TOOL-CALL CHECKPOINT & REPLAY',
+    'Every `run_code` call you make — i.e. everything you wrote in your tool call',
+    `block, which is the full program — is checkpointed under ${dir},`,
+    'whether it succeeds or fails: previous/1.json is a shortcut to your most',
+    'recent program, which is kept as by-id/<id>.json, and an index line is',
+    'appended to history.jsonl. Tools called INSIDE a program (including nested',
+    '`run_code`) are not checkpointed separately.',
+    '- Your most recent program is always previous/1.json; older programs are',
+    '  under by-id/<id>.json — a failed run\'s id',
+    '  was given in its failure notice, and any id can be looked up in the tail',
+    '  of history.jsonl.',
+    '- After a FAILED run, a notice tells you the call id and the checkpoint path.',
+    '- To retry: in a new `run_code` program, read the checkpoint with tools.read',
+    '  (or fix it in place with tools.edit — the content is exactly the program',
+    '  you submitted, so you may edit it without reading it first), then use the',
+    '  content to reconstruct your corrected program (or extract long argument',
+    '  data from it and pass it to other tools). Use this only when a small',
+    '  correction is needed; otherwise write a fresh program.',
+  ].join('\n')
+}
+
+/** Tool guidance section for the replay tool (native only). */
+export const REPLAY_GUIDANCE = [
+  `Edit and replay a previous tool call's checkpointed arguments in ONE call.`,
+  `For a call in your PREVIOUS message, pass previous_ordinal (its position 1/2/\u2026 in that message);`,
+  `for an OLDER call, pass call_id (a failed call's id was given in its failure notice; any id can be looked up in the tail of history.jsonl).`,
+  'Exactly one of previous_ordinal / call_id must be provided. Provide old_string / new_string / replace_all:',
+  'your edit is applied to the checkpoint and the original tool is immediately re-invoked with the edited arguments.',
+  'Use this only when a small correction is needed; otherwise call the tool again with fresh arguments.',
+].join(' ')
+
+/** Failure notice C (native): saved + call id + how to use it. */
+export function nativeNotice(callId: string): UserMessage {
+  return createUserMessage({
+    source: { kind: 'plugin', plugin: PLUGIN_ID, form: 'notice', summary: 'Failed tool call saved — small fixes can replay it' },
+    content: [{
+      type: 'text',
+      text: [
+        "Your failed call's arguments were saved.",
+        `- call id: ${callId}`,
+        `To apply a small fix and re-run the call, use \`${REPLAY_TOOL_NAME}\``,
+        `(with call_id "${callId}" — it stays valid).`,
+      ].join('\n'),
+    }],
+  })
+}
+
+/** Failure notice D (PTC): saved + by-id path + how to use it. */
+export function ptcNotice(dir: string, idFileName: string): UserMessage {
+  return createUserMessage({
+    source: { kind: 'plugin', plugin: PLUGIN_ID, form: 'notice', summary: 'Failed run_code program saved — small fixes can replay it' },
+    content: [{
+      type: 'text',
+      text: [
+        'Your failed `run_code` program was saved.',
+        `- path: ${dir}/by-id/${idFileName}`,
+        'To apply a small fix, read/edit it inside a new `run_code` program and',
+        'submit the corrected program as the new run (a program cannot call',
+        'tools.run_code itself); or extract long argument data from it and pass',
+        'it to other tools.',
+      ].join('\n'),
+    }],
+  })
+}

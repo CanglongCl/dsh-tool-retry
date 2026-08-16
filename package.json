@@ -1,0 +1,30 @@
+{
+  "name": "dsh-tool-retry",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "packageManager": "pnpm@11.20.0",
+  "description": "dsh-tool-retry plugin repo: automatic tool-call checkpointing, failure notices, and local-edit replay",
+  "scripts": {
+    "gen-config": "tsx scripts/gen-config.ts",
+    "install-presets": "tsx scripts/install-presets.ts",
+    "setup:harness": "tsx scripts/dev.ts --setup-only",
+    "build": "pnpm gen-config && pnpm --filter ./packages/dsh-tool-retry build",
+    "package:official": "pnpm build && tsx scripts/package-official.ts",
+    "build:watch": "pnpm --filter ./packages/dsh-tool-retry watch",
+    "dev": "tsx scripts/dev.ts",
+    "dev:headless": "tsx scripts/dev-headless.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc -b --force && tsc -p tsconfig.tests.json",
+    "check": "tsx scripts/check.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsdown": "^0.22.2",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.0",
+    "vite-tsconfig-paths": "^5.1.4",
+    "vitest": "^3.0.0"
+  }
+}

@@ -58,11 +58,11 @@
 
 ### 2.2 失败判定、tool call block 与调用标识（callId）
 
-- 结果判别式：`ToolExecutionResult = ToolExecutionSuccess | ToolExecutionFailure`，`isError: true/false`：`packages/core/tools/src/index.ts:556-580`；错误码 `ABORTED`/`ABORTED_BEFORE_DISPATCH`（:469-472）、`UNKNOWN_TOOL`、`INVALID_ARGS`（`schema.ts:461-470`）均为失败，**均经过 post-execute**。
+- 结果判别式：`ToolExecutionResult = ToolExecutionSuccess | ToolExecutionFailure`，`isError: true/false`：`packages/core/tools/src/index.ts:556-580`；错误码 `ABORTED`/`ABORTED_BEFORE_DISPATCH`（:469-472）、`UNKNOWN_TOOL`、`INVALID_ARGS`（`schema.ts:461-470`）均为失败。**实证边界（实现期复核，v15 补注）**：`UNKNOWN_TOOL`/`INVALID_ARGS` 经 post-execute（落盘+通知）；`ABORTED_BEFORE_DISPATCH` 走 `final-result` 阶段、**绕过 post-execute**（不可落盘/通知）；工具体启动后被取消的 `ABORTED` 在瀑布后替换结果——post-execute 看到成功（会落盘）但通知缺失。见 AGENTS.md「Zero filtering」。
 - **落盘口径（五轮评审定稿：native 与 PTC 逻辑完全一致）**：**只落盘模型直调（`exec.parent === undefined`）**——落盘内容是模型在该 block 下输入的**全部内容**（整个工具调用的参数字符串）：
   - native：每个工具调用都落盘；
   - PTC：模型唯一的直调是 `run_code`（collapse 只允许直调它，`collapses` :1324-1326）→ 落整个程序参数；**程序内部调用的工具一律不落盘，包括程序内嵌套调用的 run_code**（它们 `exec.parent` 存在）；
-  - **零过滤**（五轮评审讨论结论）：不按工具名、不按错误码过滤——`editPreviousToolCalling`/`read`/`write`/`edit` 以及 `ABORTED`/`UNKNOWN_TOOL` 的直调同样落盘并（失败时）通知。无时序问题：编号别名的重建发生在**该轮首条直调的 post-execute**，此时工具体已执行完毕——native 的重放是单次调用（编辑与重放都在 `editPreviousToolCalling` 体内完成），旧文件在重放前已被消费；PTC 的替换在 `run_code` 程序整体执行完后才发生，程序执行期间先 edit/read 后替换，互不冲突（§3.3）。
+  - **零过滤**（五轮评审讨论结论）：不按工具名、不按错误码过滤——`editPreviousToolCalling`/`read`/`write`/`edit` 以及 `UNKNOWN_TOOL` 的直调同样落盘并（失败时）通知（`ABORTED_BEFORE_DISPATCH` 不经过 post-execute，属注册表结构边界，见 §2.2 补注）。无时序问题：编号别名的重建发生在**该轮首条直调的 post-execute**，此时工具体已执行完毕——native 的重放是单次调用（编辑与重放都在 `editPreviousToolCalling` 体内完成），旧文件在重放前已被消费；PTC 的替换在 `run_code` 程序整体执行完后才发生，程序执行期间先 edit/read 后替换，互不冲突（§3.3）。
 - **callId 实证结论（实测本会话日志确认）**：
   - `tool/call` 事件带 `callId`（如本会话实测 `call_00_UIZK3UTd84uighVQ0QPb5398`）：`packages/core/session/src/types.ts:279`；模型历史里的 assistant tool-call block 与 tool/result 的 `toolCallId` 也都带 id（`llm/src/message.ts:234`）——**模型在历史里能看见 id**；
   - **但 id 不是模型输入的内容**：id 来自流式 chunk（`tool-call-delta.id`，`llm/src/types.ts:295`）或 assembler 兜底合成 `call-<index>`（`llm/src/assembler.ts:70,113`）；实测本会话（agentPreset=code）中模型的 `run_code` 参数只有 `{code, description}` 两个键，模型**从不书写 id**，也无法在后续回合可靠复述/复算这个 id；
@@ -166,7 +166,7 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工�
 
 - **监听点（评审点 1 已定）**：`ctx.on('tools/post-execute', listener)`（全局注册即可，Scoped 派发按 `exec.agent` 路由；监听器内自行过滤）。
 - **必须保持链**：无条件 `await next()` 拿到决策后修改并返回（本插件不占据决策槽，与 fs-observation-policy 那种「不调 next()」的占有式监听不同）。
-- **处理对象**：仅**模型直调**（`exec.parent === undefined`）；`exec.agent?.session` 存在。**零过滤**：任何工具名、任何错误码（`ABORTED`/`UNKNOWN_TOOL` 等）都落盘与通知——讨论结论：覆盖发生在工具体执行完毕之后，且 native 重放为单次调用、多次重试走 id 全量文件，零过滤无时序与递归问题（§2.2）。
+- **处理对象**：仅**模型直调**（`exec.parent === undefined`）；`exec.agent?.session` 存在。**零过滤**：任何工具名、任何错误码（`UNKNOWN_TOOL` 等到达 post-execute 的失败）都落盘与通知——讨论结论：覆盖发生在工具体执行完毕之后，且 native 重放为单次调用、多次重试走 id 全量文件，零过滤无时序与递归问题（§2.2）。
 - **流程**（每次直调）：从 `tool/call` 事件取 `(turn, step)` 与 `arguments` 原串 → 若为新一步首调：删除上一轮全部 `previous/n.json` 别名 → 写 `by-id/<id>.json` + 建 `previous/n.json` → `../by-id/<id>.json` 软链（EPERM 降级副本）+ `history.jsonl` append + 预观察（§3.2）→ 更新内存轮映射（`{ ordinal → { id, tool } }`）→ 若 `result.isError` → 注入通知。
 - **通知时机（二轮+五轮评审已定）**：**每次失败都注入**，无计数、无节流、零过滤——把通知附加到 `next` 决策的 `additionalContexts`（`createUserMessage`，source `{ kind:'plugin', plugin:'@canglongcl/dsh-tool-retry', form:'notice' }`）。
 - **通知内容（十轮评审：极简）**：只写三件事——① 已保存；② **调用 id**（PTC 版为 `by-id/<id>` 路径，内含 id）；③ 用 `editPreviousToolCalling`（PTC：新程序内 fs 工具 + tools.run_code）即可重放。**失败原因不注入**——harness 的 tool/result 本身已把失败原因返回给模型，通知只作为「可选纠错路径」的指引；native 版不要求模型填路径（工具按 id 内部路由，§3.5.2）。
@@ -285,7 +285,7 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工�
 ## 5. 测试与验证
 
 1. **插件单测**（模板：`packages/fs/fs-observation-policy/tests/policy.spec.ts` 的 `new Context() + ctx.plugin` 方式）：
-   - 模型直调（成功与失败）都落盘（id 文件 + 别名 + jsonl）与预观察；**嵌套子调用（`parent` 存在）不落盘不通知**（PTC 下验证程序内部工具调用与嵌套 run_code 被跳过、外层 run_code 整体落盘）；**零过滤**：editPreviousToolCalling/read/write/edit 与 ABORTED/UNKNOWN_TOOL 同样落盘+通知；
+   - 模型直调（成功与失败）都落盘（id 文件 + 别名 + jsonl）与预观察；**嵌套子调用（`parent` 存在）不落盘不通知**（PTC 下验证程序内部工具调用与嵌套 run_code 被跳过、外层 run_code 整体落盘）；**零过滤**：editPreviousToolCalling/read/write/edit 与 UNKNOWN_TOOL 同样落盘+通知（ABORTED_BEFORE_DISPATCH 绕过 post-execute、不落盘不通知——实证边界回归测试）；
    - 通知：**每次失败都注入**，成功不注入；通知含 id 与上一步序号；
    - 顺序 id 别名：同轮并行按模型顺序建 `previous/n.json` 软链指向 `by-id/` 下各自 id 文件；新轮首调删除上一轮全部别名并重建；上一轮多余别名被删除；重建发生在工具体之后（native 单次重放不受影响、PTC 程序执行期间旧别名仍在）；**Windows `EPERM` → 副本降级（内容一致且副本已预观察）**；经别名 `edit` 解析到 id 文件同一 targetKey（软链时编辑落到 id 文件）；
    - 落盘一致性：id 文件是唯一真实存储、会话内不被覆盖；history.jsonl 每调一行 append（id/tool/turn/step/ordinal）；
@@ -360,7 +360,7 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工�
 
 1. **四段提示词文案**（附录 B）需人工审阅定稿——特别是「免读直接 edit」的措辞与边界、静态段中两种 access 约定（id 与顺序 id 别名）的详细程度、**使用矩阵（上一个→顺序别名；更早→id：失败注入过/成功查 history）**、PTC 版「checkpoint = 整个程序」的引导方式。
 2. **checkpoint 目录**：`<os.tmpdir()>/.dsh/tool-checkpoints/<sessionId>/`（五轮评审已定：不用 `session.header.cwd`）——请确认；注意 tmp 目录可能被 OS 定期清理（会话内不受影响）。
-3. **零过滤**（五轮评审讨论结论）：任何工具名（含 `editPreviousToolCalling`/`edit`/`read`/`write`）与任何错误码（含 `ABORTED`/`UNKNOWN_TOOL`）的模型直调都落盘、失败都通知——已确认无时序问题（覆盖在工具体之后；native 重放单调用；多次重试走 id），请最终确认。
+3. **零过滤**（五轮评审讨论结论）：任何工具名（含 `editPreviousToolCalling`/`edit`/`read`/`write`）与任何错误码（含 `UNKNOWN_TOOL`；`ABORTED` 见 §2.2 实证边界）的模型直调都落盘、失败都通知——已确认无时序问题（覆盖在工具体之后；native 重放单调用；多次重试走 id），请最终确认。
 4. **顺序 id 别名语义（六轮评审）**：`previous/1.json`/`previous/2.json`… 为指向 `by-id/` 下 id 文件的软链/快捷方式（唯一真实存储是 id 文件；**八轮评审：两个子文件夹分开存放，避免 id 文件与顺序别名同名冲突**），每轮重建指向；Windows `EPERM` 降级为副本（经副本编辑只改副本、id 文件不变）——请确认；重建粒度（每轮首调清空重建 vs 每调更新）是否认可。
 5. **history.jsonl 行内容**：v1 建议 `{ id, tool, turn, step, ordinal }`（索引）；如需 `tail` 即可见参数可内嵌 arguments（行变长）——请选择。
 6. **`editPreviousToolCalling` 签名（八轮评审修订）**：`{ previous_ordinal?, call_id?, old_string, new_string, replace_all }`——两个定位参数**二选一、恰填一个**（都填/都不填 → 明确错误）；`previous_ordinal`（数字）= 上一步序号，`call_id`（字符串）= 真实 callId（通知注入 / jsonl 查询）；参数命名请确认。撞形问题已由双文件夹消除（id 文件在 `by-id/`、别名在 `previous/`）。
@@ -502,9 +502,11 @@ To apply a small fix and re-run the call, use `editPreviousToolCalling`
 
 ```text
 Your failed `run_code` program was saved.
-- path: <checkpoint-dir>/by-id/<id>
-To apply a small fix, edit/read the file in a new `run_code` program and run
-it with tools.run_code.
+- path: <checkpoint-dir>/by-id/<id>.json
+To apply a small fix, read/edit it inside a new `run_code` program and submit
+the corrected program as the new run (a program cannot call tools.run_code
+itself — 实现期实测：程序内 SDK 命名空间不含 run_code，code-mode.ts 过滤嵌套
+run_code); or extract long argument data from it and pass it to other tools.
 ```
 
 **D · 中文译文（评审对照）：**
@@ -512,9 +514,9 @@ it with tools.run_code.
 工具调用检查点（可选纠错路径）
 你这次失败的 run_code 程序已保存。
 
-- path: <checkpoint-dir>/by-id/<id>
+- path: <checkpoint-dir>/by-id/<id>.json
 
-如需小幅修正，在新 run_code 程序里 edit/read 该文件并使用tools.run_code调用即可。
+如需小幅修正，在新 run_code 程序里读/改该文件，并把修正后的程序作为新一次 run 提交（程序内部无法调用 tools.run_code），或提取其中长参数传给其他工具。
 
 ### 评审要点备注
 

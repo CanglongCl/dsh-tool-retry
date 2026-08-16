@@ -11,7 +11,10 @@ See the repository [AGENTS.md](../../AGENTS.md) for loading, invariants, and tes
 ```bash
 pnpm install
 pnpm gen-config        # regenerate the dev overlay after moving the repo
+pnpm install-presets   # install the two user presets under ~/.dsh/.agent-presets/
 pnpm dev               # launch the harness CLI with the dev alias linked
+pnpm dev:headless -- "<task>"  # one-shot self-test session through the headless profile
+pnpm test              # unit + integration + built-bundle boundary regressions
 pnpm check             # typecheck + unit suite + gen-config idempotence + staging allowlist
 pnpm package:official  # stage the publishable tarball under dist/
 ```
@@ -52,3 +55,4 @@ pnpm package:official  # stage the publishable tarball under dist/
 - PTC blind edit-without-read risks old_string formatting mismatches.
 - v1 embeds replay audit data in tool/result meta; a dedicated tool/replay session event is deferred (requires harness core changes).
 - Non-local fs backends (e.g. e2b) skip previous/ aliases; notices still carry exact paths.
+- ABORTED boundary (verified; see AGENTS.md "Zero filtering"): ABORTED_BEFORE_DISPATCH bypasses post-execute entirely (no checkpoint, no notice); a post-body ABORTED checkpoints but its result replacement happens after our decision (no notice).

@@ -87,10 +87,22 @@ replace_all: false
 
 开发环境、加载模型、设计不变量与验证流程见 [AGENTS.md](./AGENTS.md)；完整设计（含四段提示词草稿与中文译文）见 [docs/tool-calling-checkpoint-replay-plan.md](./docs/tool-calling-checkpoint-replay-plan.md)。
 
+```sh
+pnpm install
+pnpm gen-config        # 生成开发覆盖层（cordis.yml + entry-name.json）
+pnpm install-presets   # 安装 tool-retry-standard / tool-retry-code 两个用户预设
+pnpm dev               # 链接开发别名并启动 harness Web CLI（需 DSH_HARNESS）
+pnpm dev:headless -- "<一句话任务>"   # 一次性自测：headless 会话跑完整闭环后退出
+pnpm test              # 单测 + 集成 + 构建产物边界回归（vitest）
+pnpm check             # 仓库门禁：typecheck + 单测 + gen-config 幂等 + 官方包 allowlist
+pnpm package:official  # 组装可发布的官方 tarball 到 dist/
+```
+
 ## 已知限制
 
 - Windows 无 Developer Mode/管理员权限时，previous/ 别名降级为副本（经别名编辑只改副本，by-id 文件不变）；
 - both 模式按 code 处理（公开 API 无法区分），不注册重放工具；
 - PTC 下 checkpoint 是完整程序 JSON，「免读直接 edit」的 old_string 存在格式化失配风险；
 - UNKNOWN_TOOL 的重放会再次失败（预期行为）；
-- 系统临时目录可能被 OS 回收（会话内不受影响）。
+- 系统临时目录可能被 OS 回收（会话内不受影响）；
+- ABORTED 边界（实证，见 AGENTS.md「Zero filtering」）：入口即被取消的调用走 final-result 阶段、不经过 post-execute——不落盘也不通知；工具体启动后被取消的调用在瀑布之后才被替换为 ABORTED——会落盘但无通知。

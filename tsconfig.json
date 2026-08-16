@@ -1,0 +1,11 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "./packages/dsh-tool-retry"
+    },
+    {
+      "path": "./tsconfig.scripts.json"
+    }
+  ]
+}

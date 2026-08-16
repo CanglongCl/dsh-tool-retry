@@ -1,0 +1,3 @@
+name: 标准模式 + 调用重试
+description: 完整标准模式编码 Agent；额外自动暂存每次工具调用参数，失败后可用 editPreviousToolCalling 局部编辑并重放。
+order: 3

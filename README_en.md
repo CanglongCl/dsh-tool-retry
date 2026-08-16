@@ -87,10 +87,22 @@ See §6 of docs/tool-calling-checkpoint-replay-plan.md: **mechanism verification
 
 Loading model, design invariants, and verification: see [AGENTS.md](./AGENTS.md); the full design (four prompt drafts with Chinese translations) lives in [docs/tool-calling-checkpoint-replay-plan.md](./docs/tool-calling-checkpoint-replay-plan.md).
 
+```sh
+pnpm install
+pnpm gen-config        # regenerate the dev overlay (cordis.yml + entry-name.json)
+pnpm install-presets   # install the tool-retry-standard / tool-retry-code user presets
+pnpm dev               # link the dev alias and launch the harness Web CLI (needs DSH_HARNESS)
+pnpm dev:headless -- "<one-shot task>"   # self-test: one headless session runs the full loop and exits
+pnpm test              # unit + integration + built-bundle boundary regressions (vitest)
+pnpm check             # repo gate: typecheck + tests + gen-config idempotence + official allowlist
+pnpm package:official  # assemble the publishable official tarball under dist/
+```
+
 ## Known limitations
 
 - Without Windows Developer Mode/admin rights, previous/ aliases fall back to copies (edits through an alias change the copy only);
 - both mode is treated as code mode (the public API cannot distinguish), so the replay tool is not registered there;
 - In PTC the checkpoint is the whole program JSON — blind edit-without-read risks old_string formatting mismatches;
 - Replaying an UNKNOWN_TOOL checkpoint fails again (expected);
-- The OS temp directory may be reclaimed (within a session the plugin recreates directories as needed).
+- The OS temp directory may be reclaimed (within a session the plugin recreates directories as needed);
+- ABORTED boundary (verified; see AGENTS.md "Zero filtering"): a call cancelled at entry takes the `final-result` stage and bypasses post-execute — neither checkpointed nor notified; a post-body ABORTED checkpoints (the waterfall saw the call) but its result replacement happens after our decision, so it gets no notice.
