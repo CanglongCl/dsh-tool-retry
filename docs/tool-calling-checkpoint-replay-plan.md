@@ -470,13 +470,11 @@ appended to history.jsonl. Tools called INSIDE a program (including nested
   checkpoint with tools.read, JSON.parse it, apply a literal replace on the
   real program text, then run the corrected program as a real function and
   return its value:
-      const r = await tools.read({ file_path: "<checkpoint path>" });
-      const prev = JSON.parse(r.lines.map(line => line.text).join("\n"));
-      // prev = your exact previous run_code call: { code, description }
-      const fixed = prev.code.replace("const retries = 3", "const retries = 5");
+      const prev = JSON.parse((await tools.read({ file_path: "<checkpoint path>" }))
+        .lines.map(line => line.text).join("\n"));
       const AsyncFunction = (async () => {}).constructor;
-      const run = new AsyncFunction("tools", "console", "'use strict';\n" + fixed);
-      return await run(tools, console);
+      return await new AsyncFunction("tools", "console",
+        "'use strict';\n" + prev.code.replace("const retries = 3", "const retries = 5"))(tools, console);
   Use this only when a small correction is needed; otherwise write a fresh
   program.
 ```
@@ -489,13 +487,11 @@ appended to history.jsonl. Tools called INSIDE a program (including nested
 - 最近一次程序永远是 previous/1.json；更早的程序在 by-id/<id>.json 下——失败程序的 id 已在失败通知中给出，任何 id 都可以用 tail 查看 history.jsonl 获得。
 - 程序失败后，会收到一条通知，内含 call id 与 checkpoint 路径。
 - 重试（小幅修正）：在新 run_code 程序里用 tools.read 读取 checkpoint，JSON.parse 后对真实程序文本做字面 replace，再把修正后的程序作为真实函数执行并 return 其值：
-      const r = await tools.read({ file_path: "<checkpoint path>" });
-      const prev = JSON.parse(r.lines.map(line => line.text).join("\n"));
-      // prev = 你上次 run_code 调用的完整 JSON：{ code, description }
-      const fixed = prev.code.replace("const retries = 3", "const retries = 5");
+      const prev = JSON.parse((await tools.read({ file_path: "<checkpoint path>" }))
+        .lines.map(line => line.text).join("\n"));
       const AsyncFunction = (async () => {}).constructor;
-      const run = new AsyncFunction("tools", "console", "'use strict';\n" + fixed);
-      return await run(tools, console);
+      return await new AsyncFunction("tools", "console",
+        "'use strict';\n" + prev.code.replace("const retries = 3", "const retries = 5"))(tools, console);
   仅当只需小幅修正时使用；否则重写一个新程序。
 
 ### C. 失败通知（动态注入）—— native 模式
