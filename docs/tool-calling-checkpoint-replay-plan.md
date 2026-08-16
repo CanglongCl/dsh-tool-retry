@@ -1,6 +1,6 @@
 # DeepSeek-Harness 工具调用优化实施计划（自动暂存 · 局部编辑 · 重放）
 
-> 状态：proposed（待评审）· 版本 v10（按八轮评审：工具定位参数拆为 call_id / previous_ordinal 双参数，id 文件与顺序别名分存两个子文件夹）
+> 状态：proposed（待评审）· 版本 v11（按九轮评审：code 模式探测改为双条件——run_code 可见 + codeRuntime 插件已加载）
 > 目标仓库：`/Users/canglong/Program/deepseek-harness`（pnpm monorepo，cordis 插件架构）——**本特性为独立插件仓库，不改动 ds harness 仓库任何代码**
 > 插件形态参考：`/Users/canglong/Program/limao-magic-ui`（dsh-web-review 独立插件仓库）
 > 本文档落盘位置：`docs/tool-calling-checkpoint-replay-plan.md`（本工作区）
@@ -93,10 +93,14 @@ ctx.emit('fs/observed', target, { kind: 'present', version: outcome.version }, e
 
 ### 2.6 模式探测（评审点 3：不改 ds harness，仅用公开 API）
 
-- **不新增/不修改任何 ds harness 代码**。探测手段：`ctx.tools.get(RUN_CODE_NAME, agent)` 是否返回可见定义。
-  - `RUN_CODE_NAME = 'run_code'` 已从 `@deepseek-ai/dsh-tools` 导出（`code-mode.ts:20`，`index.ts:104` re-export）；
-  - `ToolRuntime.get(name, scope?)` 是公开方法（:1204）；`view()` 只在 `modeFor !== 'native'` 时把 `run_code` 插入可见表（:1189-1191）⇒ **get 到 run_code ⇔ 当前 scope 非 native（code 或 both）**；
-  - code 与 both 的精确区分无法通过公开 API 获得；按五轮评审：**run_code 可见即按 code 处理**——不注册 `editPreviousToolCalling`、用 PTC 版文案（both 模式损失直调该工具的便利，可接受；落盘/通知逻辑不受影响）。
+- **不新增/不修改任何 ds harness 代码**。探测采用**双条件**（九轮评审：探测 run_code 背后的插件，而非仅凭工具名）：
+  ```ts
+  const inCodeMode = (agent) => ctx.tools.get(RUN_CODE_NAME, agent) !== undefined   // ① run_code 对当前 scope 可见
+                  && ctx.get('codeRuntime') !== undefined                          // ② run_code 背后的运行时插件已加载
+  ```
+  - **① 名字探测**：`RUN_CODE_NAME = 'run_code'` 已从 `@deepseek-ai/dsh-tools` 导出（`code-mode.ts:20`，`index.ts:104` re-export）；`ToolRuntime.get(name, scope?)` 是公开方法（:1204）；`view()` 只在 `modeFor !== 'native'` 时把 `run_code` 插入可见表（:1189-1191）。**同名伪造不可能**：`register()` 对保留名无条件拒绝（`index.ts:1053-1055`："tool name 'run_code' is reserved ... cannot be registered or shadowed"），用户无法在任何 layer 注册自己的 run_code，因此「get 到 run_code」只可能是注册表内建的 code-mode 传输；
+  - **② 插件探测**：run_code 背后的运行时即 `codeRuntime` 服务（`Context.codeRuntime` 声明于 `packages/code-runtime/code-runtime/src/index.ts:91`，由 `@deepseek-ai/dsh-code-runtime-worker-thread` 等实现）；registry 自身同款用法 `ctx.get('codeRuntime')`（`index.ts:928,1020-1022`——缺失时 code 模式 prompt 组装直接报错）。加上该条件后，即使部署配置异常（run_code 可见但运行时插件未加载），本插件也会按 native 处理，不误注册/误注入；
+  - code 与 both 的精确区分仍无法通过公开 API 获得；按五轮评审：**双条件命中即按 code 处理**——不注册 `editPreviousToolCalling`、用 PTC 版文案（both 模式损失直调该工具的便利，可接受；落盘/通知逻辑不受影响）。
 - 模式差异**只影响**：(a) 是否注册重放工具；(b) 静态段与通知的文案选择。**落盘/通知的代码逻辑两种模式完全一致**（§2.2）。
 
 ### 2.7 独立插件模式（三轮评审修正：不进 harness monorepo，参照 limao-magic-ui）
@@ -222,7 +226,7 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工�
 
 ### 3.6 模式探测（评审点 3：仅用公开 API，不改 ds harness）
 
-- 实现即 §2.6：`ctx.tools.get(RUN_CODE_NAME, agent) !== undefined` ⇔ 非 native。用于：(a) 是否注册 `editPreviousToolCalling`（可见则不注册，§3.5.1）；(b) 静态段与通知的文案选择（`context.scope` / `exec.agent`）。
+- 实现即 §2.6：**双条件探测** `ctx.tools.get(RUN_CODE_NAME, agent) !== undefined && ctx.get('codeRuntime') !== undefined`。用于：(a) 是否注册 `editPreviousToolCalling`（命中则不注册，§3.5.1）；(b) 静态段与通知的文案选择（`context.scope` / `exec.agent`）。
 - **本特性不包含任何对 `packages/core` / `packages/llm` / `packages/fs` 等 harness 代码的修改**；全部能力在一个独立插件仓库内完成（§2.7）。
 
 ### 3.7 插件包与注册/发布（独立插件，参照 dsh-web-review）
@@ -346,7 +350,8 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工�
 ## 8. 附录 A：代码地图（文件:行号 速查）
 
 **执行管线 / 钩子 / 调用标识（harness）**
-- `packages/core/tools/src/index.ts`：`tools/pre-execute` :152 · `tools/execute` :163 · `tools/post-execute` :175 · `tools/result` :197 · PostToolDecision :597-600 · ToolExecutionResult :556-580 · ToolExecutionInput（`parent` 字段：嵌套子调用标记）:314-338 · ToolRunContext（deferContext/concludeTurn）:404-421 · ToolRuntime.execute :1342 · get :1204 · schemas :1234 · executionMode :1276-1285 · view() 插入 run_code 条件 :1189-1191 · collapses :1324-1326 · 错误码 :469-472 · RUN_CODE_NAME re-export :104
+- `packages/core/tools/src/index.ts`：`tools/pre-execute` :152 · `tools/execute` :163 · `tools/post-execute` :175 · `tools/result` :197 · PostToolDecision :597-600 · ToolExecutionResult :556-580 · ToolExecutionInput（`parent` 字段：嵌套子调用标记）:314-338 · ToolRunContext（deferContext/concludeTurn）:404-421 · ToolRuntime.execute :1342 · get :1204 · schemas :1234 · executionMode :1276-1285 · view() 插入 run_code 条件 :1189-1191 · collapses :1324-1326 · 错误码 :469-472 · RUN_CODE_NAME re-export :104 · register() 保留名拒绝 :1053-1055 · ctx.get('codeRuntime') :928,1020-1022
+- `packages/code-runtime/code-runtime/src/index.ts:91`（`Context.codeRuntime` 服务声明；`@deepseek-ai/dsh-code-runtime-worker-thread` 为实现）
 - `packages/core/tools/src/code-mode.ts`：run_code 工具 :292-652 · 子调用构造（携带 parent）:469-477 · 嵌套 additionalContexts 经 deferContext 转发 :560-562 · 未捕获抛 CodeRunFailedError :629-632
 - `packages/core/tools/src/schema.ts`：defineTool :545-617 · INVALID_ARGS :461-470
 - `packages/llm/llm/src/assembler.ts`：tool-call id 来自 chunk（:70）或兜底合成（:113）；`llm/src/types.ts`：tool-call-delta 携带 id :295；`llm/src/message.ts`：tool 结果引用 `toolCallId` :234
