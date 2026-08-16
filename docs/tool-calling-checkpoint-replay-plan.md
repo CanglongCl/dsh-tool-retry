@@ -1,6 +1,6 @@
 # DeepSeek-Harness 工具调用优化实施计划（自动暂存 · 局部编辑 · 重放）
 
-> 状态：proposed（待评审）· 版本 v7（按五轮评审：逻辑统一、tmp 目录、覆盖式编号、零过滤、id 全量 + jsonl 索引、id 参数重放）
+> 状态：proposed（待评审）· 版本 v8（按六轮评审：编号文件改为「顺序 id」软链/快捷方式，唯一真实存储为 id 文件）
 > 目标仓库：`/Users/canglong/Program/deepseek-harness`（pnpm monorepo，cordis 插件架构）——**本特性为独立插件仓库，不改动 ds harness 仓库任何代码**
 > 插件形态参考：`/Users/canglong/Program/limao-magic-ui`（dsh-web-review 独立插件仓库）
 > 本文档落盘位置：`docs/tool-calling-checkpoint-replay-plan.md`（本工作区）
@@ -19,9 +19,9 @@
 方案：引入「自动暂存（auto-checkpointing）→ 提示注入（context injection）→ 局部编辑 → 重放（replay）」闭环：
 
 - **每一次模型 tool call block（无论成功或失败）**，Harness 把模型在该 block 下输入的**全部内容**（即整个工具调用的参数字符串）自动落盘到统一管理的临时目录（`<os.tmpdir()>/.dsh/tool-checkpoints/<sessionId>/`）；**native 与 PTC 的逻辑完全一致**——都只落盘模型直调（`exec.parent === undefined`）；PTC 下模型唯一的直调是 `run_code`（落整个程序参数），**程序内部调用的工具（含嵌套 run_code）一律不落盘**；两种模式只是提示词文案不同；
-- 落盘分**三轨**（五轮评审）：
-  1. **编号文件**：上一步（最近一个有工具调用的 step）的全部并行 block 按模型消息内顺序落 `1.json`、`2.json`…，新一轮的调用**直接覆盖**旧编号文件（最常用路径）；
-  2. **id 全量文件**：每次直调按 callId 落 `<id>.json`，会话内不覆盖——失败通知注入 id，模型可对同一调用做**多次重试**；
+- 落盘分**两种 access 方式 + 一个索引**（六轮评审定稿）：
+  1. **id 文件（唯一真实存储）**：每次直调按 callId 落 `<id>.json`，会话内不覆盖——失败通知注入 id，模型可对同一调用做**多次重试**；
+  2. **顺序 id（编号别名，相当于软链接/快捷方式）**：上一步的全部并行 block 按模型消息内顺序暴露为 `1.json`、`2.json`…，**软链指向对应 id 文件**（Windows 无权限降级为副本，见 §3.2），新一轮**重建**别名指向新调用的 id 文件（最常用路径）；
   3. **`history.jsonl`**：每次直调 append 一行索引，模型可用 `tail` 读最后几条来确定要重放哪一个（主要给成功场景；失败自动注入 id）；
 - **静态注入**：在 system prompt 中写入该机制说明（目录、编号约定、id/jsonl 约定、重放工具用法），让 AI 提前知悉「可以修改并重试」；
 - **动态注入**：通过 `tools/post-execute` 生命周期钩子，在调用失败后向模型注入提示（含**调用 id** 与上一步序号），告知参数已完整保存、内容与输入 arg **字节级同构**、可直接编辑后重放；**每次失败都注入，不做任何工具名/错误码过滤**（五轮评审：覆盖发生在工具体执行之后，零过滤无时序问题，见 §3.3）；
@@ -121,9 +121,9 @@ ctx.emit('fs/observed', target, { kind: 'present', version: outcome.version }, e
 agent-loop 调度执行（tools/pre-execute → tools/execute → 工具体）
    ▼ 模型直调（exec.parent === undefined；成功或失败；零过滤）
 tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工具体已执行完毕）
-   ├─ ① 三轨落盘（目录 = <os.tmpdir()>/.dsh/tool-checkpoints/<sessionId>/）：
-   │      - 编号文件：新轮首调 → 清空旧编号文件 → 写 1.json；同轮后续 2.json、3.json…（覆盖式）
-   │      - id 全量文件：写 <id>.json（会话内不覆盖）
+   ├─ ① 落盘（目录 = <os.tmpdir()>/.dsh/tool-checkpoints/<sessionId>/）：
+   │      - id 文件（唯一真实存储）：写 <id>.json（会话内不覆盖）
+   │      - 顺序 id（别名）：新轮首调 → 删除旧别名 → 建 1.json→<id>.json、2.json→…（软链/快捷方式）
    │      - history.jsonl：append 一行索引 {id, tool, turn, step, ordinal}
    │      + 每个文件写后 ctx.emit('fs/observed', ...) 预观察（免读可直接 edit）
    ├─ ② 每次失败 → 注入通知（含调用 id + 上一步序号；PTC 版含文件路径）
@@ -140,18 +140,18 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工�
               → 基于读到的旧程序构造修正后的新程序（或提取长参数继续）
 ```
 
-### 3.2 自动暂存（Auto-Checkpointing）——三轨落盘，成功与失败都落盘
+### 3.2 自动暂存（Auto-Checkpointing）——id 文件唯一存储 + 顺序 id 别名 + jsonl 索引，成功与失败都落盘
 
 | 项 | 设计（五轮评审定稿） |
 | --- | --- |
 | 触发 | **每一次模型直调（`exec.parent === undefined`）都落盘（成功 + 失败）**，零过滤（不按工具名/错误码排除）。native = 每个工具调用；PTC = 只有 `run_code`（整个程序参数）；内部子调用（含嵌套 run_code）一律不落盘 |
 | 目录 | **`<os.tmpdir()>/.dsh/tool-checkpoints/<sessionId>/`**（五轮评审：固定用系统临时目录，**不使用 `session.header.cwd`**）。位于沙箱 `workspace-write` 可写根内（`os.tmpdir()` 是 writableRoots 之一，§2.4）；系统重启可被 OS 回收，会话结束时插件主动删除 |
-| **轨 1：编号文件** | `1.json`、`2.json`… = **上一步**全部并行 block，按模型消息内顺序编号（提交顺序 = 模型顺序，§2.1）。**新轮首条直调的 post-execute 到达时：清空旧编号文件（含上一轮多余的编号），随后按序写入新编号文件——「新的 toolcall 直接覆盖旧的 toolcall 文件」**。覆盖发生在工具体执行完毕之后：native 的重放是 `editPreviousToolCalling` 单次调用（编辑与重放都在体内完成），旧文件在重放前已被消费；PTC 的替换在 `run_code` 程序整体执行完后才发生（程序执行期间先 edit/read，执行后才替换）——无时序问题（§2.2） |
-| **轨 2：id 全量文件** | `<sanitize(id)>.json`（sanitize = 非 `[A-Za-z0-9._-]` → `_`）：每次直调各一份，**会话内不覆盖**。用途：失败通知注入 id 后模型可对同一调用**多次重试**；重放工具按 id 路由。**模型不构造 id**——id 来自通知注入或 `history.jsonl`，原样回传（§2.2） |
+| **顺序 id（编号别名，六轮评审：相当于软链接/快捷方式）** | `1.json`、`2.json`… = 指向**上一步**对应调用的 **id 文件**的软链（按模型消息内顺序，提交顺序 = 模型顺序，§2.1）。**不产生第二份内容**。每轮：新轮首条直调的 post-execute 到达时删除上一轮全部别名，随后每完成一条直调就建 `n.json` → `<id>.json` 软链。**Windows**：`fs.symlink` 需 Developer Mode/管理员权限，`EPERM` 时降级为**副本文件**（内容与 id 文件一致、同样预观察；经副本编辑只改副本、id 文件不变——native 下模型不编辑别名、无影响；PTC 下模型经别名编辑后读取同一副本，自洽）。不用 hardlink（后端原子写可能 rename 落盘，硬链会分叉）也不用 .lnk（Node fs 不跟随）。重建发生在工具体执行完毕之后：native 重放是单次调用、PTC 在程序整体执行完后才替换——无时序问题（§2.2） |
+| **id 文件（唯一真实存储）** | `<sanitize(id)>.json`（sanitize = 非 `[A-Za-z0-9._-]` → `_`）：每次直调各一份，**会话内不覆盖，是全部内容的唯一落盘**（编号别名只是指向它的软链）。用途：失败通知注入 id 后模型可对同一调用**多次重试**；重放工具按 id 路由到该文件。**模型不构造 id**——id 来自通知注入或 `history.jsonl`，原样回传（§2.2） |
 | **轨 3：history.jsonl** | 目录下 `history.jsonl`，每次直调 **append 一行** JSON：`{ id, tool, turn, step, ordinal }`（索引用途；参数内容在 id 文件与编号文件中）。模型用 `bash tail`（native）或 `tools.read`（PTC）读最后若干行，确定要重放哪一次调用——**主要给成功场景**（失败场景 id 已自动注入通知）。行内是否内嵌 arguments 见 §7 决策点 5 |
 | 文件内容 | **仅 block 的原始参数字符串，不做任何包装**——统一从本会话 `tool/call` 事件按 `callId` 取 `arguments` 原串（字节级一致；PTC 下即 `run_code` 的完整参数 JSON，含整个程序）。**这是「与输入 arg 完全同构、免重读直接编辑」的前提** |
-| 写入 | `ctx.fs.writeText(target, raw, undefined, signal)`（无条件原子写，不占 `fs/write-intent` 槽）；编号文件为覆盖式写（存在即 replaceIfVersion/无条件写） |
-| 预观察 | 每个新写文件后 `ctx.emit('fs/observed', target, { kind:'present', version: outcome.version }, exec)`（§2.4 已验证的绕过；同步 emit，不得 await）；编号文件被覆盖写后重新 emit 新版本 |
+| 写入 | 每次直调**只写一次**：`ctx.fs.writeText(idTarget, raw, undefined, signal)`（无条件原子写，不占 `fs/write-intent` 槽）到 id 文件；随后建/更新 `n.json` 别名软链（临时名 + rename 原子替换；EPERM 降级为副本写） |
+| 预观察 | 对 **id 文件**（真实目标）`ctx.emit('fs/observed', target, { kind:'present', version: outcome.version }, exec)`（§2.4 已验证的绕过；同步 emit，不得 await）；`resolve` 跟随软链得到同一 targetKey，模型经 `1.json` 别名 edit 同样命中观察记录；Windows 副本降级时对副本也 emit 一次 |
 | 清理 | `session/disposed`（`core/session/src/index.ts:64`）删除该会话整目录；插件 `ctx.effect` teardown 兜底（HMR 安全）；id 文件与 jsonl 全量保留至会话结束 |
 | 写盘失败 | 静默降级：记日志、跳过通知，**绝不阻断工具管线**（post-execute 监听器必须 try/catch 后仍调用 next()） |
 
@@ -160,7 +160,7 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工�
 - **监听点（评审点 1 已定）**：`ctx.on('tools/post-execute', listener)`（全局注册即可，Scoped 派发按 `exec.agent` 路由；监听器内自行过滤）。
 - **必须保持链**：无条件 `await next()` 拿到决策后修改并返回（本插件不占据决策槽，与 fs-observation-policy 那种「不调 next()」的占有式监听不同）。
 - **处理对象**：仅**模型直调**（`exec.parent === undefined`）；`exec.agent?.session` 存在。**零过滤**：任何工具名、任何错误码（`ABORTED`/`UNKNOWN_TOOL` 等）都落盘与通知——讨论结论：覆盖发生在工具体执行完毕之后，且 native 重放为单次调用、多次重试走 id 全量文件，零过滤无时序与递归问题（§2.2）。
-- **流程**（每次直调）：从 `tool/call` 事件取 `(turn, step)` 与 `arguments` 原串 → 若为新一步首调：清空旧编号文件 → 按提交顺序编 n 号 → 写三轨（`n.json` 覆盖写 + `<id>.json` + `history.jsonl` append）+ 预观察（§3.2）→ 更新内存轮映射（`{ ordinal → { id, tool, fileName } }`）→ 若 `result.isError` → 注入通知。
+- **流程**（每次直调）：从 `tool/call` 事件取 `(turn, step)` 与 `arguments` 原串 → 若为新一步首调：删除上一轮全部 `n.json` 别名 → 写 id 文件 `<id>.json` + 建 `n.json` → `<id>.json` 软链（EPERM 降级副本）+ `history.jsonl` append + 预观察（§3.2）→ 更新内存轮映射（`{ ordinal → { id, tool } }`）→ 若 `result.isError` → 注入通知。
 - **通知时机（二轮+五轮评审已定）**：**每次失败都注入**，无计数、无节流、零过滤——把通知附加到 `next` 决策的 `additionalContexts`（`createUserMessage`，source `{ kind:'plugin', plugin:'@canglongcl/dsh-tool-retry', form:'notice' }`）。
 - **通知内容**：失败摘要 + **调用 id**（多次重试用）+ **上一步序号**（最常用路径）+（PTC 版）checkpoint 文件路径。native 版不要求模型填路径（工具按 id 内部路由，§3.5.2）。
 - **通知文案按模式选择**（§3.4 草稿 C/D；模式经 §2.6 的 run_code 可见性判定）：run_code 可见 → PTC 版；否则 native 版。
@@ -180,7 +180,7 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工�
 
 1. 明确告知「**每次 model tool call block（无论成败）都会暂存**」，且内容即模型在该 block 下输入的全部内容（PTC 下是整个 `run_code` 程序）；成功但结果不符预期同样可重放；
 2. 明确告知 checkpoint 内容与上次发送的参数**字节级相同/同构**，因此**无需先 read 即可 edit**（预观察机制已在 §3.2 保证 edit 不会被 `FS_NOT_OBSERVED` 拒绝）；
-3. 定位方式：失败 → 通知注入的 **id** 与上一步序号（原生回传，无需构造）；成功/历史 → `tail history.jsonl` 取 id；PTC 版文案给文件路径；
+3. 定位方式（两种 access）：**id**（通知注入 / `tail history.jsonl` 查询，原样回传，无需构造）与**顺序 id**（`1.json`/`2.json`… 别名，指向 id 文件）；PTC 版文案给文件路径；
 4. 明确「仅在需要小修时使用；否则直接重新调用」，防止模型滥用；说明编号文件只保留上一步、新一轮会覆盖；
 5. native 版强调 `editPreviousToolCalling` 单次调用完成「编辑+重放」，输入 id 或序号；PTC 版强调 checkpoint 里是**上一次 `run_code` 的整个程序**，重试时用 fs 读/编辑它。
 6. **已知风险（PTC 版）**：程序参数经 `JSON.stringify` 后，模型对其格式化记忆可能不可靠，「免读直接 edit」的 old_string 可能失配。两个缓解选项供评审：见 §7 决策点 10。
@@ -204,7 +204,7 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工�
   - **真实 callId**：通知注入的 id 或 `history.jsonl` 里的 id（历史/成功场景、多次重试）。
 - **instruction**：描述为「按 id 定位上一次（或历史）工具调用的 checkpoint，编辑后立即以编辑后内容重新调用原工具」；专属系统指引段 `ctx.systemPrompt.section({ name:'tool:editPreviousToolCalling', order: 103, text })`（紧邻 `tool:edit` 的 102）。
 - **内部路由（`execute(args, exec)`）**：
-  1. 解析 `id`：纯数字 → 上一步序号 → 查内存轮映射（§3.3）得 `{ callId, toolName, fileName }`；否则 sanitize 后定位 `<id>.json`（历史全量文件）并解出 `toolName`（从 history.jsonl / 内存映射）；无效或不存在 → 明确错误结果「checkpoint 不存在或已失效」；
+  1. 解析 `id`：纯数字 → 上一步序号 → 查内存轮映射（§3.3）得 `{ callId, toolName }`，目标 = 对应 **id 文件**（`1.json` 别名仅服务 fs 工具的模型路径，本工具一律直接编辑 id 文件）；否则 sanitize 后定位 `<id>.json`（历史全量文件）并解出 `toolName`（从 history.jsonl / 内存映射）；无效或不存在 → 明确错误结果「checkpoint 不存在或已失效」；
   2. 校验目标文件位于**本会话** checkpoint 目录内（防越权）；
   3. **调用内置 edit 机制**：`ctx.waterfall('fs/edit-intent', target, exec, () => undefined)` + `ctx.fs.editText(...)`（与 `packages/fs/tool-fs/src/edit.ts:124-139` 同一路径；checkpoint 已预观察，策略通过；失败按同款 remediate）；
   4. `ctx.emit('fs/observed', target, { kind:'present', version: outcome.version }, exec)` 更新观察版本；
@@ -278,8 +278,8 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工�
 1. **插件单测**（模板：`packages/fs/fs-observation-policy/tests/policy.spec.ts` 的 `new Context() + ctx.plugin` 方式）：
    - 模型直调（成功与失败）都三轨落盘与预观察；**嵌套子调用（`parent` 存在）不落盘不通知**（PTC 下验证程序内部工具调用与嵌套 run_code 被跳过、外层 run_code 整体落盘）；**零过滤**：editPreviousToolCalling/read/write/edit 与 ABORTED/UNKNOWN_TOOL 同样落盘+通知；
    - 通知：**每次失败都注入**，成功不注入；通知含 id 与上一步序号；
-   - 编号与覆盖：同轮并行按模型顺序编号；新轮首调清空旧编号文件并覆盖写；上一轮多余编号被删除；覆盖发生在工具体之后（native 单次重放不受影响、PTC 程序执行期间旧文件仍在）；
-   - 三轨一致性：id 文件会话内不被覆盖；history.jsonl 每调一行 append（id/tool/turn/step/ordinal）；
+   - 顺序 id 别名：同轮并行按模型顺序建 `n.json` 软链指向各自 id 文件；新轮首调删除上一轮全部别名并重建；上一轮多余别名被删除；重建发生在工具体之后（native 单次重放不受影响、PTC 程序执行期间旧别名仍在）；**Windows `EPERM` → 副本降级（内容一致且副本已预观察）**；经别名 `edit` 解析到 id 文件同一 targetKey（软链时编辑落到 id 文件）；
+   - 落盘一致性：id 文件是唯一真实存储、会话内不被覆盖；history.jsonl 每调一行 append（id/tool/turn/step/ordinal）；
    - 写盘失败/沙箱拒绝 → 不通知、管线不受影响。
 2. **工具单测**（模板：`packages/fs/tool-fs/tests/tools.spec.ts:38-120` 的 `FakeFs extends FileSystem` + `ctx.tools.execute`；edit 工具用例模板 :422-471）：
    - `editPreviousToolCalling`：id=序号（"1"/"2"）与 id=callId 两条路由；越界/不存在的 id 报错；`old_string` 失配报错；编辑后内容非法 JSON；目标越出 checkpoint 目录被拒；原工具未注册/重放失败透传；`fs/observed` 版本更新；run_code 可见时工具未注册。
@@ -326,7 +326,7 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工�
 1. **四段提示词文案**（附录 B）需人工审阅定稿——特别是「免读直接 edit」的措辞与边界、静态段中三轨约定的详细程度、PTC 版「checkpoint = 整个程序」的引导方式。
 2. **checkpoint 目录**：`<os.tmpdir()>/.dsh/tool-checkpoints/<sessionId>/`（五轮评审已定：不用 `session.header.cwd`）——请确认；注意 tmp 目录可能被 OS 定期清理（会话内不受影响）。
 3. **零过滤**（五轮评审讨论结论）：任何工具名（含 `editPreviousToolCalling`/`edit`/`read`/`write`）与任何错误码（含 `ABORTED`/`UNKNOWN_TOOL`）的模型直调都落盘、失败都通知——已确认无时序问题（覆盖在工具体之后；native 重放单调用；多次重试走 id），请最终确认。
-4. **编号文件覆盖语义**：只保留上一步，新轮首调清空旧编号文件后覆盖写；上一轮多余编号删除——请确认。
+4. **顺序 id 别名语义（六轮评审）**：`1.json`/`2.json`… 为指向 id 文件的软链/快捷方式（唯一真实存储是 id 文件），每轮重建指向；Windows `EPERM` 降级为副本（经副本编辑只改副本、id 文件不变）——请确认；重建粒度（每轮首调清空重建 vs 每调更新）是否认可。
 5. **history.jsonl 行内容**：v1 建议 `{ id, tool, turn, step, ordinal }`（索引）；如需 `tail` 即可见参数可内嵌 arguments（行变长）——请选择。
 6. **`editPreviousToolCalling` 签名**：`{ id, old_string, new_string, replace_all }`，id 接受上一步序号（`"1"`/"2"`…）或真实 callId（通知注入 / jsonl 查询），内部路由（五轮评审点 7 已定）——请确认；序号与 callId 撞形（callId 恰为纯数字）时优先按序号解析，是否可接受。
 7. **code 模式不注册、不注入**（五轮评审点 6）：run_code 可见（code 或 both）即不注册 `editPreviousToolCalling` 并用 PTC 文案——both 模式损失直调该工具的便利，请确认取舍。
@@ -386,9 +386,9 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工�
 TOOL-CALL CHECKPOINT & REPLAY
 Every tool call you make is checkpointed under <checkpoint-dir>, whether it
 succeeds or fails:
-- 1.json, 2.json, ... are the calls of your PREVIOUS message in your call
-  order (your 1st call is 1.json, your 2nd call is 2.json, and so on). A new
-  round of calls overwrites them.
+- 1.json, 2.json, ... are shortcuts to the calls of your PREVIOUS message
+  in your call order (your 1st call is 1.json, your 2nd call is 2.json, and
+  so on). A new round of calls re-points them.
 - Every call is also kept under its call id as <id>.json, and an index line is
   appended to history.jsonl. To replay an older call (including one that
   succeeded but produced an unexpected result), read the tail of history.jsonl
@@ -410,8 +410,9 @@ arguments.
 TOOL-CALL CHECKPOINT & REPLAY
 Every `run_code` call you make — i.e. everything you wrote in your tool call
 block, which is the full program — is checkpointed under <checkpoint-dir>,
-whether it succeeds or fails: your most recent program is 1.json, it is also
-kept as <id>.json, and an index line is appended to history.jsonl. Tools
+whether it succeeds or fails: 1.json is a shortcut to your most recent
+program, which is kept as <id>.json, and an index line is appended to
+history.jsonl. Tools
 called INSIDE a program (including nested `run_code`) are not checkpointed
 separately.
 - After a FAILED run, a notice tells you the call id and the checkpoint path.
