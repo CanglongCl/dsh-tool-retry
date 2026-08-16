@@ -519,9 +519,9 @@ To apply a small fix and re-run the call, use `editPreviousToolCalling`
 ```text
 Your failed `run_code` program was saved.
 - path: <checkpoint-dir>/by-id/<id>.json
-To apply a small fix, read it in a new `run_code` program (JSON.parse,
-replace the fragment, run the corrected program as a function and return its
-value); or extract long argument data from it and pass it to other tools.
+To apply a small fix, read and JSON.parse it in a new `run_code`
+program, replace the fragment, and run the corrected program with the
+AsyncFunction constructor.
 ```
 
 **D · 中文译文（评审对照）：**
@@ -531,7 +531,7 @@ value); or extract long argument data from it and pass it to other tools.
 
 - path: <checkpoint-dir>/by-id/<id>.json
 
-如需小幅修正，在新 run_code 程序里读/改该文件，并把修正后的程序作为新一次 run 提交（程序内部无法调用 tools.run_code），或提取其中长参数传给其他工具。
+如需小幅修正，在新 run_code 程序里读回并 JSON.parse 该文件，替换片段后用 AsyncFunction 构造器执行修正后的程序。
 
 ### 评审要点备注
 

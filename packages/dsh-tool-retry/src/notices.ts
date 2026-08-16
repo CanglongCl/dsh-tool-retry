@@ -106,10 +106,9 @@ export function ptcNotice(dir: string, idFileName: string): UserMessage {
       text: [
         'Your failed `run_code` program was saved.',
         `- path: ${dir}/by-id/${idFileName}`,
-        'To apply a small fix, read it in a new `run_code` program (JSON.parse,',
-        'replace the fragment, run the corrected program as a function and return',
-        'its value); or extract long argument data from it and pass it to other',
-        'tools.',
+        'To apply a small fix, read and JSON.parse it in a new `run_code`',
+        'program, replace the fragment, and run the corrected program with the',
+        'AsyncFunction constructor.',
       ].join('\n'),
     }],
   })

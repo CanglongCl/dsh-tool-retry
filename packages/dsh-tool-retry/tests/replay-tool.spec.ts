@@ -227,7 +227,8 @@ describe('mode detection', () => {
     const notice = noticeText(failed.additionalContexts)
     expect(notice).toContain('Your failed `run_code` program was saved.')
     expect(notice).toContain('/by-id/call-1.json')
-    expect(notice).toContain('run the corrected program as a function and return')
+    expect(notice).toContain('run the corrected program with the')
+    expect(notice).toContain('AsyncFunction constructor.')
   })
 
   it('registers the replay tool and the native section by default', async () => {
