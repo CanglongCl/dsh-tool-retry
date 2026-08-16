@@ -459,7 +459,6 @@ appended to history.jsonl. Tools called INSIDE a program (including nested
 ### C. 失败通知（动态注入）—— native 模式
 
 ```text
-TOOL-CALL CHECKPOINT (optional retry path)
 Your failed call's arguments were saved.
 - call id: <id>
 To apply a small fix and re-run the call, use `editPreviousToolCalling`
@@ -476,7 +475,6 @@ To apply a small fix and re-run the call, use `editPreviousToolCalling`
 ### D. 失败通知（动态注入）—— PTC（code）模式
 
 ```text
-TOOL-CALL CHECKPOINT (optional retry path)
 Your failed `run_code` program was saved.
 - path: <checkpoint-dir>/by-id/<id>
 To apply a small fix, edit/read the file in a new `run_code` program and run
