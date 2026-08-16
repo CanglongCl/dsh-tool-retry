@@ -1,6 +1,6 @@
 # DeepSeek-Harness 工具调用优化实施计划（自动暂存 · 局部编辑 · 重放）
 
-> 状态：proposed（待评审）· 版本 v16（按十三轮评审：机制验证移入 §5 阶段四，§6 只留真模型评测）
+> 状态：proposed（待评审）· 版本 v17（按十四轮评审：§6 补真模型评测实现设计——统一断点（break）、失败场景来源、断点后测量）
 > 目标仓库：`/Users/canglong/Program/deepseek-harness`（pnpm monorepo，cordis 插件架构）——**本特性为独立插件仓库，不改动 ds harness 仓库任何代码**
 > 插件形态参考：`/Users/canglong/Program/limao-magic-ui`（dsh-web-review 独立插件仓库）
 > 本文档落盘位置：`docs/tool-calling-checkpoint-replay-plan.md`（本工作区）
@@ -317,11 +317,26 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工�
 - 任务成功率：`turn/end.reason` 非 `error`/非 `max-tokens`（`types.ts:146-168`）；
 - 开销：checkpoint 写盘耗时、通知注入条数（应恒等于失败次数）与字节数。
 
-**真模型评测（第五阶段对外数据）**：
+**实现设计（十四轮评审）**：
 
-- 驱动：`examples/jsonrpc-agent/minimal.py`（`BENCHMARK.md` 唯一指引路径）或 `DeepSeekHarness` SDK；每臂/每任务独立 workspace 与 session-id（BENCHMARK.md 要求）；
-- 场景集建议：长 JSON 配置编辑、大批量文件改写、schema 校验失败修正、PTC 下 `run_code` 程序失败后的重试（读 checkpoint 重建程序）、**「成功但不符预期」后的重放重试（tail history.jsonl 取 id）**、**并行多 block 中单个失败的重试**、**同一调用的多次重试（id 路径）**；
-- 每轮结束解析产出 JSONL：聚合「重试步 token 节省 %」「重试成功率」「采用率」「任务成功率」「注入开销」对比基线（特性关闭、模型全量重生成参数）；
+**① 统一断点（break）作为 eval 起点**。所有场景对齐到同一个逻辑断点——「首个合格失败的工具结果」（ON 臂：失败 `tool/result` 之后紧跟插件通知 `user/message`（source=@canglongcl/dsh-tool-retry）；OFF 臂：失败 `tool/result` 之后直接接模型下一步）。断点之前的全部历史两臂天然相同，断点之后才做测量。注意：失败→通知→模型重试发生在**同一个 turn 内部**（工具结果自动触发下一步），harness 没有 turn 中途暂停的公开 API，故两条实现路：
+  - **v1 解析式对齐（推荐先做）**：整段跑完会话，事后在 session.jsonl 上按事件对齐断点，指标全部在断点后的日志尾部计算。无需暂停会话，直接用 python SDK 驱动；实现简单、等价于测量意义上的 break；
+  - **v2 真 break（可选迭代）**：eval 专用伴生插件（不随 npm 发布）两侧臂都挂：监听 `agent/pre-step`，在「首次合格失败已提交/通知已注入」后对下一步返回 `reject` → 该 turn 以 `blocked` 结束 → eval 驱动观察到断点，做快照/分叉（session fork）后发 continue 消息继续。两侧断点逻辑对称，可做更严格的对照与分叉实验。
+
+**② 失败场景来源（按预期整理）**：
+  1. **代码语法错误**：PTC——`run_code` 程序带语法错误（种子文件/提示词诱导），未捕获 → run_code 整体失败 → 模型读 checkpoint 重建程序；native——bash 执行坏脚本/命令报错后重试；
+  2. **JSON 格式不正确**：工具参数 JSON 非法 → `INVALID_ARGS`（checkpoint 存原串，正是可编辑修复的对象）；或程序内 `JSON.parse` 失败；
+  3. **长文本编辑**：`edit`/`write` 的 `old_string` 失配（预置文件与提示词不一致保证触发）、长 `new_string` 中有错误导致下游失败 → 模型局部修正重试而非整段重生成；
+  4. **plan mode 要求重写**：`exit_plan_mode` 被拒（deny/block）→ 计划重写场景 → 模型可编辑上一版 plan 再提交而非整篇重写；
+  5. 补充基础集：**运行期工具报错**（file-not-found 路径笔误、权限/沙箱错误等一般失败）。
+  - 场景载体 = 固定 workspace fixture + 任务提示词；用预置环境保证「大概率自然触发」合格失败；未触发失败的行次不计入统计（只统计触发行）。
+
+**③ 执行与测量（断点后）**：
+- 每场景 × 每臂（ON：用户预设含插件；OFF：原版 standard/code 预设）独立 workspace 与 session-id（BENCHMARK.md 要求），同一模型/参数，每臂重复 N≥3 次取中位数（模型有随机性）；
+- 驱动：`examples/jsonrpc-agent/minimal.py`（`BENCHMARK.md` 唯一指引路径）或 `DeepSeekHarness` SDK；
+- 断点后测量：重试步输出 token（断点后第一条 `assistant/message.usage.outputTokens`，ON vs OFF 的节省）、**采用率**（断点后是否出现 `editPreviousToolCalling` 调用 / checkpoint 路径读取）、重试成功率（同工具或 `run_code` 的下一次 `tool/result` 无 `error`）、任务成功率（`turn/end.reason` + 任务 oracle：workspace 状态校验脚本，参照 limao eval 的 capture/regrade 做法）；
+- 每场景输出 JSON（对齐 limao eval 的 batch/report 结构）+ 聚合表（token 节省 %、采用率、重试成功率、任务成功率、注入开销）。
+
 - 报告建议基线目标：重试步输出 token 节省 ≥ 40%；重试成功率不劣于基线；通知条数 = 失败次数；采用率单独报告作为观察项。
 
 > 注：仓库目前**没有**专门 eval 框架（无 swebench/terminal-bench；`python/` 仅为 SDK+runtime，`BENCHMARK.md` 仅指向 `jsonrpc-agent`）。limao-magic-ui 的 `eval/` 目录（capture/smoke/batch/report）可作为独立插件自建评测套件的范本。
