@@ -77,7 +77,7 @@
 - **已验证的绕过方案（免改核心）**：插件自己写 checkpoint 后，**同步 emit 一条预观察记录**：
 
 ```ts
-const target = await ctx.fs.resolve(checkpointPath, { cwd: session.header.cwd })
+const target = await ctx.fs.resolve(checkpointAbsPath)   // 绝对路径：<os.tmpdir()>/.dsh/tool-checkpoints/<sessionId>/…
 const outcome = await ctx.fs.writeText(target, rawArgs)        // 无条件原子写（不占用 fs/write-intent 槽）
 ctx.emit('fs/observed', target, { kind: 'present', version: outcome.version }, exec)
 ```
