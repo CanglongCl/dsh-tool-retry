@@ -368,7 +368,7 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工�
 7. **code 模式不注册、不注入**（五轮评审点 6）：run_code 可见（code 或 both）即不注册 `editPreviousToolCalling` 并用 PTC 文案——both 模式损失直调该工具的便利，请确认取舍。
 8. **重放审计**：v1 结果内嵌 `meta`（不新增 session 事件、不改 harness 核心）vs 新增 `tool/replay` 事件类型（需改 core/session——建议不做）。
 9. **保留策略**：id 文件与 history.jsonl 全量保留至会话结束（目录在 tmp 下，OS 可回收）；会话结束删除整目录（建议）。
-10. **PTC「免读编辑」风险**：✅ 已定稿（实现期）——采用「`JSON.parse` → `prev.code.replace` → `eval(fixed)`」路线，replace 作用在解析后的真实程序文本上，`JSON.stringify` 格式化不再进入匹配串，以 `AsyncFunction` 构造器执行并返回其值（`await`/顶层 `return` 与原生 run_code 语义一致）。实证（PTC 自测 + 运行时探针）：strict 模式下 eval 程序内的顶层 `return` 是规范 early error（`SyntaxError: Illegal return statement`），故采用 `new AsyncFunction(...)` 包装而非 eval；另一已知成本：重试自身再失败时新 checkpoint 存 loader（`file_path` 仍指回原程序，文案已提示）。文案不引导 `tools.edit`（工具仍可用，但不作为官方路径）。原选项 (a)/(b) 作废。
+10. **PTC「免读编辑」风险**：✅ 已定稿（实现期）——采用「`JSON.parse` → `prev.code.replace` → `AsyncFunction` 构造器执行并 return」路线，replace 作用在解析后的真实程序文本上，`JSON.stringify` 格式化不再进入匹配串（`await`/顶层 `return` 与原生 run_code 语义一致）。实证（PTC 自测 + 运行时探针）：strict 模式下 eval 程序内的顶层 `return` 是规范 early error（`SyntaxError: Illegal return statement`），故采用 `new AsyncFunction(...)` 包装而非 eval；另一已知成本：重试自身再失败时新 checkpoint 存 loader（`file_path` 仍指回原程序，文案已提示）。文案不引导 `tools.edit`（工具仍可用，但不作为官方路径）。原选项 (a)/(b) 作废。
 11. **进程重启后的轮映射**：编号/轮映射为内存态，重启后从会话日志尾部 `tool/call` 事件重建（按最后一步顺序编号）；id 文件与 jsonl 在磁盘上天然可重建——建议 v1 直接实现。
 12. **独立插件仓库**：仓库即本工作区 `/Users/canglong/Program/dsh-tool-retry`（参照 limao-magic-ui 布局）；npm 包名 `@canglongcl/dsh-tool-retry`；注册主渠道 = 用户预设 `~/.dsh/.agent-presets/`（两份：standard/code）——请确认命名与渠道。
 13. **重放的安全语义**：重放走完整管线（审批策略对新参数再次生效）——确认这是期望行为（而非「已批准调用重放免审」）。
@@ -468,20 +468,22 @@ appended to history.jsonl. Tools called INSIDE a program (including nested
 - After a FAILED run, a notice tells you the call id and the checkpoint path.
 - To retry with a small correction: in a NEW `run_code` program, read the
   checkpoint with tools.read, JSON.parse it, apply a literal replace on the
-  real program text, then eval the corrected program in place:
+  real program text, then run the corrected program as a real function and
+  return its value:
       const r = await tools.read({ file_path: "<checkpoint path>" });
       const prev = JSON.parse(r.lines.map(line => line.text).join("\n"));
       // prev = your exact previous run_code call: { code, description }
       const fixed = prev.code.replace("const retries = 3", "const retries = 5");
-      eval(fixed);
-  The replace runs on the parsed program text, so no JSON escaping appears
-  in your match; if a short fragment is ambiguous, use a longer unique
-  fragment. A top-level `return` inside the eval'd program is rejected in
-  strict mode — end the corrected program with a value expression or
-  console.log instead. If this retry also fails, the new checkpoint
-  holds this loader — its file_path still points at your original program.
-  Alternatively extract long argument data from the checkpoint and
-  pass it to other tools. Use this only when a small correction is needed;
+      const AsyncFunction = (async () => {}).constructor;
+      const run = new AsyncFunction("tools", "console", "'use strict';\n" + fixed);
+      return await run(tools, console);
+  The replace runs on the parsed program text (no JSON escaping); if a short
+  fragment is ambiguous, use a longer unique fragment. Running the corrected
+  program as a function keeps its top-level `return`/`await` working — plain
+  `eval` rejects `return` in strict mode. If this retry also fails, the new
+  checkpoint holds this loader — its file_path still points at your original program.
+  Alternatively extract long argument data from the checkpoint and pass
+  it to other tools. Use this only when a small correction is needed;
   otherwise write a fresh program.
 ```
 
@@ -492,7 +494,7 @@ appended to history.jsonl. Tools called INSIDE a program (including nested
 
 - 最近一次程序永远是 previous/1.json；更早的程序在 by-id/<id>.json 下——失败程序的 id 已在失败通知中给出，任何 id 都可以用 tail 查看 history.jsonl 获得。
 - 程序失败后，会收到一条通知，内含 call id 与 checkpoint 路径。
-- 重试（小幅修正）：在新 run_code 程序里用 tools.read 读取 checkpoint，JSON.parse 后对真实程序文本做字面 replace，再就地 eval 修正后的程序：
+- 重试（小幅修正）：在新 run_code 程序里用 tools.read 读取 checkpoint，JSON.parse 后对真实程序文本做字面 replace，再把修正后的程序作为真实函数执行并 return 其值：
       const r = await tools.read({ file_path: "<checkpoint path>" });
       const prev = JSON.parse(r.lines.map(line => line.text).join("\n"));
       // prev = 你上次 run_code 调用的完整 JSON：{ code, description }
