@@ -29,7 +29,7 @@
   - **native 模式**：工具 `editPreviousToolCalling`，输入 **id**（真实 callId 或上一步序号 `"1"/"2"…`）+ `old_string/new_string/replace_all`，内部路由到对应文件完成「编辑 → 读取 → 以新参数重放原工具」，模型无需填路径；
   - **PTC 模式（code）**：**不注册、不注入该工具**——模型在 `run_code` 程序内用 fs 工具读/编辑 checkpoint 文件，把内容作为新程序或其他工具的输入。
 
-量化目标（第五阶段评测验证）：失败重试的 token 消耗显著下降（建议基线目标：重试步输出 token 节省 ≥ 40%，见 §6），重试成功率不低于「全量重新生成参数」的基线；暂存/通知的固定开销最小化（单条通知 + 覆盖式编号文件）。
+量化目标（第五阶段评测验证）：失败重试的 token 消耗显著下降（建议基线目标：重试步输出 token 节省 ≥ 40%，见 §6），重试成功率不低于「全量重新生成参数」的基线；暂存/通知的固定开销最小化（单条通知 + 顺序 id 别名维护）。
 
 ---
 
@@ -59,7 +59,7 @@
 - **落盘口径（五轮评审定稿：native 与 PTC 逻辑完全一致）**：**只落盘模型直调（`exec.parent === undefined`）**——落盘内容是模型在该 block 下输入的**全部内容**（整个工具调用的参数字符串）：
   - native：每个工具调用都落盘；
   - PTC：模型唯一的直调是 `run_code`（collapse 只允许直调它，`collapses` :1324-1326）→ 落整个程序参数；**程序内部调用的工具一律不落盘，包括程序内嵌套调用的 run_code**（它们 `exec.parent` 存在）；
-  - **零过滤**（五轮评审讨论结论）：不按工具名、不按错误码过滤——`editPreviousToolCalling`/`read`/`write`/`edit` 以及 `ABORTED`/`UNKNOWN_TOOL` 的直调同样落盘并（失败时）通知。无时序问题：覆盖编号文件发生在**该轮首条直调的 post-execute**，此时工具体已执行完毕——native 的重放是单次调用（编辑与重放都在 `editPreviousToolCalling` 体内完成），旧文件在重放前已被消费；PTC 的替换在 `run_code` 程序整体执行完后才发生，程序执行期间先 edit/read 后替换，互不冲突（§3.3）。
+  - **零过滤**（五轮评审讨论结论）：不按工具名、不按错误码过滤——`editPreviousToolCalling`/`read`/`write`/`edit` 以及 `ABORTED`/`UNKNOWN_TOOL` 的直调同样落盘并（失败时）通知。无时序问题：编号别名的重建发生在**该轮首条直调的 post-execute**，此时工具体已执行完毕——native 的重放是单次调用（编辑与重放都在 `editPreviousToolCalling` 体内完成），旧文件在重放前已被消费；PTC 的替换在 `run_code` 程序整体执行完后才发生，程序执行期间先 edit/read 后替换，互不冲突（§3.3）。
 - **callId 实证结论（实测本会话日志确认）**：
   - `tool/call` 事件带 `callId`（如本会话实测 `call_00_UIZK3UTd84uighVQ0QPb5398`）：`packages/core/session/src/types.ts:279`；模型历史里的 assistant tool-call block 与 tool/result 的 `toolCallId` 也都带 id（`llm/src/message.ts:234`）——**模型在历史里能看见 id**；
   - **但 id 不是模型输入的内容**：id 来自流式 chunk（`tool-call-delta.id`，`llm/src/types.ts:295`）或 assembler 兜底合成 `call-<index>`（`llm/src/assembler.ts:70,113`）；实测本会话（agentPreset=code）中模型的 `run_code` 参数只有 `{code, description}` 两个键，模型**从不书写 id**，也无法在后续回合可靠复述/复算这个 id；
@@ -131,7 +131,7 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工�
    ▼
 会话落盘顺序：…tool/result（成功或失败）→（下一步）user/message（通知，每次失败）
    ▼
-模型下一步（system prompt 静态段已提前告知机制与三轨约定）：
+模型下一步（system prompt 静态段已提前告知机制与两种 access 约定）：
    ├─ native：editPreviousToolCalling({ id: '<通知注入的id>' 或 '上一步序号', old, new, replace_all })
    │            └─ 插件内：id 路由到文件 → 内置 edit 机制改文件 → readText → JSON.parse
    │                         → 嵌套 ctx.tools.execute 重放原工具（单次调用，无需先 edit）
@@ -148,7 +148,7 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工�
 | 目录 | **`<os.tmpdir()>/.dsh/tool-checkpoints/<sessionId>/`**（五轮评审：固定用系统临时目录，**不使用 `session.header.cwd`**）。位于沙箱 `workspace-write` 可写根内（`os.tmpdir()` 是 writableRoots 之一，§2.4）；系统重启可被 OS 回收，会话结束时插件主动删除 |
 | **顺序 id（编号别名，六轮评审：相当于软链接/快捷方式）** | `1.json`、`2.json`… = 指向**上一步**对应调用的 **id 文件**的软链（按模型消息内顺序，提交顺序 = 模型顺序，§2.1）。**不产生第二份内容**。每轮：新轮首条直调的 post-execute 到达时删除上一轮全部别名，随后每完成一条直调就建 `n.json` → `<id>.json` 软链。**Windows**：`fs.symlink` 需 Developer Mode/管理员权限，`EPERM` 时降级为**副本文件**（内容与 id 文件一致、同样预观察；经副本编辑只改副本、id 文件不变——native 下模型不编辑别名、无影响；PTC 下模型经别名编辑后读取同一副本，自洽）。不用 hardlink（后端原子写可能 rename 落盘，硬链会分叉）也不用 .lnk（Node fs 不跟随）。重建发生在工具体执行完毕之后：native 重放是单次调用、PTC 在程序整体执行完后才替换——无时序问题（§2.2） |
 | **id 文件（唯一真实存储）** | `<sanitize(id)>.json`（sanitize = 非 `[A-Za-z0-9._-]` → `_`）：每次直调各一份，**会话内不覆盖，是全部内容的唯一落盘**（编号别名只是指向它的软链）。用途：失败通知注入 id 后模型可对同一调用**多次重试**；重放工具按 id 路由到该文件。**模型不构造 id**——id 来自通知注入或 `history.jsonl`，原样回传（§2.2） |
-| **轨 3：history.jsonl** | 目录下 `history.jsonl`，每次直调 **append 一行** JSON：`{ id, tool, turn, step, ordinal }`（索引用途；参数内容在 id 文件与编号文件中）。模型用 `bash tail`（native）或 `tools.read`（PTC）读最后若干行，确定要重放哪一次调用——**主要给成功场景**（失败场景 id 已自动注入通知）。行内是否内嵌 arguments 见 §7 决策点 5 |
+| **jsonl 索引（history.jsonl）** | 目录下 `history.jsonl`，每次直调 **append 一行** JSON：`{ id, tool, turn, step, ordinal }`（索引用途；参数内容在 id 文件中，编号别名指向同一文件）。模型用 `bash tail`（native）或 `tools.read`（PTC）读最后若干行，确定要重放哪一次调用——**主要给成功场景**（失败场景 id 已自动注入通知）。行内是否内嵌 arguments 见 §7 决策点 5 |
 | 文件内容 | **仅 block 的原始参数字符串，不做任何包装**——统一从本会话 `tool/call` 事件按 `callId` 取 `arguments` 原串（字节级一致；PTC 下即 `run_code` 的完整参数 JSON，含整个程序）。**这是「与输入 arg 完全同构、免重读直接编辑」的前提** |
 | 写入 | 每次直调**只写一次**：`ctx.fs.writeText(idTarget, raw, undefined, signal)`（无条件原子写，不占 `fs/write-intent` 槽）到 id 文件；随后建/更新 `n.json` 别名软链（临时名 + rename 原子替换；EPERM 降级为副本写） |
 | 预观察 | 对 **id 文件**（真实目标）`ctx.emit('fs/observed', target, { kind:'present', version: outcome.version }, exec)`（§2.4 已验证的绕过；同步 emit，不得 await）；`resolve` 跟随软链得到同一 targetKey，模型经 `1.json` 别名 edit 同样命中观察记录；Windows 副本降级时对副本也 emit 一次 |
@@ -173,7 +173,7 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工�
 
 | 层 | 位置 | 草稿 | 时机 |
 | --- | --- | --- | --- |
-| **静态 system prompt 段**（让 AI 提前知悉三轨约定、编号/序号、`history.jsonl`、重放工具用法、PTC 下 checkpoint 即整个程序） | `ctx.systemPrompt.section({ name:'tool:checkpoint-replay', order: 149, text: 按 scope 模式动态切换 })`（149 位于工具指引带 100-199 内、SDK 段 150 之前） | A（native）/ B（PTC） | 每次组装，随模式切换 |
+| **静态 system prompt 段**（让 AI 提前知悉两种 access 约定（id 与顺序 id 别名）、`history.jsonl`、重放工具用法、PTC 下 checkpoint 即整个程序） | `ctx.systemPrompt.section({ name:'tool:checkpoint-replay', order: 149, text: 按 scope 模式动态切换 })`（149 位于工具指引带 100-199 内、SDK 段 150 之前） | A（native）/ B（PTC） | 每次组装，随模式切换 |
 | **动态失败通知**（注入调用 id + 上一步序号；PTC 版加文件路径） | post-execute 决策的 `additionalContexts`（每次失败） | C（native）/ D（PTC） | 每次失败 |
 
 四段草稿的共同要点（也是评审重点）：
@@ -181,7 +181,7 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工�
 1. 明确告知「**每次 model tool call block（无论成败）都会暂存**」，且内容即模型在该 block 下输入的全部内容（PTC 下是整个 `run_code` 程序）；成功但结果不符预期同样可重放；
 2. 明确告知 checkpoint 内容与上次发送的参数**字节级相同/同构**，因此**无需先 read 即可 edit**（预观察机制已在 §3.2 保证 edit 不会被 `FS_NOT_OBSERVED` 拒绝）；
 3. 定位方式（两种 access）：**id**（通知注入 / `tail history.jsonl` 查询，原样回传，无需构造）与**顺序 id**（`1.json`/`2.json`… 别名，指向 id 文件）；PTC 版文案给文件路径；
-4. 明确「仅在需要小修时使用；否则直接重新调用」，防止模型滥用；说明编号文件只保留上一步、新一轮会覆盖；
+4. 明确「仅在需要小修时使用；否则直接重新调用」，防止模型滥用；说明顺序 id 别名只保留上一步、新一轮会重建指向；
 5. native 版强调 `editPreviousToolCalling` 单次调用完成「编辑+重放」，输入 id 或序号；PTC 版强调 checkpoint 里是**上一次 `run_code` 的整个程序**，重试时用 fs 读/编辑它。
 6. **已知风险（PTC 版）**：程序参数经 `JSON.stringify` 后，模型对其格式化记忆可能不可靠，「免读直接 edit」的 old_string 可能失配。两个缓解选项供评审：见 §7 决策点 10。
 
@@ -231,7 +231,7 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工�
   - `name: '@canglongcl/dsh-tool-retry'`、`publishConfig: { access: 'public', registry: 'https://registry.npmjs.org/' }`、`type: module`、`main: lib/index.js`、exports `./package.json`；
   - 依赖（发布版，非 workspace）：`@deepseek-ai/cordis`、`@deepseek-ai/dsh-tools`、`@deepseek-ai/dsh-fs`、`@deepseek-ai/dsh-system-prompt`、`@deepseek-ai/dsh-llm`、`@deepseek-ai/dsh-session`、`@deepseek-ai/schemastery`；
   - 插件导出：`export const name = 'tool-retry'`、`export const inject = ['tools', 'fs', 'systemPrompt']`、`export const Config: z<Config>`、`export function apply(ctx, config)`；
-  - `Config`（v7 精简）：`{ enabled = true }`——目录固定 `<os.tmpdir()>/.dsh/tool-checkpoints/<sessionId>/`，零过滤，三轨落盘（§3.2）。
+  - `Config`（v8 精简）：`{ enabled = true }`——目录固定 `<os.tmpdir()>/.dsh/tool-checkpoints/<sessionId>/`，零过滤（§3.2）。
 - **注册（agent 级，不改 harness）**：
   - **用户预设主渠道**：`~/.dsh/.agent-presets/<id>/agent.cordis.yml`（两份：`tool-retry-standard` 与 `tool-retry-code`，即 standard/code 预设的全量拷贝 + 一行 `- id: tool-retry / name: '@canglongcl/dsh-tool-retry'`），会话选择该预设（§2.7）；
   - **开发期**：预设行名用 dev 别名 `@dsh-tool-retry-dev/plugin`，`scripts/profile-plugin-link.ts` 把 `packages/dsh-tool-retry` symlink 进 `~/.dsh/profiles/<profile>/node_modules/@dsh-tool-retry-dev/plugin`，`pnpm dev` 起 harness（照搬 limao `scripts/dev.ts`）；
@@ -248,11 +248,11 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工�
 ### 阶段二：Hook 层开发（独立仓库脚手架 + 先跑通 native 路径）
 
 1. 建独立插件仓库骨架（参照 limao-magic-ui）：根 `package.json` scripts、`scripts/{gen-config,development-entry,profile-plugin-link,dev,harness-path,harness-cli,package-official}.ts`、`packages/dsh-tool-retry/` 插件包（package.json / tsconfig / src/index.ts / src/invariant.ts）。
-2. 实现 `tools/post-execute` 监听器（逻辑与模式无关，§2.2）：仅模型直调（`exec.parent === undefined`）、零过滤 → 从 `tool/call` 事件取 `(turn, step)` 与 `arguments` 原串 → 新轮首调清空旧编号文件 → 三轨落盘 + 预观察（§3.2）→ 更新轮映射 → 每次失败注入通知（含 id + 序号，§3.3）。
+2. 实现 `tools/post-execute` 监听器（逻辑与模式无关，§2.2）：仅模型直调（`exec.parent === undefined`）、零过滤 → 从 `tool/call` 事件取 `(turn, step)` 与 `arguments` 原串 → 新轮首调删除旧别名 → 写 id 文件 + 建/更新别名软链 + jsonl append + 预观察（§3.2）→ 更新轮映射 → 每次失败注入通知（含 id + 序号，§3.3）。
 3. `Config` schema 与 `inject` 声明；`apply()` 注册监听与 teardown（HMR 安全）；重启时从会话日志重建轮映射（§3.2）。
 4. 静态段与动态通知先落 native 草稿（附录 B 的 A/C），PTC 版文案阶段三补齐。
 5. 用户预设两份（§3.7）+ dev 别名 symlink 链路打通。
-6. **验收**：单测通过（§5.1）；keyless 快照跑通「长参数工具失败 → 三轨落盘 → 下一步收到含 id 的通知」最小链路。
+6. **验收**：单测通过（§5.1）；keyless 快照跑通「长参数工具失败 → id 文件 + 别名 + jsonl 落盘 → 下一步收到含 id 的通知」最小链路。
 
 ### 阶段三：插件开发（重放 + 双模式文案 + 注册发布）
 
@@ -276,7 +276,7 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工�
 ## 5. 测试与验证
 
 1. **插件单测**（模板：`packages/fs/fs-observation-policy/tests/policy.spec.ts` 的 `new Context() + ctx.plugin` 方式）：
-   - 模型直调（成功与失败）都三轨落盘与预观察；**嵌套子调用（`parent` 存在）不落盘不通知**（PTC 下验证程序内部工具调用与嵌套 run_code 被跳过、外层 run_code 整体落盘）；**零过滤**：editPreviousToolCalling/read/write/edit 与 ABORTED/UNKNOWN_TOOL 同样落盘+通知；
+   - 模型直调（成功与失败）都落盘（id 文件 + 别名 + jsonl）与预观察；**嵌套子调用（`parent` 存在）不落盘不通知**（PTC 下验证程序内部工具调用与嵌套 run_code 被跳过、外层 run_code 整体落盘）；**零过滤**：editPreviousToolCalling/read/write/edit 与 ABORTED/UNKNOWN_TOOL 同样落盘+通知；
    - 通知：**每次失败都注入**，成功不注入；通知含 id 与上一步序号；
    - 顺序 id 别名：同轮并行按模型顺序建 `n.json` 软链指向各自 id 文件；新轮首调删除上一轮全部别名并重建；上一轮多余别名被删除；重建发生在工具体之后（native 单次重放不受影响、PTC 程序执行期间旧别名仍在）；**Windows `EPERM` → 副本降级（内容一致且副本已预观察）**；经别名 `edit` 解析到 id 文件同一 targetKey（软链时编辑落到 id 文件）；
    - 落盘一致性：id 文件是唯一真实存储、会话内不被覆盖；history.jsonl 每调一行 append（id/tool/turn/step/ordinal）；
@@ -299,7 +299,7 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工�
 - 重试成功率：通知所在下一步内，原工具名（或 `run_code`）再次出现且 `tool/result` 无 `error`（`types.ts:291-297`）；
 - 「成功但重放」场景成功率：模型对成功调用发起重放后，重放调用无 `error`；
 - 多次重试：同一 id 连续重试直至成功的能力（id 全量文件不被覆盖）；
-- 并行覆盖：上一步存在多个并行 block 时，各编号文件齐全且各自可重放；
+- 并行覆盖：上一步存在多个并行 block 时，各顺序 id 别名齐全且各自可重放；
 - 任务成功率：`turn/end.reason` 非 `error`/非 `max-tokens`（`types.ts:146-168`）；
 - 开销：checkpoint 写盘耗时与文件量（编号文件 ≤ 上一步 block 数 + id 文件 + jsonl）、通知注入条数（应恒等于失败次数）。
 
