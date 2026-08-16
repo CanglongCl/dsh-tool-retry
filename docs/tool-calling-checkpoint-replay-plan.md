@@ -1,6 +1,6 @@
 # DeepSeek-Harness 工具调用优化实施计划（自动暂存 · 局部编辑 · 重放）
 
-> 状态：proposed（待评审）· 版本 v17（按十四轮评审：§6 补真模型评测实现设计——统一断点（break）、失败场景来源、断点后测量）
+> 状态：proposed（待评审）· 版本 v18（按十五轮评审：eval 直接用 session.jsonl、不做任何插件；场景聚焦「工具调用不符合预期」不出界；PTC/non-PTC 分标准）
 > 目标仓库：`/Users/canglong/Program/deepseek-harness`（pnpm monorepo，cordis 插件架构）——**本特性为独立插件仓库，不改动 ds harness 仓库任何代码**
 > 插件形态参考：`/Users/canglong/Program/limao-magic-ui`（dsh-web-review 独立插件仓库）
 > 本文档落盘位置：`docs/tool-calling-checkpoint-replay-plan.md`（本工作区）
@@ -295,7 +295,7 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工�
 3. **agent-loop 集成**（`packages/fs/tool-fs/tests/harness.ts:15-24` 的 `fsHarness` + `packages/test-support/agent-loop-testkit` `mountAgentLoopTestDependencies` :37-46，依赖自发布版 npm 包）：真实循环内「成功调用也落盘 → 失败 → 通知（含 id）时序位于该 tool/result 之后 → editPreviousToolCalling(id) 单次重放 → 结果」全链路；**上一步全部并行 block 各自可重放**；多次重试用 id 路径可复现。
 4. **code-mode 集成**：外层 `run_code` 整体落盘（`previous/1.json` + `by-id/<id>.json`）→ 未捕获失败 → 通知（含 id 与路径）；内部子调用失败被捕获 → 不通知；程序执行期间 checkpoint 旧内容可读（替换在程序结束后）；下一步程序内 `tools.read`/`tools.edit` checkpoint（无需先 read，验证预观察生效）；**code 模式不注册 editPreviousToolCalling**。
 5. **机制验证（keyless 脚本化 A/B，llm-replay）**——**从 §6 移入（十三轮评审）**：llm-replay 回放固定剧本、模型行为是脚本化的，它验证的是**特性机制本身**而非模型行为，故属阶段四：
-   - 语料：构造/采集 `tool/call.arguments` 超长（按字节数阈值筛选）的 `session.jsonl` fixtures（native 与 PTC 各若干，含多并行 block 场景）；
+   - 语料：**手写构造或从本机存量 bad case 裁剪**（~/.dsh/sessions/ 真实日志，解压 .jsonl.zstd、脱敏、裁剪到「断点 + turn 边界」）的 `session.jsonl` 前缀 fixtures（native 与 PTC 各若干，含多并行 block 场景）——**与 §6 真模型 eval 共用同一套断点快照语料库**；
    - 用 `replay.override.json`（`packages/test-support/llm-replay`）在该调用后强制注入 `tool/result{error}`，并脚本化两臂完全相同的重试脚本；
    - 特性 ON/OFF 两种 cordis 组合各回放一遍（`installLlmReplay` 驱动真实 agent-loop）；
    - 逐场景断言：checkpoint/别名/jsonl 落盘、通知条数与时序（恒等于失败次数）、并行 block 各自可重放、多次重试用 id 可复现、重放路径成功、固定开销（写盘耗时/注入 token 数）与脚本化重试的 token 上界（仅机制算术演示，不作对外数据）；
@@ -319,23 +319,36 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工�
 
 **实现设计（十四轮评审）**：
 
-**① 统一断点（break）作为 eval 起点**。所有场景对齐到同一个逻辑断点——「首个合格失败的工具结果」（ON 臂：失败 `tool/result` 之后紧跟插件通知 `user/message`（source=@canglongcl/dsh-tool-retry）；OFF 臂：失败 `tool/result` 之后直接接模型下一步）。断点之前的全部历史两臂天然相同，断点之后才做测量。注意：失败→通知→模型重试发生在**同一个 turn 内部**（工具结果自动触发下一步），harness 没有 turn 中途暂停的公开 API，故两条实现路：
-  - **v1 解析式对齐（推荐先做）**：整段跑完会话，事后在 session.jsonl 上按事件对齐断点，指标全部在断点后的日志尾部计算。无需暂停会话，直接用 python SDK 驱动；实现简单、等价于测量意义上的 break；
-  - **v2 真 break（可选迭代）**：eval 专用伴生插件（不随 npm 发布）两侧臂都挂：监听 `agent/pre-step`，在「首次合格失败已提交/通知已注入」后对下一步返回 `reject` → 该 turn 以 `blocked` 结束 → eval 驱动观察到断点，做快照/分叉（session fork）后发 continue 消息继续。两侧断点逻辑对称，可做更严格的对照与分叉实验。
+**① 断点（break）作为 eval 起点——直接用 session.jsonl，不再做任何插件（十五轮评审定稿）**。所有场景对齐到同一个逻辑断点——「首个**不符合预期的工具调用**」：显式失败（`tool/result` isError）或「成功但结果不符合预期」的调用（后者见 ② 观察类）。ON 臂断点之后紧跟插件通知，OFF 臂断点之后直接接模型下一步；断点前的历史两臂天然相同，断点后才做测量。
+- **断点快照 = 一段 session.jsonl 前缀**（fixture）：**手写构造，或从本机存量 bad case 裁剪**——本机 ~/.dsh/sessions/ 下有大量含失败工具调用的真实会话日志（解压 .jsonl.zstd 后裁剪到「断点 + turn 边界」，脱敏后入库）；
+- **eval 起跑方式**：以该前缀启动/恢复会话（会话持久化按 session-id 载入 jsonl 日志，agent-loop 支持 resume，`ctx.agents.resume({ resumeSessionId })`，`packages/core/agent-loop/tests/resume.spec.ts`），**真模型从断点继续**，断点后的行为全部由真模型生成；
+- 两臂共用同一前缀：ON 臂前缀以插件通知 `user/message`（source=@canglongcl/dsh-tool-retry）收尾，OFF 臂前缀止于失败 `tool/result`（无通知）；
+- **与 §5 机制验证共用同一套断点快照语料库**：§5 用 llm-replay 回放这些前缀（脚本化、无 key），§6 用它们做真模型续跑的起点。
 
-**② 失败场景来源（按预期整理）**：
-  1. **代码语法错误**：PTC——`run_code` 程序带语法错误（种子文件/提示词诱导），未捕获 → run_code 整体失败 → 模型读 checkpoint 重建程序；native——bash 执行坏脚本/命令报错后重试；
-  2. **JSON 格式不正确**：工具参数 JSON 非法 → `INVALID_ARGS`（checkpoint 存原串，正是可编辑修复的对象）；或程序内 `JSON.parse` 失败；
-  3. **长文本编辑**：`edit`/`write` 的 `old_string` 失配（预置文件与提示词不一致保证触发）、长 `new_string` 中有错误导致下游失败 → 模型局部修正重试而非整段重生成；
-  4. **plan mode 要求重写**：`exit_plan_mode` 被拒（deny/block）→ 计划重写场景 → 模型可编辑上一版 plan 再提交而非整篇重写；
-  5. 补充基础集：**运行期工具报错**（file-not-found 路径笔误、权限/沙箱错误等一般失败）。
-  - 场景载体 = 固定 workspace fixture + 任务提示词；用预置环境保证「大概率自然触发」合格失败；未触发失败的行次不计入统计（只统计触发行）。
+**② 场景来源——聚焦「工具调用不符合预期」，不超出本特性边界（十五轮评审定稿）**：
 
-**③ 执行与测量（断点后）**：
+**显式失败类（isError，主场景）**：
+  1. **参数 schema 校验失败**：缺必填字段/类型错/枚举非法 → `INVALID_ARGS`（checkpoint 存原始串，正是可编辑修复的对象）；
+  2. **参数 JSON 格式非法**：工具参数不是合法 JSON（raw 串落盘）；
+  3. **长文本编辑失配**：`edit` 的 `old_string` 在文件中不存在（文件已变）、`old_string` 为空、`old==new`——长 `new_string` 场景按参数长度分层统计（本特性的核心价值场景）；
+  4. **路径/资源笔误**：`file_path` 打错（ENOENT/`FS_NOT_FOUND`）、未读先改（`FS_NOT_OBSERVED`）；
+  5. **权限/沙箱拒绝**：只读模式写入（`FS_SANDBOX_DENIED`）、命令权限错误；
+  6. **PTC 专属**：`run_code` 程序语法错误、SDK 里工具名打错（`UNKNOWN_TOOL`）、未捕获异常、返回值不合 output schema。
+
+**「成功但结果不符合预期」观察类（成功也落盘的动机，作为观察项）**：
+  - 工具返回成功但内容不对（bash 输出非预期、读错了文件、结果与要求不符）→ 模型主动经 `previous/<n>.json` 或 `history.jsonl` 取 id 重放修正。该类难以自然诱导，**只统计采用率、不设达标线**。
+
+**明确不做（超出工具调用重放边界）**：plan 重写流程的质量评估、单元测试驱动的多轮迭代、多步任务规划优化、复杂任务级评分 oracle——本 eval 只度量「工具调用不符合预期后，模型如何完成**该调用**的重试」，任务成败仅以轻量检查兜底（见 ③）。
+  - 场景载体 = 固定 workspace fixture + 任务提示词；用预置环境保证「大概率自然触发」断点；未触发断点的行次不计入统计（只统计触发行）。
+
+**③ 执行与测量（断点后）——PTC 与 non-PTC 分标准（十五轮评审）**：
 - 每场景 × 每臂（ON：用户预设含插件；OFF：原版 standard/code 预设）独立 workspace 与 session-id（BENCHMARK.md 要求），同一模型/参数，每臂重复 N≥3 次取中位数（模型有随机性）；
-- 驱动：`examples/jsonrpc-agent/minimal.py`（`BENCHMARK.md` 唯一指引路径）或 `DeepSeekHarness` SDK；
-- 断点后测量：重试步输出 token（断点后第一条 `assistant/message.usage.outputTokens`，ON vs OFF 的节省）、**采用率**（断点后是否出现 `editPreviousToolCalling` 调用 / checkpoint 路径读取）、重试成功率（同工具或 `run_code` 的下一次 `tool/result` 无 `error`）、任务成功率（`turn/end.reason` + 任务 oracle：workspace 状态校验脚本，参照 limao eval 的 capture/regrade 做法）；
-- 每场景输出 JSON（对齐 limao eval 的 batch/report 结构）+ 聚合表（token 节省 %、采用率、重试成功率、任务成功率、注入开销）。
+- 驱动：`examples/jsonrpc-agent/minimal.py`（`BENCHMARK.md` 唯一指引路径）或 `DeepSeekHarness` SDK；起跑 = ① 的前缀 resume；
+- **断点后测量（两模式通用）**：重试步输出 token（断点后第一条 `assistant/message.usage.outputTokens`，ON vs OFF 的节省）、重试成功（断点指向的调用被重放且新的 `tool/result` 无 `error`）、通知条数 = 失败次数、注入开销。
+- **native 专属标准**：采用率 = 断点后是否出现 `editPreviousToolCalling` 调用或对 checkpoint 目录（`by-id/`、`previous/`）的 `edit`/`read`；重试成功率按「同工具下一次 `tool/result` 无 `error`」计。
+- **PTC 专属标准**：采用率 = 新 `run_code` 程序内是否读取 checkpoint 路径（`tools.read`/`tools.edit`/bash 访问 `<checkpoint-dir>`，或以旧程序为基础重建）；成功 = 下一次 `run_code` 调用无 `error`；修复粒度是程序级（整程序重建），token 指标侧重「重建步输出 token」；内部子调用失败被捕获的不算断点（§2.2）。
+- 轻量任务检查（可选兜底）：场景可自带一个工作区状态校验脚本（参照 limao eval 的 capture/regrade），但不作通用评分要求——本 eval 的边界是「该调用是否被有效重试」，不是整任务质量。
+- 每场景输出 JSON（对齐 limao eval 的 batch/report 结构）+ 聚合表（native 与 PTC 分表：token 节省 %、采用率、重试成功率、注入开销）。
 
 - 报告建议基线目标：重试步输出 token 节省 ≥ 40%；重试成功率不劣于基线；通知条数 = 失败次数；采用率单独报告作为观察项。
 
