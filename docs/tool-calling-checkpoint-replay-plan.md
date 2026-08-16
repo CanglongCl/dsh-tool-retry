@@ -1,6 +1,6 @@
 # DeepSeek-Harness 工具调用优化实施计划（自动暂存 · 局部编辑 · 重放）
 
-> 状态：proposed（待评审）· 版本 v8（按六轮评审：编号文件改为「顺序 id」软链/快捷方式，唯一真实存储为 id 文件）
+> 状态：proposed（待评审）· 版本 v9（按七轮评审：明确两种 access 的使用矩阵——上一个用顺序 id，更早用 id）
 > 目标仓库：`/Users/canglong/Program/deepseek-harness`（pnpm monorepo，cordis 插件架构）——**本特性为独立插件仓库，不改动 ds harness 仓库任何代码**
 > 插件形态参考：`/Users/canglong/Program/limao-magic-ui`（dsh-web-review 独立插件仓库）
 > 本文档落盘位置：`docs/tool-calling-checkpoint-replay-plan.md`（本工作区）
@@ -22,7 +22,8 @@
 - 落盘分**两种 access 方式 + 一个索引**（六轮评审定稿）：
   1. **id 文件（唯一真实存储）**：每次直调按 callId 落 `<id>.json`，会话内不覆盖——失败通知注入 id，模型可对同一调用做**多次重试**；
   2. **顺序 id（编号别名，相当于软链接/快捷方式）**：上一步的全部并行 block 按模型消息内顺序暴露为 `1.json`、`2.json`…，**软链指向对应 id 文件**（Windows 无权限降级为副本，见 §3.2），新一轮**重建**别名指向新调用的 id 文件（最常用路径）；
-  3. **`history.jsonl`**：每次直调 append 一行索引，模型可用 `tail` 读最后几条来确定要重放哪一个（主要给成功场景；失败自动注入 id）；
+  3. **`history.jsonl`**：每次直调 append 一行索引，模型可用 `tail` 读最后几条来确定要重放哪一个；
+- **使用矩阵（七轮评审）**：修改**上一个**调用（无论成败，路径相同）→ 顺序 id 别名（`1.json`/`2.json`…）；修改**更早**的调用 → id——失败调用的 id 在它失败时的通知里注入过（模型在 context 中可见，可直接用），也可查 `history.jsonl`；成功调用的 id 只能查 `history.jsonl`；
 - **静态注入**：在 system prompt 中写入该机制说明（目录、编号约定、id/jsonl 约定、重放工具用法），让 AI 提前知悉「可以修改并重试」；
 - **动态注入**：通过 `tools/post-execute` 生命周期钩子，在调用失败后向模型注入提示（含**调用 id** 与上一步序号），告知参数已完整保存、内容与输入 arg **字节级同构**、可直接编辑后重放；**每次失败都注入，不做任何工具名/错误码过滤**（五轮评审：覆盖发生在工具体执行之后，零过滤无时序问题，见 §3.3）；
 - 重放：
@@ -180,7 +181,7 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工�
 
 1. 明确告知「**每次 model tool call block（无论成败）都会暂存**」，且内容即模型在该 block 下输入的全部内容（PTC 下是整个 `run_code` 程序）；成功但结果不符预期同样可重放；
 2. 明确告知 checkpoint 内容与上次发送的参数**字节级相同/同构**，因此**无需先 read 即可 edit**（预观察机制已在 §3.2 保证 edit 不会被 `FS_NOT_OBSERVED` 拒绝）；
-3. 定位方式（两种 access）：**id**（通知注入 / `tail history.jsonl` 查询，原样回传，无需构造）与**顺序 id**（`1.json`/`2.json`… 别名，指向 id 文件）；PTC 版文案给文件路径；
+3. 使用矩阵（两种 access，七轮评审）：**上一个**调用（无论成败）→ 顺序 id 别名（`1.json`/`2.json`…）；**更早**的调用 → id：失败调用的 id 在其失败时的通知里注入过（模型在 context 中可见，可直接用），也可查 `history.jsonl`；成功调用的 id 只能查 `history.jsonl`；PTC 版文案给文件路径；
 4. 明确「仅在需要小修时使用；否则直接重新调用」，防止模型滥用；说明顺序 id 别名只保留上一步、新一轮会重建指向；
 5. native 版强调 `editPreviousToolCalling` 单次调用完成「编辑+重放」，输入 id 或序号；PTC 版强调 checkpoint 里是**上一次 `run_code` 的整个程序**，重试时用 fs 读/编辑它。
 6. **已知风险（PTC 版）**：程序参数经 `JSON.stringify` 后，模型对其格式化记忆可能不可靠，「免读直接 edit」的 old_string 可能失配。两个缓解选项供评审：见 §7 决策点 10。
@@ -201,7 +202,8 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工�
 - **注册条件**：`run_code` 不可见（native）才注册；code/both 不注册（§3.5.1）。
 - **签名（五轮评审点 7）**：**`{ id, old_string, new_string, replace_all }`**——输入 **id** 而不是文件路径，**不需要填写完整路径，由工具内部路由**。`id` 接受两种形式：
   - **上一步序号**：`"1"`/`"2"`…（模型知道自己消息里的调用顺序；最常用路径）；
-  - **真实 callId**：通知注入的 id 或 `history.jsonl` 里的 id（历史/成功场景、多次重试）。
+  - **真实 callId**：通知注入的 id 或 `history.jsonl` 里的 id（历史场景、多次重试）。
+- **使用约定（七轮评审）**：修改**上一个**调用（无论成败）用序号（对应 `1.json` 别名）；修改**更早**调用用 callId——失败调用的 id 已在其失败时的通知中注入（context 可见，直接用），成功调用的 id 只能查 `history.jsonl`。
 - **instruction**：描述为「按 id 定位上一次（或历史）工具调用的 checkpoint，编辑后立即以编辑后内容重新调用原工具」；专属系统指引段 `ctx.systemPrompt.section({ name:'tool:editPreviousToolCalling', order: 103, text })`（紧邻 `tool:edit` 的 102）。
 - **内部路由（`execute(args, exec)`）**：
   1. 解析 `id`：纯数字 → 上一步序号 → 查内存轮映射（§3.3）得 `{ callId, toolName }`，目标 = 对应 **id 文件**（`1.json` 别名仅服务 fs 工具的模型路径，本工具一律直接编辑 id 文件）；否则 sanitize 后定位 `<id>.json`（历史全量文件）并解出 `toolName`（从 history.jsonl / 内存映射）；无效或不存在 → 明确错误结果「checkpoint 不存在或已失效」；
@@ -323,7 +325,7 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工�
 
 ## 7. 风险与待决问题（请评审决策）
 
-1. **四段提示词文案**（附录 B）需人工审阅定稿——特别是「免读直接 edit」的措辞与边界、静态段中两种 access 约定（id 与顺序 id 别名）的详细程度、PTC 版「checkpoint = 整个程序」的引导方式。
+1. **四段提示词文案**（附录 B）需人工审阅定稿——特别是「免读直接 edit」的措辞与边界、静态段中两种 access 约定（id 与顺序 id 别名）的详细程度、**使用矩阵（上一个→顺序别名；更早→id：失败注入过/成功查 history）**、PTC 版「checkpoint = 整个程序」的引导方式。
 2. **checkpoint 目录**：`<os.tmpdir()>/.dsh/tool-checkpoints/<sessionId>/`（五轮评审已定：不用 `session.header.cwd`）——请确认；注意 tmp 目录可能被 OS 定期清理（会话内不受影响）。
 3. **零过滤**（五轮评审讨论结论）：任何工具名（含 `editPreviousToolCalling`/`edit`/`read`/`write`）与任何错误码（含 `ABORTED`/`UNKNOWN_TOOL`）的模型直调都落盘、失败都通知——已确认无时序问题（覆盖在工具体之后；native 重放单调用；多次重试走 id），请最终确认。
 4. **顺序 id 别名语义（六轮评审）**：`1.json`/`2.json`… 为指向 id 文件的软链/快捷方式（唯一真实存储是 id 文件），每轮重建指向；Windows `EPERM` 降级为副本（经副本编辑只改副本、id 文件不变）——请确认；重建粒度（每轮首调清空重建 vs 每调更新）是否认可。
@@ -390,18 +392,17 @@ succeeds or fails:
   in your call order (your 1st call is 1.json, your 2nd call is 2.json, and
   so on). A new round of calls re-points them.
 - Every call is also kept under its call id as <id>.json, and an index line is
-  appended to history.jsonl. To replay an older call (including one that
-  succeeded but produced an unexpected result), read the tail of history.jsonl
-  to find its id.
+  appended to history.jsonl.
 - A checkpoint's content is byte-for-byte identical to the arguments you sent
   for that call.
-To retry with a small correction, call `editPreviousToolCalling` once with the
-call's id — the id from the failure notice, from history.jsonl, or simply
-"1"/"2"/… for the corresponding call of your previous message — plus
-old_string / new_string / replace_all. It applies your edit and immediately
-re-invokes the original tool with the edited arguments. Use this only when a
-small correction is needed; otherwise call the tool again with fresh
-arguments.
+To retry with a small correction, call `editPreviousToolCalling` once: for a
+call of your PREVIOUS message (whether it succeeded or failed) use its
+ordinal "1"/"2"/…; for an OLDER call use its id — a failed call's id was
+given in its failure notice, and any call's id can be looked up in the tail
+of history.jsonl — plus old_string / new_string / replace_all. It applies
+your edit and immediately re-invokes the original tool with the edited
+arguments. Use this only when a small correction is needed; otherwise call
+the tool again with fresh arguments.
 ```
 
 ### B. 静态 system prompt 段 —— PTC（code）模式
@@ -415,6 +416,10 @@ program, which is kept as <id>.json, and an index line is appended to
 history.jsonl. Tools
 called INSIDE a program (including nested `run_code`) are not checkpointed
 separately.
+- Your most recent program is always 1.json (whether it succeeded or
+  failed); older programs are under their call id — a failed run's id was
+  given in its failure notice, and any id can be looked up in the tail of
+  history.jsonl.
 - After a FAILED run, a notice tells you the call id and the checkpoint path.
 - To retry: in a new `run_code` program, read the checkpoint with tools.read
   (or fix it in place with tools.edit — the content is exactly the program
@@ -433,12 +438,13 @@ A tool call of yours just failed, and its arguments were saved for replay:
 - call id: <id>
 - previous-message ordinal: <n>
 The checkpoint contains byte-for-byte the arguments you sent for that call.
-To retry with a small correction, call `editPreviousToolCalling` once with id
-"<id>" (or "<n>") and your old_string / new_string / replace_all — it applies
-the edit and immediately re-invokes the original tool with the edited
-arguments. The call id stays valid across retries, so you may retry as many
-times as needed. If the fix is not a small edit of the previous arguments,
-ignore this notice and call the tool again with fresh arguments.
+To retry now with a small correction, call `editPreviousToolCalling` once
+with "<n>" (its position in your previous message) and your old_string /
+new_string / replace_all — it applies the edit and immediately re-invokes the
+original tool. Later, after newer calls have re-pointed 1.json/2.json/…, use
+the call id "<id>" instead (it stays valid). If the fix is not a small edit
+of the previous arguments, ignore this notice and call the tool again with
+fresh arguments.
 ```
 
 ### D. 失败通知（动态注入）—— PTC（code）模式
@@ -449,8 +455,9 @@ Your `run_code` program just failed, and it was saved for replay:
 - call id: <id>
 - checkpoint: <path to 1.json> (also kept as <path to <id>.json>)
 The checkpoint contains byte-for-byte the full program you submitted for that
-call. To retry with a small correction: in a new `run_code` program, edit
-the checkpoint with tools.edit (no need to read it first), then read the
+call. To retry now use <path to 1.json>; later, after newer programs have
+re-pointed 1.json, use <path to <id>.json>. In a new `run_code` program,
+edit the checkpoint with tools.edit (no need to read it first), then read the
 edited file and reconstruct your corrected program from it (or extract the
 long argument data you need and pass it to other tools). If the fix is not a
 small edit, write a fresh program instead.
@@ -461,5 +468,6 @@ small edit, write a fresh program instead.
 - C/D 中的「failure」取 `result.error.message` 截断（≤200 字符）；「call id」由 harness 注入、模型原样回传（§2.2 实证：模型不书写 id，但可回传注入值）；「ordinal」即模型上一条消息里的调用序号（模型知道自己调用的顺序）。
 - 编号/序号约定：`<n>.json` = 上一条消息里第 n 个 tool call block；并行调用也按消息内顺序编号（harness 提交顺序 = 模型顺序，§2.1）。覆盖语义见 §3.2（新轮覆盖，旧编号失效）。
 - A/C 的「byte-for-byte identical」在 native 下严格成立（落盘即模型发送的原串）；B/D 在 PTC 下落盘的是 `run_code` 的完整参数 JSON（整个程序），模型对格式化记忆可能不可靠——「免读直接 edit」存在 old_string 失配风险，两个缓解选项见 §7 决策点 10。
+- 使用矩阵（七轮评审）：上一个调用（成败同路）→ 顺序 id 别名；更早 → id（失败：当时注入的 id 仍在 context 可见，或查 history.jsonl；成功：只能查 history.jsonl）。C/D 通知同时给序号与 id：序号用于当下修复，id 用于之后别名被重建后仍可多次重试。
 - 静态段（A/B）明确两种 access 约定（顺序 id 别名 → id 文件，history.jsonl 索引）与「别名仅保留上一步、新轮重建指向」，防止模型在过期别名上做无谓编辑。
 - 四段文案长度约 100-180 token；静态段随 system prompt 常驻，动态通知每次失败注入（短文案）。
