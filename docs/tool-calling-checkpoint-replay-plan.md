@@ -1,6 +1,6 @@
 # DeepSeek-Harness 工具调用优化实施计划（自动暂存 · 局部编辑 · 重放）
 
-> 状态：proposed（待评审）· 版本 v14（补注：并行执行机制与模型感知——事件无并发标记，编号与执行重叠无关）
+> 状态：proposed（待评审）· 版本 v15（补注：模型侧最终看到的形状——一条 assistant 消息含全部 block，结果逐条按模型顺序返回）
 > 目标仓库：`/Users/canglong/Program/deepseek-harness`（pnpm monorepo，cordis 插件架构）——**本特性为独立插件仓库，不改动 ds harness 仓库任何代码**
 > 插件形态参考：`/Users/canglong/Program/limao-magic-ui`（dsh-web-review 独立插件仓库）
 > 本文档落盘位置：`docs/tool-calling-checkpoint-replay-plan.md`（本工作区）
@@ -52,6 +52,7 @@
   - `appendToolCall` 把模型调用落盘为 `tool/call` 事件，**含原始参数字符串**：:262-264
   - 结果提交后，`result.additionalContexts` 经 `acceptContext` 送入下一步 inbox：:155-156；`agent.ts` 在下一步 preStep 领取并追加为 user 消息：:395-398
   - **提交顺序 = 模型顺序（编号命名的依据）**：并行调用体可重叠执行，但 `post-execute`（finalize/finish）在 `commitReady` 中按模型顺序逐个提交（`tool-calls.ts:146-160`），因此每轮内 post-execute 的到达顺序与模型消息里 block 的顺序一致，可据此编 1、2、3… 号。
+  - **模型最终看到的形状（实证）**：并行调用不是「1 call 1 result 2 call 2 result」交错——模型侧是一条 assistant 消息包含全部 tool-call block（模型自己就是这么发出的），随后**每条结果一条 tool 消息、按模型顺序逐个返回**（`createToolResultMessage` 每调用一条消息，`llm/src/message.ts:229-237`；surface 投影 'assistant/message' 与 'tool/result' 各成节点，`core/session/src/surface.ts:99-107`）。执行体可能重叠、后完成的调用结果先就绪，但提交仍按模型顺序。
   - **并行机制与模型感知（十一轮评审查证）**：一条 assistant 消息的全部 block 作为一步处理；每个调用经 `executionMode` 分类（工具声明 `isConcurrencySafe(args) === true` 才并行，fail-closed 默认独占，`tools/index.ts:1276-1285`）；独占调用形成屏障、并行组用有界池执行（`maxParallelToolCalls` 默认 10，`agent-loop/constants.ts:6`），**只有工具体重叠，pre-execute 有序、结果按模型顺序提交**。**模型只能感知自己发出的 block 与其顺序，感知不到执行是否真正重叠**——`tool/call`/`tool/result` 事件没有任何并发标记（`core/session/src/types.ts:279,291-297`），isConcurrencySafe/maxParallelToolCalls 均不暴露给模型。⇒ 文案里「PARALLEL blocks」指模型自己「并行发出」的语义；编号只依赖消息内顺序，独占屏障推迟执行但**不改变提交顺序与编号**。
 - **code-mode 桥转发嵌套上下文**：`packages/core/tools/src/code-mode.ts:560-562` 把子调用的 `additionalContexts` 经 `exec.deferContext` 转发到外层 `run_code` 结果。⇒ 用 `tools/post-execute` + `additionalContexts` 注入通知，在 **native 与 PTC 两种模式下都成立**，且时序天然位于该次调用的 `tool/result` 之后。
 
@@ -416,11 +417,12 @@ needed; otherwise call the tool again with fresh arguments.
 **A · 中文译文（评审对照）：**
 
 工具调用检查点与重放
-你发出的每一次工具调用（无论成败），其参数都会保存在 <checkpoint-dir> 下：
+你发出的每一次工具调用，其参数都会保存在 <checkpoint-dir> 下：
+
 - previous/1.json、previous/2.json… 是「上一条消息」中**各个并行 tool-call block** 的快捷方式（第 1 个 block 对应 previous/1.json，第 2 个对应 previous/2.json，以此类推）。新一轮调用会重新指向它们。
 - 每次调用还会按 call id 保存为 by-id/<id>.json，并在 history.jsonl 中追加一行索引。
 - 检查点内容与你当时发送的参数逐字节一致。
-需要小幅修正重试时，调用一次 editPreviousToolCalling：修改「上一条消息」里的调用（无论成败）用 previous_ordinal（1/2/…）；修改更早的调用用 call_id（失败调用的 id 已在失败通知中给出；任何调用的 id 都可以用 tail 查看 history.jsonl 获得），并附 old_string / new_string / replace_all。它会应用你的修改并立即以编辑后的参数重新调用原工具。仅当只需小幅修正时使用；否则直接用新参数重新调用该工具。
+需要小幅修正重试时，调用一次 editPreviousToolCalling：修改「上一条消息」里的调用（无论成败）用 previous_ordinal（1/2/…）；修改更早的调用用 call_id（失败调用的 id 已在失败通知中给出；任何调用的 id 都可以用 tail 查看 history.jsonl 获得）。它会应用你的修改并**立即以编辑后的参数重新调用原工具**。仅当只需小幅修正时使用；否则直接用新参数重新调用该工具。
 
 ### B. 静态 system prompt 段 —— PTC（code）模式
 
@@ -448,7 +450,7 @@ appended to history.jsonl. Tools called INSIDE a program (including nested
 **B · 中文译文（评审对照）：**
 
 工具调用检查点与重放
-你的每一次 run_code 调用——即你在 tool call block 里写的全部内容（整个程序）——无论成败都会保存在 <checkpoint-dir> 下：previous/1.json 是最近一次程序的快捷方式，程序本体按 call id 保存为 by-id/<id>.json，并在 history.jsonl 中追加一行索引。程序内部调用的工具（包括嵌套的 run_code）不会单独保存。
+你的每一次 run_code 调用会保存在 <checkpoint-dir> 下：previous/1.json 是最近一次程序的快捷方式，程序本体按 call id 保存为 by-id/<id>.json，并在 history.jsonl 中追加一行索引。程序内部调用的工具（包括嵌套的 run_code）不会单独保存。
 - 最近一次程序永远是 previous/1.json（无论成败）；更早的程序在 by-id/<id>.json 下——失败程序的 id 已在失败通知中给出，任何 id 都可以用 tail 查看 history.jsonl 获得。
 - 程序失败后，会收到一条通知，内含 call id 与 checkpoint 路径。
 - 重试：在新 run_code 程序里用 tools.read 读取 checkpoint（或用 tools.edit 就地修改——内容与你提交的程序完全一致，可以不先 read 直接 edit），然后基于读到的内容重建修正后的程序（或提取其中长参数数据传给其他工具）。仅当只需小幅修正时使用；否则重写一个新程序。
