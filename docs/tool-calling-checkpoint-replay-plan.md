@@ -169,7 +169,7 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工�
 - **处理对象**：仅**模型直调**（`exec.parent === undefined`）；`exec.agent?.session` 存在。**零过滤**：任何工具名、任何错误码（`ABORTED`/`UNKNOWN_TOOL` 等）都落盘与通知——讨论结论：覆盖发生在工具体执行完毕之后，且 native 重放为单次调用、多次重试走 id 全量文件，零过滤无时序与递归问题（§2.2）。
 - **流程**（每次直调）：从 `tool/call` 事件取 `(turn, step)` 与 `arguments` 原串 → 若为新一步首调：删除上一轮全部 `previous/n.json` 别名 → 写 `by-id/<id>.json` + 建 `previous/n.json` → `../by-id/<id>.json` 软链（EPERM 降级副本）+ `history.jsonl` append + 预观察（§3.2）→ 更新内存轮映射（`{ ordinal → { id, tool } }`）→ 若 `result.isError` → 注入通知。
 - **通知时机（二轮+五轮评审已定）**：**每次失败都注入**，无计数、无节流、零过滤——把通知附加到 `next` 决策的 `additionalContexts`（`createUserMessage`，source `{ kind:'plugin', plugin:'@canglongcl/dsh-tool-retry', form:'notice' }`）。
-- **通知内容（十轮评审：极简）**：只写三件事——① 已保存；② **调用 id**（PTC 版为 §B§by-id/<id>§B§ 路径，内含 id）；③ 用 `editPreviousToolCalling`（PTC：新程序内 fs 工具 + tools.run_code）即可重放。**失败原因不注入**——harness 的 tool/result 本身已把失败原因返回给模型，通知只作为「可选纠错路径」的指引；native 版不要求模型填路径（工具按 id 内部路由，§3.5.2）。
+- **通知内容（十轮评审：极简）**：只写三件事——① 已保存；② **调用 id**（PTC 版为 `by-id/<id>` 路径，内含 id）；③ 用 `editPreviousToolCalling`（PTC：新程序内 fs 工具 + tools.run_code）即可重放。**失败原因不注入**——harness 的 tool/result 本身已把失败原因返回给模型，通知只作为「可选纠错路径」的指引；native 版不要求模型填路径（工具按 id 内部路由，§3.5.2）。
 - **通知文案按模式选择**（§3.4 草稿 C/D；模式经 §2.6 的 run_code 可见性判定）：run_code 可见 → PTC 版；否则 native 版。
 - **重放自身失败的行为**：重放调用走完整管线（嵌套子调用，`parent` 存在 → 不会被再次落盘/通知）；`editPreviousToolCalling` 自身若失败（如 id 输错）→ 它是直调 → 落盘并通知（零过滤），模型可直接再调用一次修正，无递归风险。
 - 通知不重复错误信息（tool/result 已含），因此也不存在摘要截断逻辑。
