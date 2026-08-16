@@ -25,7 +25,7 @@
   3. **`history.jsonl`**：每次直调 append 一行索引，模型可用 `tail` 读最后几条来确定要重放哪一个；
 - **使用矩阵（七轮评审）**：修改**上一个**调用（无论成败，路径相同）→ 顺序 id 别名（`previous/1.json`/`previous/2.json`…）；修改**更早**的调用 → id——失败调用的 id 在它失败时的通知里注入过（模型在 context 中可见，可直接用），也可查 `history.jsonl`；成功调用的 id 只能查 `history.jsonl`；
 - **静态注入**：在 system prompt 中写入该机制说明（目录、编号约定、id/jsonl 约定、重放工具用法），让 AI 提前知悉「可以修改并重试」；
-- **动态注入**：通过 `tools/post-execute` 生命周期钩子，在调用失败后向模型注入**极简提示**——只写「已保存 + 调用 id（+ 上一步序号）+ 用 `editPreviousToolCalling` 重放」三件事，不做其他解释（失败原因由 harness 的 tool/result 自行返回）；**每次失败都注入，不做任何工具名/错误码过滤**（五轮评审：覆盖发生在工具体执行之后，零过滤无时序问题，见 §3.3）；
+- **动态注入**：通过 `tools/post-execute` 生命周期钩子，在调用失败后向模型注入**极简提示**——只写「已保存 + 调用 id（PTC 版为 by-id 路径）+ 用法」三件事，不做其他解释（失败原因由 harness 的 tool/result 自行返回）；**每次失败都注入，不做任何工具名/错误码过滤**（五轮评审：覆盖发生在工具体执行之后，零过滤无时序问题，见 §3.3）；
 - 重放：
   - **native 模式**：工具 `editPreviousToolCalling`，输入 **id**（真实 callId 或上一步序号 `"1"/"2"…`）+ `old_string/new_string/replace_all`，内部路由到对应文件完成「编辑 → 读取 → 以新参数重放原工具」，模型无需填路径；
   - **PTC 模式（code）**：**不注册、不注入该工具**——模型在 `run_code` 程序内用 fs 工具读/编辑 checkpoint 文件，把内容作为新程序或其他工具的输入。
@@ -169,7 +169,7 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工�
 - **处理对象**：仅**模型直调**（`exec.parent === undefined`）；`exec.agent?.session` 存在。**零过滤**：任何工具名、任何错误码（`ABORTED`/`UNKNOWN_TOOL` 等）都落盘与通知——讨论结论：覆盖发生在工具体执行完毕之后，且 native 重放为单次调用、多次重试走 id 全量文件，零过滤无时序与递归问题（§2.2）。
 - **流程**（每次直调）：从 `tool/call` 事件取 `(turn, step)` 与 `arguments` 原串 → 若为新一步首调：删除上一轮全部 `previous/n.json` 别名 → 写 `by-id/<id>.json` + 建 `previous/n.json` → `../by-id/<id>.json` 软链（EPERM 降级副本）+ `history.jsonl` append + 预观察（§3.2）→ 更新内存轮映射（`{ ordinal → { id, tool } }`）→ 若 `result.isError` → 注入通知。
 - **通知时机（二轮+五轮评审已定）**：**每次失败都注入**，无计数、无节流、零过滤——把通知附加到 `next` 决策的 `additionalContexts`（`createUserMessage`，source `{ kind:'plugin', plugin:'@canglongcl/dsh-tool-retry', form:'notice' }`）。
-- **通知内容（十轮评审：极简）**：只写三件事——① 已保存；② **调用 id**（+ 上一步序号；PTC 版加 checkpoint 路径）；③ 用 `editPreviousToolCalling`（PTC：新程序内 fs 工具）即可重放。**失败原因不注入**——harness 的 tool/result 本身已把失败原因返回给模型，通知只作为「可选纠错路径」的指引；native 版不要求模型填路径（工具按 id 内部路由，§3.5.2）。
+- **通知内容（十轮评审：极简）**：只写三件事——① 已保存；② **调用 id**（PTC 版为 §B§by-id/<id>§B§ 路径，内含 id）；③ 用 `editPreviousToolCalling`（PTC：新程序内 fs 工具 + tools.run_code）即可重放。**失败原因不注入**——harness 的 tool/result 本身已把失败原因返回给模型，通知只作为「可选纠错路径」的指引；native 版不要求模型填路径（工具按 id 内部路由，§3.5.2）。
 - **通知文案按模式选择**（§3.4 草稿 C/D；模式经 §2.6 的 run_code 可见性判定）：run_code 可见 → PTC 版；否则 native 版。
 - **重放自身失败的行为**：重放调用走完整管线（嵌套子调用，`parent` 存在 → 不会被再次落盘/通知）；`editPreviousToolCalling` 自身若失败（如 id 输错）→ 它是直调 → 落盘并通知（零过滤），模型可直接再调用一次修正，无递归风险。
 - 通知不重复错误信息（tool/result 已含），因此也不存在摘要截断逻辑。
@@ -405,8 +405,8 @@ Every tool call you make is checkpointed under <checkpoint-dir>:
 - A checkpoint's content is byte-for-byte identical to the arguments you sent
   for that call.
 To retry with a small correction, call `editPreviousToolCalling` once with
-either previous_ordinal (the call's position 1/2/… in your previous message,
-whether it succeeded or failed) or call_id (for an OLDER call — a failed
+either previous_ordinal (the call's position 1/2/… in your previous message)
+or call_id (for an OLDER call — a failed
 call's id was given in its failure notice, and any call's id can be looked
 up in the tail of history.jsonl), plus old_string / new_string /
 replace_all. It applies your edit and immediately re-invokes the original
@@ -422,7 +422,7 @@ needed; otherwise call the tool again with fresh arguments.
 - previous/1.json、previous/2.json… 是「上一条消息」中**各个并行 tool-call block** 的快捷方式（第 1 个 block 对应 previous/1.json，第 2 个对应 previous/2.json，以此类推）。新一轮调用会重新指向它们。
 - 每次调用还会按 call id 保存为 by-id/<id>.json，并在 history.jsonl 中追加一行索引。
 - 检查点内容与你当时发送的参数逐字节一致。
-需要小幅修正重试时，调用一次 editPreviousToolCalling：修改「上一条消息」里的调用（无论成败）用 previous_ordinal（1/2/…）；修改更早的调用用 call_id（失败调用的 id 已在失败通知中给出；任何调用的 id 都可以用 tail 查看 history.jsonl 获得）。它会应用你的修改并**立即以编辑后的参数重新调用原工具**。仅当只需小幅修正时使用；否则直接用新参数重新调用该工具。
+需要小幅修正重试时，调用一次 editPreviousToolCalling：修改「上一条消息」里的调用，用 previous_ordinal（1/2/…）；修改更早的调用用 call_id（失败调用的 id 已在失败通知中给出；任何调用的 id 都可以用 tail 查看 history.jsonl 获得）。它会应用你的修改并**立即以编辑后的参数重新调用原工具**。仅当只需小幅修正时使用；否则直接用新参数重新调用该工具。
 
 ### B. 静态 system prompt 段 —— PTC（code）模式
 
@@ -434,8 +434,8 @@ whether it succeeds or fails: previous/1.json is a shortcut to your most
 recent program, which is kept as by-id/<id>.json, and an index line is
 appended to history.jsonl. Tools called INSIDE a program (including nested
 `run_code`) are not checkpointed separately.
-- Your most recent program is always previous/1.json (whether it succeeded
-  or failed); older programs are under by-id/<id>.json — a failed run's id
+- Your most recent program is always previous/1.json; older programs are
+  under by-id/<id>.json — a failed run's id
   was given in its failure notice, and any id can be looked up in the tail
   of history.jsonl.
 - After a FAILED run, a notice tells you the call id and the checkpoint path.
@@ -451,7 +451,8 @@ appended to history.jsonl. Tools called INSIDE a program (including nested
 
 工具调用检查点与重放
 你的每一次 run_code 调用会保存在 <checkpoint-dir> 下：previous/1.json 是最近一次程序的快捷方式，程序本体按 call id 保存为 by-id/<id>.json，并在 history.jsonl 中追加一行索引。程序内部调用的工具（包括嵌套的 run_code）不会单独保存。
-- 最近一次程序永远是 previous/1.json（无论成败）；更早的程序在 by-id/<id>.json 下——失败程序的 id 已在失败通知中给出，任何 id 都可以用 tail 查看 history.jsonl 获得。
+
+- 最近一次程序永远是 previous/1.json；更早的程序在 by-id/<id>.json 下——失败程序的 id 已在失败通知中给出，任何 id 都可以用 tail 查看 history.jsonl 获得。
 - 程序失败后，会收到一条通知，内含 call id 与 checkpoint 路径。
 - 重试：在新 run_code 程序里用 tools.read 读取 checkpoint（或用 tools.edit 就地修改——内容与你提交的程序完全一致，可以不先 read 直接 edit），然后基于读到的内容重建修正后的程序（或提取其中长参数数据传给其他工具）。仅当只需小幅修正时使用；否则重写一个新程序。
 
@@ -461,9 +462,8 @@ appended to history.jsonl. Tools called INSIDE a program (including nested
 TOOL-CALL CHECKPOINT (optional retry path)
 Your failed call's arguments were saved.
 - call id: <id>
-- previous-message ordinal: <n>
 To apply a small fix and re-run the call, use `editPreviousToolCalling`
-(with previous_ordinal <n> now, or call_id "<id>" later — it stays valid).
+(with call_id "<id>" — it stays valid).
 ```
 
 **C · 中文译文（评审对照）：**
@@ -471,32 +471,32 @@ To apply a small fix and re-run the call, use `editPreviousToolCalling`
 工具调用检查点（可选纠错路径）
 你这次失败调用的参数已保存。
 - call id：<id>
-- 上一条消息中的序号：<n>
-如需小幅修正后重跑该调用，使用 editPreviousToolCalling（现在可用 previous_ordinal=<n>，之后可用 call_id="<id>"——id 始终有效）。
+- 如需小幅修正后重跑该调用，使用 editPreviousToolCalling（用 call_id="<id>"——id 始终有效）。
 
 ### D. 失败通知（动态注入）—— PTC（code）模式
 
 ```text
 TOOL-CALL CHECKPOINT (optional retry path)
 Your failed `run_code` program was saved.
-- call id: <id>
-- checkpoint: <path to previous/1.json> (also by-id/<id>.json)
-To apply a small fix, edit/read it inside a new `run_code` program.
+- path: <checkpoint-dir>/by-id/<id>
+To apply a small fix, edit/read the file in a new `run_code` program and run
+it with tools.run_code.
 ```
 
 **D · 中文译文（评审对照）：**
 
 工具调用检查点（可选纠错路径）
 你这次失败的 run_code 程序已保存。
-- call id：<id>
-- checkpoint：<previous/1.json 的路径>（同时有 by-id/<id>.json）
-如需小幅修正，在新 run_code 程序里 edit/read 该文件即可。
+
+- path: <checkpoint-dir>/by-id/<id>
+
+如需小幅修正，在新 run_code 程序里 edit/read 该文件并使用tools.run_code调用即可。
 
 ### 评审要点备注
 
 - C/D **不再包含「failure」**——harness 的 tool/result 已把失败原因返回给模型，通知只做可选纠错路径指引（十轮评审：注入文本过长，精简）；「call id」由 harness 注入、模型原样回传（§2.2 实证：模型不书写 id，但可回传注入值）；「ordinal」即模型上一条消息里的调用序号（模型知道自己调用的顺序）。
 - 编号/序号约定：`previous/<n>.json` = 上一条消息里第 n 个**并行** tool call block 的别名（软链指向 `by-id/` 下 id 文件）；并行调用也按消息内顺序编号（harness 提交顺序 = 模型顺序，§2.1）。别名每轮重建（新轮重建指向，旧序号失效）。
 - A/C 的「byte-for-byte identical」在 native 下严格成立（落盘即模型发送的原串）；B/D 在 PTC 下落盘的是 `run_code` 的完整参数 JSON（整个程序），模型对格式化记忆可能不可靠——「免读直接 edit」存在 old_string 失配风险，两个缓解选项见 §7 决策点 10。
-- 使用矩阵（七轮评审）：上一个调用（成败同路）→ 顺序 id 别名；更早 → id（失败：当时注入的 id 仍在 context 可见，或查 history.jsonl；成功：只能查 history.jsonl）。C/D 通知同时给序号与 id：序号用于当下修复，id 用于之后别名被重建后仍可多次重试。
+- 使用矩阵（七轮评审）：上一个调用（成败同路）→ 顺序 id 别名；更早 → id（失败：当时注入的 id 仍在 context 可见，或查 history.jsonl；成功：只能查 history.jsonl）。C 通知只给 call id（id 始终有效、可多次重试），D 通知给 by-id 路径（内含 id）；「上一个」用序号在静态段 A 说明（模型知道自己消息里的顺序）。
 - 静态段（A/B）明确两种 access 约定（顺序 id 别名 → id 文件，history.jsonl 索引）与「别名仅保留上一步、新轮重建指向」，防止模型在过期别名上做无谓编辑。
 - 文案长度：静态段 A/B 约 100-180 token、随 system prompt 常驻；动态通知 C/D 约 20-40 token、每次失败注入（极简）。
