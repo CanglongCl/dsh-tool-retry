@@ -102,7 +102,7 @@ pnpm package:official  # assemble the publishable official tarball under dist/
 
 - Without Windows Developer Mode/admin rights, previous/ aliases fall back to copies (edits through an alias change the copy only);
 - both mode is treated as code mode (the public API cannot distinguish), so the replay tool is not registered there;
-- In PTC the retry path is eval-in-place: read the checkpoint, JSON.parse it, apply a literal replace on the real program text (`prev.code`), then `eval` the corrected program — no JSON escaping enters the match; if the retry itself fails, the new checkpoint holds the loader (its file_path still points at the original program);
+- In PTC the retry path is loader-based: read the checkpoint, JSON.parse it, apply a literal replace on the real program text (`prev.code`), then run the corrected program through the `AsyncFunction` constructor and return its value — top-level `return`/`await` keep their native run_code semantics (plain eval rejects `return` in strict mode); if the retry itself fails, the new checkpoint holds the loader (its file_path still points at the original program);
 - Replaying an UNKNOWN_TOOL checkpoint fails again (expected);
 - The OS temp directory may be reclaimed (within a session the plugin recreates directories as needed);
 - ABORTED boundary (verified; see AGENTS.md "Zero filtering"): a call cancelled at entry takes the `final-result` stage and bypasses post-execute — neither checkpointed nor notified; a post-body ABORTED checkpoints (the waterfall saw the call) but its result replacement happens after our decision, so it gets no notice.

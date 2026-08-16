@@ -50,7 +50,7 @@ replace_all: false
 
 ### PTC（Code Mode）模式
 
-不注册任何新工具。程序失败后通知给出 checkpoint 路径；在新的 run_code 程序里 `tools.read` 读回它、`JSON.parse` 后在真实程序文本上做字面 `replace`（修正片段无需处理 JSON 转义），再 `eval` 修正后的程序（strict direct eval 继承 async 上下文，`await`/`return` 可用）。若这次重试再失败，新 checkpoint 存的是 loader，其中的 `file_path` 仍指回原程序。也可从 checkpoint 提取长参数数据传给其他工具。静态段附完整示例。
+不注册任何新工具。程序失败后通知给出 checkpoint 路径；在新的 run_code 程序里 `tools.read` 读回它、`JSON.parse` 后在真实程序文本上做字面 `replace`（修正片段无需处理 JSON 转义），再用 `AsyncFunction` 构造器把修正后的程序作为**函数**执行并 `return` 其值（顶层 `return`/`await` 与原生 run_code 语义一致；裸 eval 在 strict 模式拒绝 return）。若这次重试再失败，新 checkpoint 存的是 loader，其中的 `file_path` 仍指回原程序。也可从 checkpoint 提取长参数数据传给其他工具。静态段附完整示例。
 
 ## 主要功能
 
