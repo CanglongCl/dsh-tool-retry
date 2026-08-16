@@ -93,7 +93,7 @@ Rules for the dsh-tool-retry plugin: automatic checkpointing of every model-dire
 - Windows copy fallback: edits through an alias diverge from the by-id file (native replay edits by-id directly, so only PTC fs-tool edits are affected; self-consistent).
 - os.tmpdir() may be reclaimed by the OS between sessions; within a session the plugin recreates directories as needed.
 - both mode is treated as code mode (public API cannot distinguish): editPreviousToolCalling is not registered there.
-- PTC blind-edit risk: the checkpoint is the whole program's JSON; old_string may mismatch the model's memory of formatting (mitigation options are decision 10 in the plan).
+- PTC retry guidance is parse-first (resolved from the plan's decision 10): the model JSON.parses the checkpoint inside a new run_code program and applies a literal replace on the real program text (`prev.code`), then submits the corrected program as the next run — no JSON escaping enters the match; the remaining risk is short-fragment ambiguity (JS replace hits the first match, so the guidance tells the model to use a longer unique fragment).
 - Replaying an UNKNOWN_TOOL checkpoint fails again (expected; the model moves on).
 - No new session event type for replay audit in v1: the replay outcome rides editPreviousToolCalling's own tool/result content and meta.
 

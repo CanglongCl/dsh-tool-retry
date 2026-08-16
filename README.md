@@ -50,7 +50,7 @@ replace_all: false
 
 ### PTC（Code Mode）模式
 
-不注册任何新工具。程序失败后通知给出 checkpoint 路径；在新的 run_code 程序里用 fs 工具读/编辑该文件（内容与你上次提交的程序完全一致，可不先 read 直接 edit），基于它重建修正后的程序，或提取其中长参数继续。
+不注册任何新工具。程序失败后通知给出 checkpoint 路径；在新的 run_code 程序里 `tools.read` 读回它、`JSON.parse` 后在真实程序文本上做字面 `replace`（修正片段无需处理 JSON 转义），把修正后的程序作为下一次 run_code 调用提交（程序内部无法调用 run_code）；或从 checkpoint 提取长参数数据传给其他工具。静态段附完整示例。
 
 ## 主要功能
 
@@ -102,7 +102,7 @@ pnpm package:official  # 组装可发布的官方 tarball 到 dist/
 
 - Windows 无 Developer Mode/管理员权限时，previous/ 别名降级为副本（经别名编辑只改副本，by-id 文件不变）；
 - both 模式按 code 处理（公开 API 无法区分），不注册重放工具；
-- PTC 下 checkpoint 是完整程序 JSON，「免读直接 edit」的 old_string 存在格式化失配风险；
+- PTC 重试走 parse-first 路线（`JSON.parse` → `prev.code.replace`，匹配串无 JSON 转义），剩余风险是短片段歧义（JS replace 只替换首个匹配，文案提示用更长唯一片段）；
 - UNKNOWN_TOOL 的重放会再次失败（预期行为）；
 - 系统临时目录可能被 OS 回收（会话内不受影响）；
 - ABORTED 边界（实证，见 AGENTS.md「Zero filtering」）：入口即被取消的调用走 final-result 阶段、不经过 post-execute——不落盘也不通知；工具体启动后被取消的调用在瀑布之后才被替换为 ABORTED——会落盘但无通知。

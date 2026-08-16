@@ -206,6 +206,12 @@ describe('mode detection', () => {
     const rendered = renderPrompt(assembly)
     expect(rendered).toContain('Tools called INSIDE a program')
     expect(rendered).not.toContain('editPreviousToolCalling')
+    // The PTC retry guidance: JSON.parse + literal replace, submitted as the
+    // new run — no tools.edit routing.
+    expect(rendered).toContain('JSON.parse(r.lines.map(line => line.text)')
+    expect(rendered).toContain('prev.code.replace("const retries = 3"')
+    expect(rendered).toContain('submit the corrected program as your next')
+    expect(rendered).not.toContain('fix it in place with tools.edit')
 
     // A failing outer run_code gets the PTC notice: saved + by-id path + the
     // verified retry route (submit the corrected program as the new run).
