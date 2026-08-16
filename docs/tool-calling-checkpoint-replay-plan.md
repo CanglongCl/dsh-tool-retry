@@ -323,7 +323,7 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工�
 
 ## 7. 风险与待决问题（请评审决策）
 
-1. **四段提示词文案**（附录 B）需人工审阅定稿——特别是「免读直接 edit」的措辞与边界、静态段中三轨约定的详细程度、PTC 版「checkpoint = 整个程序」的引导方式。
+1. **四段提示词文案**（附录 B）需人工审阅定稿——特别是「免读直接 edit」的措辞与边界、静态段中两种 access 约定（id 与顺序 id 别名）的详细程度、PTC 版「checkpoint = 整个程序」的引导方式。
 2. **checkpoint 目录**：`<os.tmpdir()>/.dsh/tool-checkpoints/<sessionId>/`（五轮评审已定：不用 `session.header.cwd`）——请确认；注意 tmp 目录可能被 OS 定期清理（会话内不受影响）。
 3. **零过滤**（五轮评审讨论结论）：任何工具名（含 `editPreviousToolCalling`/`edit`/`read`/`write`）与任何错误码（含 `ABORTED`/`UNKNOWN_TOOL`）的模型直调都落盘、失败都通知——已确认无时序问题（覆盖在工具体之后；native 重放单调用；多次重试走 id），请最终确认。
 4. **顺序 id 别名语义（六轮评审）**：`1.json`/`2.json`… 为指向 id 文件的软链/快捷方式（唯一真实存储是 id 文件），每轮重建指向；Windows `EPERM` 降级为副本（经副本编辑只改副本、id 文件不变）——请确认；重建粒度（每轮首调清空重建 vs 每调更新）是否认可。
@@ -378,7 +378,7 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工�
 ## 9. 附录 B：提示词草稿（集中审阅区）
 
 > 全部为**模型可见英文文本**草稿；`<...>` 为运行时填充值。评审意见请直接标注到对应草稿编号。
-> 静态段（A/B）写入 system prompt，让 AI 提前知悉三轨约定与重放用法；动态通知（C/D）**每次失败**注入，含调用 id 与上一步序号（PTC 版加文件路径）。
+> 静态段（A/B）写入 system prompt，让 AI 提前知悉两种 access 约定（id 文件与顺序 id 别名）与重放用法；动态通知（C/D）**每次失败**注入，含调用 id 与上一步序号（PTC 版加文件路径）。
 
 ### A. 静态 system prompt 段 —— native 模式
 
@@ -461,5 +461,5 @@ small edit, write a fresh program instead.
 - C/D 中的「failure」取 `result.error.message` 截断（≤200 字符）；「call id」由 harness 注入、模型原样回传（§2.2 实证：模型不书写 id，但可回传注入值）；「ordinal」即模型上一条消息里的调用序号（模型知道自己调用的顺序）。
 - 编号/序号约定：`<n>.json` = 上一条消息里第 n 个 tool call block；并行调用也按消息内顺序编号（harness 提交顺序 = 模型顺序，§2.1）。覆盖语义见 §3.2（新轮覆盖，旧编号失效）。
 - A/C 的「byte-for-byte identical」在 native 下严格成立（落盘即模型发送的原串）；B/D 在 PTC 下落盘的是 `run_code` 的完整参数 JSON（整个程序），模型对格式化记忆可能不可靠——「免读直接 edit」存在 old_string 失配风险，两个缓解选项见 §7 决策点 10。
-- 静态段（A/B）明确三轨约定（编号文件 / id 文件 / history.jsonl）与「仅上一步编号、新轮覆盖」，防止模型在过期文件上做无谓编辑。
+- 静态段（A/B）明确两种 access 约定（顺序 id 别名 → id 文件，history.jsonl 索引）与「别名仅保留上一步、新轮重建指向」，防止模型在过期别名上做无谓编辑。
 - 四段文案长度约 100-180 token；静态段随 system prompt 常驻，动态通知每次失败注入（短文案）。
