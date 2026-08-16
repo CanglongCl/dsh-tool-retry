@@ -207,13 +207,13 @@ describe('mode detection', () => {
     expect(rendered).toContain('Tools called INSIDE a program')
     expect(rendered).not.toContain('editPreviousToolCalling')
     // The PTC retry guidance: JSON.parse + literal replace + AsyncFunction-run
-    // with return support, plus the loader-checkpoint caveat — no tools.edit.
+    // with return support, trimmed to the minimal example — no tools.edit.
     expect(rendered).toContain('JSON.parse(r.lines.map(line => line.text)')
     expect(rendered).toContain('prev.code.replace("const retries = 3"')
     expect(rendered).toContain('run the corrected program as a real function and')
     expect(rendered).toContain('const AsyncFunction = (async () => {}).constructor;')
     expect(rendered).toContain('return await run(tools, console);')
-    expect(rendered).toContain('its file_path still points at your original program')
+    expect(rendered).toContain('Use this only when a small correction is needed')
     expect(rendered).not.toContain('eval the corrected program in place')
     expect(rendered).not.toContain('eval(fixed);')
     expect(rendered).not.toContain('fix it in place with tools.edit')

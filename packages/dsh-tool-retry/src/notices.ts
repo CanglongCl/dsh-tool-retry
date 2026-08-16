@@ -66,14 +66,8 @@ export function ptcSection(dir: string): string {
     '      const AsyncFunction = (async () => {}).constructor;',
     '      const run = new AsyncFunction("tools", "console", "\'use strict\';\\n" + fixed);',
     '      return await run(tools, console);',
-    '  The replace runs on the parsed program text (no JSON escaping); if a short',
-    '  fragment is ambiguous, use a longer unique fragment. Running the corrected',
-    '  program as a function keeps its top-level `return`/`await` working — plain',
-    '  `eval` rejects `return` in strict mode. If this retry also fails, the new',
-    '  checkpoint holds this loader — its file_path still points at your original program.',
-    '  Alternatively extract long argument data from the checkpoint and pass',
-    '  it to other tools. Use this only when a small correction is needed;',
-    '  otherwise write a fresh program.',
+    '  Use this only when a small correction is needed; otherwise write a fresh',
+    '  program.',
   ].join('\n')
 }
 

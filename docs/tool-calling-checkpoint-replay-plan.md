@@ -477,14 +477,8 @@ appended to history.jsonl. Tools called INSIDE a program (including nested
       const AsyncFunction = (async () => {}).constructor;
       const run = new AsyncFunction("tools", "console", "'use strict';\n" + fixed);
       return await run(tools, console);
-  The replace runs on the parsed program text (no JSON escaping); if a short
-  fragment is ambiguous, use a longer unique fragment. Running the corrected
-  program as a function keeps its top-level `return`/`await` working — plain
-  `eval` rejects `return` in strict mode. If this retry also fails, the new
-  checkpoint holds this loader — its file_path still points at your original program.
-  Alternatively extract long argument data from the checkpoint and pass
-  it to other tools. Use this only when a small correction is needed;
-  otherwise write a fresh program.
+  Use this only when a small correction is needed; otherwise write a fresh
+  program.
 ```
 
 **B · 中文译文（评审对照）：**
@@ -502,7 +496,7 @@ appended to history.jsonl. Tools called INSIDE a program (including nested
       const AsyncFunction = (async () => {}).constructor;
       const run = new AsyncFunction("tools", "console", "'use strict';\n" + fixed);
       return await run(tools, console);
-  replace 作用在解析后的程序文本上（匹配串里没有 JSON 转义）；片段太短有歧义时换更长的唯一片段。把修正后的程序作为**函数**执行，其顶层 `return`/`await` 保持可用——裸 eval 在 strict 模式会拒绝 return（实证：Illegal return statement）。若这次重试再失败，新 checkpoint 存的是这个 loader——其中的 file_path 仍指回原程序。也可以只提取其中长参数数据传给其他工具。仅当只需小幅修正时使用；否则重写一个新程序。
+  仅当只需小幅修正时使用；否则重写一个新程序。
 
 ### C. 失败通知（动态注入）—— native 模式
 
