@@ -1,0 +1,11 @@
+# Node
+node_modules/
+lib/
+dist/
+*.tsbuildinfo
+
+# OS
+.DS_Store
+
+# Local scratch
+tmp/
