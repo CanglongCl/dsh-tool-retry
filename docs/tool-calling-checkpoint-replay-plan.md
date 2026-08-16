@@ -1,6 +1,6 @@
 # DeepSeek-Harness 工具调用优化实施计划（自动暂存 · 局部编辑 · 重放）
 
-> 状态：proposed（待评审）· 版本 v15（补注：模型侧最终看到的形状——一条 assistant 消息含全部 block，结果逐条按模型顺序返回）
+> 状态：proposed（待评审）· 版本 v16（按十三轮评审：机制验证移入 §5 阶段四，§6 只留真模型评测）
 > 目标仓库：`/Users/canglong/Program/deepseek-harness`（pnpm monorepo，cordis 插件架构）——**本特性为独立插件仓库，不改动 ds harness 仓库任何代码**
 > 插件形态参考：`/Users/canglong/Program/limao-magic-ui`（dsh-web-review 独立插件仓库）
 > 本文档落盘位置：`docs/tool-calling-checkpoint-replay-plan.md`（本工作区）
@@ -277,8 +277,8 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工�
 
 ### 阶段五：评测
 
-- 评测方案见 §6。
-- **验收**：离线 A/B 报告（token 节省、重试成功率、开销）+ 真模型评测数据；结论支持/否定目标（§1）。
+- 评测方案见 §6（真模型评测；机制验证已并入 §5 阶段四）。
+- **验收**：真模型评测数据（token 节省、重试成功率、采用率、开销）；结论支持/否定目标（§1）。
 
 ---
 
@@ -294,43 +294,37 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工�
    - `editPreviousToolCalling`：`previous_ordinal` 与 `call_id` 两条路由（**二选一、恰填一个，都填/都不填报错**）；越界/不存在的序号或 id 报错；`old_string` 失配报错；编辑后内容非法 JSON；目标越出 checkpoint 目录被拒；原工具未注册/重放失败透传；`fs/observed` 版本更新；run_code 可见时工具未注册。
 3. **agent-loop 集成**（`packages/fs/tool-fs/tests/harness.ts:15-24` 的 `fsHarness` + `packages/test-support/agent-loop-testkit` `mountAgentLoopTestDependencies` :37-46，依赖自发布版 npm 包）：真实循环内「成功调用也落盘 → 失败 → 通知（含 id）时序位于该 tool/result 之后 → editPreviousToolCalling(id) 单次重放 → 结果」全链路；**上一步全部并行 block 各自可重放**；多次重试用 id 路径可复现。
 4. **code-mode 集成**：外层 `run_code` 整体落盘（`previous/1.json` + `by-id/<id>.json`）→ 未捕获失败 → 通知（含 id 与路径）；内部子调用失败被捕获 → 不通知；程序执行期间 checkpoint 旧内容可读（替换在程序结束后）；下一步程序内 `tools.read`/`tools.edit` checkpoint（无需先 read，验证预观察生效）；**code 模式不注册 editPreviousToolCalling**。
-5. **keyless 快照/回放**：`packages/test-support/llm-replay` + `replay.override.json` 强制注入失败并脚本化两臂重试；纳入仓库自身 CI（对照 harness `pnpm run test:snapshot` 的用法）。
+5. **机制验证（keyless 脚本化 A/B，llm-replay）**——**从 §6 移入（十三轮评审）**：llm-replay 回放固定剧本、模型行为是脚本化的，它验证的是**特性机制本身**而非模型行为，故属阶段四：
+   - 语料：构造/采集 `tool/call.arguments` 超长（按字节数阈值筛选）的 `session.jsonl` fixtures（native 与 PTC 各若干，含多并行 block 场景）；
+   - 用 `replay.override.json`（`packages/test-support/llm-replay`）在该调用后强制注入 `tool/result{error}`，并脚本化两臂完全相同的重试脚本；
+   - 特性 ON/OFF 两种 cordis 组合各回放一遍（`installLlmReplay` 驱动真实 agent-loop）；
+   - 逐场景断言：checkpoint/别名/jsonl 落盘、通知条数与时序（恒等于失败次数）、并行 block 各自可重放、多次重试用 id 可复现、重放路径成功、固定开销（写盘耗时/注入 token 数）与脚本化重试的 token 上界（仅机制算术演示，不作对外数据）；
+   - 输出 JSON 摘要（对齐 `examples/jsonrpc-agent/tests/snapshots/*` 的 `result.expected.json` 布局），作为快照断言常驻防回归，纳入仓库自身 CI（对照 harness `pnpm run test:snapshot` 的用法）。
 6. **真实 API e2e**：PTC 与 native 各一例（无 key 自动跳过）。
 7. **插件形态合规**：导出形状/HMR disposal/`invariant`/Model Experience README 对齐 harness `packages/AGENTS.md` 惯例（独立仓库自建门禁，不提交进 harness）。
 
 ---
 
-## 6. 评测方案（第五阶段）
+## 6. 评测方案（第五阶段·真模型评测）
 
-> 定位（十二轮评审澄清）：**A 是机制验证（阶段四性质）**——脚本化、无 key、防回归；**B 才是真正的评测**（真模型、真行为、对外数据）。指标对两者通用，但「token 节省」只有 B 的数值可对外引用，A 的数值只是机制上界演示。
+> 定位（十三轮评审澄清）：**机制验证（llm-replay keyless 脚本化 A/B）已移入 §5（阶段四）**——它回放固定剧本，不能回答「真模型是否自发采用该路径、真实节省多少」。本节只含**真模型评测**：真实模型、真实行为、对外数据。
 
 **指标**（数据源 = session JSONL 权威日志，无需新埋点）：
 
 - 重试步输出 token：`assistant/message.usage.outputTokens`（`packages/core/session/src/types.ts:266-273`），或 `tokenMeter` 的 `tokenUsage` 投影（仅评测读取，特性运行时不依赖）；
 - 重试成功率：通知所在下一步内，原工具名（或 `run_code`）再次出现且 `tool/result` 无 `error`（`types.ts:291-297`）；
-- 「成功但重放」场景成功率：模型对成功调用发起重放后，重放调用无 `error`；
-- 多次重试：同一 id 连续重试直至成功的能力（id 全量文件不被覆盖）；
-- 并行覆盖：上一步存在多个并行 block 时，各顺序 id 别名齐全且各自可重放；
+- **特性采用率：失败后模型实际使用重放路径（`editPreviousToolCalling` / checkpoint 读取）的比例——本评测最核心的观察项**；
 - 任务成功率：`turn/end.reason` 非 `error`/非 `max-tokens`（`types.ts:146-168`）；
-- 开销：checkpoint 写盘耗时与文件量（编号文件 ≤ 上一步 block 数 + id 文件 + jsonl）、通知注入条数（应恒等于失败次数）。
+- 开销：checkpoint 写盘耗时、通知注入条数（应恒等于失败次数）与字节数。
 
-**A. 机制验证（keyless 脚本化 A/B，无 API key、可进 CI）——属阶段四性质，非模型评测**：
-
-> 澄清（十二轮评审）：llm-replay 回放**固定剧本**，模型行为是脚本化的，因此它**不能**回答「真模型是否自发采用该路径、真实节省多少 token」——那只能由 B 回答。它验证的是**特性机制本身**：三轨落盘正确性、通知时序与条数、`editPreviousToolCalling` 端到端路径、固定开销（写盘耗时/注入 token 数），以及脚本化重试下的 token 差异上界（机制层面的算术演示，不作对外数据）。
-
-1. 语料：构造/采集 `tool/call.arguments` 超长（按字节数阈值筛选）的 `session.jsonl` fixtures（native 与 PTC 各若干，含多并行 block 场景）；
-2. 用 `llm-replay` 的 `replay.override.json`（`packages/test-support/llm-replay`）在该调用后强制注入 `tool/result{error}`，并脚本化两臂完全相同的重试脚本；
-3. 特性 ON/OFF 两种 cordis 组合各回放一遍（`installLlmReplay` 驱动真实 agent-loop）；
-4. 逐场景断言：checkpoint/别名/jsonl 落盘、通知条数与时序、重放路径成功、脚本化重试的 token 上界与固定开销，输出 JSON 摘要（对齐 `examples/jsonrpc-agent/tests/snapshots/*` 的 `result.expected.json` 布局），作为快照断言常驻（防回归）。
-
-**B. 真模型评测（第五阶段对外数据）**：
+**真模型评测（第五阶段对外数据）**：
 
 - 驱动：`examples/jsonrpc-agent/minimal.py`（`BENCHMARK.md` 唯一指引路径）或 `DeepSeekHarness` SDK；每臂/每任务独立 workspace 与 session-id（BENCHMARK.md 要求）；
 - 场景集建议：长 JSON 配置编辑、大批量文件改写、schema 校验失败修正、PTC 下 `run_code` 程序失败后的重试（读 checkpoint 重建程序）、**「成功但不符预期」后的重放重试（tail history.jsonl 取 id）**、**并行多 block 中单个失败的重试**、**同一调用的多次重试（id 路径）**；
-- 每轮结束解析产出 JSONL：聚合「重试步 token 节省 %」「重试成功率」「任务成功率」「注入开销」对比基线（特性关闭、模型全量重生成参数）。
-- 报告建议基线目标：重试步输出 token 节省 ≥ 40%；重试成功率不劣于基线；通知条数 = 失败次数；特性采用率（失败后使用重放路径的比例）作为观察项。
+- 每轮结束解析产出 JSONL：聚合「重试步 token 节省 %」「重试成功率」「采用率」「任务成功率」「注入开销」对比基线（特性关闭、模型全量重生成参数）；
+- 报告建议基线目标：重试步输出 token 节省 ≥ 40%；重试成功率不劣于基线；通知条数 = 失败次数；采用率单独报告作为观察项。
 
-> 注：仓库目前**没有**专门 eval 框架（无 swebench/terminal-bench；`python/` 仅为 SDK+runtime，`BENCHMARK.md` 仅指向 `jsonrpc-agent`）。若后续要扩大规模，`llm-replay` 的 keyless A/B 是最贴近现成基建的扩展点；limao-magic-ui 的 `eval/` 目录（capture/smoke/batch/report）可作为独立插件自建评测套件的范本。
+> 注：仓库目前**没有**专门 eval 框架（无 swebench/terminal-bench；`python/` 仅为 SDK+runtime，`BENCHMARK.md` 仅指向 `jsonrpc-agent`）。limao-magic-ui 的 `eval/` 目录（capture/smoke/batch/report）可作为独立插件自建评测套件的范本。
 
 ---
 
