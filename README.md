@@ -81,7 +81,7 @@ replace_all: false
 
 ## 插件能力评测
 
-评测方案见 [docs/tool-calling-checkpoint-replay-plan.md](./docs/tool-calling-checkpoint-replay-plan.md) 的 §6：基于 llm-replay 的 keyless 确定性 A/B（特性开/关对比重试步 token 节省、重试成功率），以及真模型评测（python SDK jsonrpc-agent）。实施后将落地为仓库内的 eval/ 套件（参照 dsh-web-review 的 eval 结构）。
+评测方案见 [docs/tool-calling-checkpoint-replay-plan.md](./docs/tool-calling-checkpoint-replay-plan.md) 的 §6：**机制验证**（llm-replay keyless 脚本化 A/B——固定剧本、无 key、进 CI，验证三轨落盘/通知/重放路径与固定开销，不测模型行为）+ **真模型评测**（python SDK jsonrpc-agent，独立 workspace/session-id 对照，唯一能回答「模型是否会使用、实际省多少」的手段）。实施后将落地为仓库内的 eval/ 套件（参照 dsh-web-review 的 eval 结构）。
 
 ## 参与开发
 

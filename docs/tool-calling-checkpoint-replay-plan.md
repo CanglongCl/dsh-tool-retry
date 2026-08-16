@@ -302,6 +302,8 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工�
 
 ## 6. 评测方案（第五阶段）
 
+> 定位（十二轮评审澄清）：**A 是机制验证（阶段四性质）**——脚本化、无 key、防回归；**B 才是真正的评测**（真模型、真行为、对外数据）。指标对两者通用，但「token 节省」只有 B 的数值可对外引用，A 的数值只是机制上界演示。
+
 **指标**（数据源 = session JSONL 权威日志，无需新埋点）：
 
 - 重试步输出 token：`assistant/message.usage.outputTokens`（`packages/core/session/src/types.ts:266-273`），或 `tokenMeter` 的 `tokenUsage` 投影（仅评测读取，特性运行时不依赖）；
@@ -312,19 +314,21 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工�
 - 任务成功率：`turn/end.reason` 非 `error`/非 `max-tokens`（`types.ts:146-168`）；
 - 开销：checkpoint 写盘耗时与文件量（编号文件 ≤ 上一步 block 数 + id 文件 + jsonl）、通知注入条数（应恒等于失败次数）。
 
-**A. 离线确定性 A/B（首选，无 API key、可进 CI）**：
+**A. 机制验证（keyless 脚本化 A/B，无 API key、可进 CI）——属阶段四性质，非模型评测**：
+
+> 澄清（十二轮评审）：llm-replay 回放**固定剧本**，模型行为是脚本化的，因此它**不能**回答「真模型是否自发采用该路径、真实节省多少 token」——那只能由 B 回答。它验证的是**特性机制本身**：三轨落盘正确性、通知时序与条数、`editPreviousToolCalling` 端到端路径、固定开销（写盘耗时/注入 token 数），以及脚本化重试下的 token 差异上界（机制层面的算术演示，不作对外数据）。
 
 1. 语料：构造/采集 `tool/call.arguments` 超长（按字节数阈值筛选）的 `session.jsonl` fixtures（native 与 PTC 各若干，含多并行 block 场景）；
 2. 用 `llm-replay` 的 `replay.override.json`（`packages/test-support/llm-replay`）在该调用后强制注入 `tool/result{error}`，并脚本化两臂完全相同的重试脚本；
 3. 特性 ON/OFF 两种 cordis 组合各回放一遍（`installLlmReplay` 驱动真实 agent-loop）；
-4. 逐场景对比输出 token 与重试成功布尔值，输出 JSON 摘要（对齐 `examples/jsonrpc-agent/tests/snapshots/*` 的 `result.expected.json` 布局），作为快照断言常驻。
+4. 逐场景断言：checkpoint/别名/jsonl 落盘、通知条数与时序、重放路径成功、脚本化重试的 token 上界与固定开销，输出 JSON 摘要（对齐 `examples/jsonrpc-agent/tests/snapshots/*` 的 `result.expected.json` 布局），作为快照断言常驻（防回归）。
 
 **B. 真模型评测（第五阶段对外数据）**：
 
 - 驱动：`examples/jsonrpc-agent/minimal.py`（`BENCHMARK.md` 唯一指引路径）或 `DeepSeekHarness` SDK；每臂/每任务独立 workspace 与 session-id（BENCHMARK.md 要求）；
 - 场景集建议：长 JSON 配置编辑、大批量文件改写、schema 校验失败修正、PTC 下 `run_code` 程序失败后的重试（读 checkpoint 重建程序）、**「成功但不符预期」后的重放重试（tail history.jsonl 取 id）**、**并行多 block 中单个失败的重试**、**同一调用的多次重试（id 路径）**；
 - 每轮结束解析产出 JSONL：聚合「重试步 token 节省 %」「重试成功率」「任务成功率」「注入开销」对比基线（特性关闭、模型全量重生成参数）。
-- 报告建议基线目标：重试步输出 token 节省 ≥ 40%；重试成功率不劣于基线；通知条数 = 失败次数。
+- 报告建议基线目标：重试步输出 token 节省 ≥ 40%；重试成功率不劣于基线；通知条数 = 失败次数；特性采用率（失败后使用重放路径的比例）作为观察项。
 
 > 注：仓库目前**没有**专门 eval 框架（无 swebench/terminal-bench；`python/` 仅为 SDK+runtime，`BENCHMARK.md` 仅指向 `jsonrpc-agent`）。若后续要扩大规模，`llm-replay` 的 keyless A/B 是最贴近现成基建的扩展点；limao-magic-ui 的 `eval/` 目录（capture/smoke/batch/report）可作为独立插件自建评测套件的范本。
 

@@ -81,7 +81,7 @@ Signature { previous_ordinal?, call_id?, old_string, new_string, replace_all } �
 
 ## Evaluation
 
-See §6 of docs/tool-calling-checkpoint-replay-plan.md: a keyless deterministic A/B over llm-replay (feature on/off comparing retry-step token savings and retry success rate) plus real-model evaluation via the python SDK jsonrpc-agent. This will land as an eval/ suite in this repo (mirroring dsh-web-review's eval structure).
+See §6 of docs/tool-calling-checkpoint-replay-plan.md: **mechanism verification** (a keyless scripted A/B over llm-replay — fixed transcript, no key, CI-gated; verifies checkpointing/notification/replay paths and fixed overhead, not model behavior) plus **real-model evaluation** (python SDK jsonrpc-agent, isolated workspace/session-id per arm — the only way to answer whether models actually adopt the path and how much they really save). This will land as an eval/ suite in this repo (mirroring dsh-web-review's eval structure).
 
 ## Development
 
