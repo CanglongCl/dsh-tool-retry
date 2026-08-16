@@ -1,6 +1,6 @@
 # DeepSeek-Harness 工具调用优化实施计划（自动暂存 · 局部编辑 · 重放）
 
-> 状态：proposed（待评审）· 版本 v12（按十轮评审：失败通知极简化——只告知「已保存 + id + 用法」，不重复失败原因）
+> 状态：proposed（待评审）· 版本 v13（按十一轮评审：静态段强调上一步是并行 block）
 > 目标仓库：`/Users/canglong/Program/deepseek-harness`（pnpm monorepo，cordis 插件架构）——**本特性为独立插件仓库，不改动 ds harness 仓库任何代码**
 > 插件形态参考：`/Users/canglong/Program/limao-magic-ui`（dsh-web-review 独立插件仓库）
 > 本文档落盘位置：`docs/tool-calling-checkpoint-replay-plan.md`（本工作区）
@@ -393,12 +393,11 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工�
 
 ```text
 TOOL-CALL CHECKPOINT & REPLAY
-Every tool call you make is checkpointed under <checkpoint-dir>, whether it
-succeeds or fails:
-- previous/1.json, previous/2.json, ... are shortcuts to the calls of your
-  PREVIOUS message in your call order (your 1st call is previous/1.json,
-  your 2nd call is previous/2.json, and so on). A new round of calls
-  re-points them.
+Every tool call you make is checkpointed under <checkpoint-dir>:
+- previous/1.json, previous/2.json, ... are shortcuts to the PARALLEL
+  tool-call blocks of your PREVIOUS message, in your call order (your 1st
+  block is previous/1.json, your 2nd block is previous/2.json, and so on).
+  A new round of calls re-points them.
 - Every call is also kept under its call id as by-id/<id>.json, and an index
   line is appended to history.jsonl.
 - A checkpoint's content is byte-for-byte identical to the arguments you sent
@@ -417,7 +416,7 @@ needed; otherwise call the tool again with fresh arguments.
 
 工具调用检查点与重放
 你发出的每一次工具调用（无论成败），其参数都会保存在 <checkpoint-dir> 下：
-- previous/1.json、previous/2.json… 是「上一条消息」中各次调用的快捷方式（第 1 次调用对应 previous/1.json，第 2 次对应 previous/2.json，以此类推）。新一轮调用会重新指向它们。
+- previous/1.json、previous/2.json… 是「上一条消息」中**各个并行 tool-call block** 的快捷方式（第 1 个 block 对应 previous/1.json，第 2 个对应 previous/2.json，以此类推）。新一轮调用会重新指向它们。
 - 每次调用还会按 call id 保存为 by-id/<id>.json，并在 history.jsonl 中追加一行索引。
 - 检查点内容与你当时发送的参数逐字节一致。
 需要小幅修正重试时，调用一次 editPreviousToolCalling：修改「上一条消息」里的调用（无论成败）用 previous_ordinal（1/2/…）；修改更早的调用用 call_id（失败调用的 id 已在失败通知中给出；任何调用的 id 都可以用 tail 查看 history.jsonl 获得），并附 old_string / new_string / replace_all。它会应用你的修改并立即以编辑后的参数重新调用原工具。仅当只需小幅修正时使用；否则直接用新参数重新调用该工具。
@@ -493,7 +492,7 @@ To apply a small fix, edit/read it inside a new `run_code` program.
 ### 评审要点备注
 
 - C/D **不再包含「failure」**——harness 的 tool/result 已把失败原因返回给模型，通知只做可选纠错路径指引（十轮评审：注入文本过长，精简）；「call id」由 harness 注入、模型原样回传（§2.2 实证：模型不书写 id，但可回传注入值）；「ordinal」即模型上一条消息里的调用序号（模型知道自己调用的顺序）。
-- 编号/序号约定：`previous/<n>.json` = 上一条消息里第 n 个 tool call block 的别名（软链指向 `by-id/` 下 id 文件）；并行调用也按消息内顺序编号（harness 提交顺序 = 模型顺序，§2.1）。别名每轮重建（新轮重建指向，旧序号失效）。
+- 编号/序号约定：`previous/<n>.json` = 上一条消息里第 n 个**并行** tool call block 的别名（软链指向 `by-id/` 下 id 文件）；并行调用也按消息内顺序编号（harness 提交顺序 = 模型顺序，§2.1）。别名每轮重建（新轮重建指向，旧序号失效）。
 - A/C 的「byte-for-byte identical」在 native 下严格成立（落盘即模型发送的原串）；B/D 在 PTC 下落盘的是 `run_code` 的完整参数 JSON（整个程序），模型对格式化记忆可能不可靠——「免读直接 edit」存在 old_string 失配风险，两个缓解选项见 §7 决策点 10。
 - 使用矩阵（七轮评审）：上一个调用（成败同路）→ 顺序 id 别名；更早 → id（失败：当时注入的 id 仍在 context 可见，或查 history.jsonl；成功：只能查 history.jsonl）。C/D 通知同时给序号与 id：序号用于当下修复，id 用于之后别名被重建后仍可多次重试。
 - 静态段（A/B）明确两种 access 约定（顺序 id 别名 → id 文件，history.jsonl 索引）与「别名仅保留上一步、新轮重建指向」，防止模型在过期别名上做无谓编辑。
