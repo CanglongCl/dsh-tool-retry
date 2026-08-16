@@ -1,6 +1,6 @@
 # DeepSeek-Harness 工具调用优化实施计划（自动暂存 · 局部编辑 · 重放）
 
-> 状态：proposed（待评审）· 版本 v13（按十一轮评审：静态段强调上一步是并行 block）
+> 状态：proposed（待评审）· 版本 v14（补注：并行执行机制与模型感知——事件无并发标记，编号与执行重叠无关）
 > 目标仓库：`/Users/canglong/Program/deepseek-harness`（pnpm monorepo，cordis 插件架构）——**本特性为独立插件仓库，不改动 ds harness 仓库任何代码**
 > 插件形态参考：`/Users/canglong/Program/limao-magic-ui`（dsh-web-review 独立插件仓库）
 > 本文档落盘位置：`docs/tool-calling-checkpoint-replay-plan.md`（本工作区）
@@ -52,6 +52,7 @@
   - `appendToolCall` 把模型调用落盘为 `tool/call` 事件，**含原始参数字符串**：:262-264
   - 结果提交后，`result.additionalContexts` 经 `acceptContext` 送入下一步 inbox：:155-156；`agent.ts` 在下一步 preStep 领取并追加为 user 消息：:395-398
   - **提交顺序 = 模型顺序（编号命名的依据）**：并行调用体可重叠执行，但 `post-execute`（finalize/finish）在 `commitReady` 中按模型顺序逐个提交（`tool-calls.ts:146-160`），因此每轮内 post-execute 的到达顺序与模型消息里 block 的顺序一致，可据此编 1、2、3… 号。
+  - **并行机制与模型感知（十一轮评审查证）**：一条 assistant 消息的全部 block 作为一步处理；每个调用经 `executionMode` 分类（工具声明 `isConcurrencySafe(args) === true` 才并行，fail-closed 默认独占，`tools/index.ts:1276-1285`）；独占调用形成屏障、并行组用有界池执行（`maxParallelToolCalls` 默认 10，`agent-loop/constants.ts:6`），**只有工具体重叠，pre-execute 有序、结果按模型顺序提交**。**模型只能感知自己发出的 block 与其顺序，感知不到执行是否真正重叠**——`tool/call`/`tool/result` 事件没有任何并发标记（`core/session/src/types.ts:279,291-297`），isConcurrencySafe/maxParallelToolCalls 均不暴露给模型。⇒ 文案里「PARALLEL blocks」指模型自己「并行发出」的语义；编号只依赖消息内顺序，独占屏障推迟执行但**不改变提交顺序与编号**。
 - **code-mode 桥转发嵌套上下文**：`packages/core/tools/src/code-mode.ts:560-562` 把子调用的 `additionalContexts` 经 `exec.deferContext` 转发到外层 `run_code` 结果。⇒ 用 `tools/post-execute` + `additionalContexts` 注入通知，在 **native 与 PTC 两种模式下都成立**，且时序天然位于该次调用的 `tool/result` 之后。
 
 ### 2.2 失败判定、tool call block 与调用标识（callId）
