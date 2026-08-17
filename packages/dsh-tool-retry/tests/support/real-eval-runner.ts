@@ -47,7 +47,7 @@ export interface EvalFixture {
   /** The tool family the runner composition must mount. */
   kind: 'deploy' | 'boom' | 'fs' | 'plan'
   /** The breakpoint round's failing blocks, in model order. */
-  blocks: { callId: string; tool: string; rawArguments: string; errorText: string; notice: string }[]
+  blocks: { callId: string; tool: string; rawArguments: string; errorText: string }[]
   continuation: string
   /** Workspace files pre-created before resume (fs scenarios). */
   workspaceFiles?: { path: string; content: string }[]
@@ -260,53 +260,6 @@ function textOfBlocks(content: { type?: string; text?: string }[] | undefined): 
   return (content ?? []).filter(block => block.type === 'text').map(block => block.text ?? '').join('\n')
 }
 
-/** Folded human-readable trace of the full session (dsh-web-review parity). */
-function renderTrace(events: RunRow[], summary: EvalRunSummary): string {
-  const out: string[] = [
-    `# Session trace — ${summary.scenario} ${summary.arm}/r?`,
-    '',
-    `_status: ${summary.status} · retry success: ${summary.retrySuccess} · adopted: ${summary.adopted} · notices: ${summary.noticeCount}_`,
-    `_revisions: scenario ${summary.revisions.scenario} · grader ${summary.revisions.grader} · execution ${summary.revisions.execution} · experiment ${summary.revisions.experiment}_`,
-    '',
-  ]
-  let currentTurn = 0
-  for (const event of events) {
-    const data = event.data
-    if (event.type === 'turn/start') {
-      currentTurn = (data as { turn?: number }).turn ?? currentTurn
-      out.push(`## Turn ${currentTurn}`)
-    } else if (event.type === 'user/message') {
-      const text = textOfBlocks(data.content)
-      out.push('', `### user message`, '```text', text.length > 4000 ? `${text.slice(0, 4000)}…` : text, '```')
-    } else if (event.type === 'assistant/message') {
-      const message = data.message
-      const content = message?.content ?? []
-      const reasoning = content.filter(block => (block as { type?: string }).type === 'reasoning')
-        .map(block => (block as { text?: string }).text ?? '').join('\n')
-      const usage = data.usage
-      out.push('', `### Turn ${currentTurn} · step ${(data as { step?: number }).step} · assistant`)
-      if (reasoning !== '') {
-        out.push('<details><summary>Thinking (reasoning block)</summary>', '', reasoning.length > 3000 ? `${reasoning.slice(0, 3000)}…` : reasoning, '', '</details>')
-      }
-      for (const block of content) {
-        if ((block as { type?: string }).type === 'tool-call') {
-          const call = block as { id?: string; name?: string; arguments?: string }
-          out.push('', `#### tool call ${call.name ?? ''} (${call.id ?? ''})`, '```json', call.arguments ?? '', '```')
-        }
-      }
-      if (usage !== undefined) {
-        out.push(`_usage: in ${usage.inputTokens ?? 0} · out ${usage.outputTokens ?? 0} · reasoning ${usage.reasoningTokens ?? 0}_`)
-      }
-    } else if (event.type === 'tool/result') {
-      const block = data.message?.content?.[0]
-      out.push(`#### result ${block?.isError === true ? '(error)' : ''}`, '```text', textOfBlocks(block?.content), '```')
-    } else if (event.type === 'turn/end') {
-      out.push(`_turn ended: ${(data.reason as { kind?: string }).kind ?? 'unknown'}_`)
-    }
-  }
-  return `${out.join('\n')}\n`
-}
-
 /** Structured process statistics (dsh-web-review process.json parity). */
 function processStats(events: RunRow[], summary: EvalRunSummary): Record<string, unknown> {
   const toolCounts: Record<string, number> = {}
@@ -482,27 +435,13 @@ export async function runEvalScenario(options: EvalRunOptions): Promise<EvalRunS
     }
 
     // Persist the prefix; the ON arm appends the recorded failure notice.
+    // The ON arm differs from OFF by composition and on-disk store only:
+    // the plugin's STATIC protocol section describes the checkpoint dirs and
+    // the replay tool, and the model decides on its own how to retry (the
+    // dynamic failure notice is NOT pre-injected — this eval does not test
+    // the user-message delivery channel; live post-break failures still
+    // produce real notices, which the metrics count).
     const prefixEvents = [...fixture.events]
-    if (options.arm === 'on') {
-      const lastSeq = prefixEvents.reduce((max: number, event: unknown) =>
-        Math.max(max, (event as { seq?: number }).seq ?? 0), 0)
-      let seq = lastSeq + 1
-      fixture.blocks.forEach((block, index) => {
-        const noticeText = block.notice.replaceAll('__CHECKPOINT_DIR__', checkpointDir)
-        prefixEvents.push({
-          type: 'user/message',
-          seq: seq++,
-          time: fixture.header.createdAt + 8 + index,
-          data: {
-            content: [{ type: 'text', text: noticeText }],
-            source: { kind: 'plugin', plugin: PLUGIN_ID, form: 'notice', summary: 'Failed call saved' },
-            role: 'user',
-            id: `prefix-notice-message-${index}`,
-          },
-          surfaceOp: 'append',
-        })
-      })
-    }
     await ctx.sessionPersistence.create({
       version: SESSION_FORMAT_VERSION,
       id: SessionId(sessionId),
@@ -706,7 +645,6 @@ export async function runEvalScenario(options: EvalRunOptions): Promise<EvalRunS
       writeFileSync(join(options.runDir, 'session.jsonl'), `${lines.join('\n')}\n`)
       // dsh-web-review parity artifacts: a folded human-readable trace, the
       // structured process stats, and (fs scenarios) the final workspace.
-      writeFileSync(join(options.runDir, 'trace.md'), renderTrace(events, summary))
       writeFileSync(join(options.runDir, 'process.json'), `${JSON.stringify(processStats(events, summary), null, 2)}\n`)
       if (fixture.kind === 'fs') {
         mkdirSync(join(options.runDir, 'workspace'), { recursive: true })

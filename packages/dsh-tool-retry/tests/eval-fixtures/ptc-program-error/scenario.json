@@ -12,8 +12,7 @@
       "callId": "break_rc",
       "tool": "run_code",
       "rawArguments": "{\"code\":\"// RETRY-TARGET\\nreturn await tools.boom({ value: \\\"v1-marker\\\" })\",\"description\":\"run the failing program\"}",
-      "errorText": "code run failed (exception): boom failed on v1-marker",
-      "notice": "Your failed `run_code` program was saved.\n- path: __CHECKPOINT_DIR__/by-id/break_rc.json\nTo apply a small fix, read and JSON.parse it in a new `run_code`\nprogram, replace the fragment, and run the corrected program with the\nAsyncFunction constructor."
+      "errorText": "code run failed (exception): boom failed on v1-marker"
     }
   ],
   "continuation": "That program failed. Fix it with the smallest change, run the corrected program, and report the result."

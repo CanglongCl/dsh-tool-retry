@@ -12,8 +12,7 @@
       "callId": "break_fs_rc",
       "tool": "run_code",
       "rawArguments": "{\"code\":\"// RETRY-TARGET\\nreturn await tools.edit({\\n  file_path: \\\"notes.md\\\",\\n  old_string: \\\"// notes.md — 初始版本（v1）\\\",\\n  new_string: \\\"缓存层迁移手册（修订版）\\\\n\\\\n本手册描述缓存层迁移的完整流程，补充了如下内容：\\\\n- 迁移前的容量评估与压测基线（基线 p99 与吞吐记录表）；\\\\n- 双写阶段的数据一致性校验（对账任务 cron 与偏差告警阈值）；\\\\n- 切换阶段的灰度策略与自动熔断规则；\\\\n- 收敛阶段后的归档保留期（180 天）与审计要求。\\\\n其余章节与旧版一致，见正文。\\\",\\n})\",\"description\":\"update notes.md via the edit tool\"}",
-      "errorText": "code run failed (exception): ToolCallError: old_string not found in notes.md (the file has changed)",
-      "notice": "Your failed `run_code` program was saved.\n- path: __CHECKPOINT_DIR__/by-id/break_fs_rc.json\nTo apply a small fix, read and JSON.parse it in a new `run_code`\nprogram, replace the fragment, and run the corrected program with the\nAsyncFunction constructor."
+      "errorText": "code run failed (exception): ToolCallError: old_string not found in notes.md (the file has changed)"
     }
   ],
   "continuation": "That program failed — the old_string no longer matches the file. Fix it with the smallest change, run the corrected program, and report the result.",

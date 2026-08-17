@@ -12,8 +12,7 @@
       "callId": "break_boom",
       "tool": "boom",
       "rawArguments": "{\"value\":\"v1-marker\"}",
-      "errorText": "boom failed on v1-marker",
-      "notice": "Your failed call's arguments were saved.\n- call id: break_boom\nTo apply a small fix and re-run the call, use `editPreviousToolCalling`\n(with call_id \"break_boom\" — it stays valid)."
+      "errorText": "boom failed on v1-marker"
     }
   ],
   "continuation": "That call failed. Retry it with the smallest possible change and report the outcome."

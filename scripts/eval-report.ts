@@ -261,8 +261,6 @@ function buildScenarioRows(records: RunRecord[]): ScenarioRow[] {
 /* shadcn-standard render helpers                                       */
 /* ------------------------------------------------------------------ */
 
-const CHEVRON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5 shrink-0 transition-transform group-open:rotate-90"><path d="m6 12 4-4-4-4"/></svg>'
-
 /** Badge: savings/adoption sign-colored, shadcn badge anatomy. */
 function badge(label: string, tone: 'positive' | 'negative' | 'neutral' = 'neutral'): string {
   const tones = {
@@ -271,18 +269,6 @@ function badge(label: string, tone: 'positive' | 'negative' | 'neutral' = 'neutr
     neutral: 'border-border bg-muted text-muted-foreground',
   }
   return `<span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap ${tones[tone]}">${label}</span>`
-}
-
-/** Run-status badge (completed / cutoff / timeout / error). */
-function statusBadge(status: string): string {
-  const map: Record<string, { label: string; tone: 'positive' | 'negative' | 'neutral' }> = {
-    completed: { label: '✅ 收敛', tone: 'positive' },
-    cutoff: { label: '⏹ 截断', tone: 'neutral' },
-    timeout: { label: '⏱ 超时', tone: 'negative' },
-    error: { label: '❌ 错误', tone: 'negative' },
-  }
-  const entry = map[status] ?? { label: status, tone: 'neutral' }
-  return badge(entry.label, entry.tone)
 }
 
 function percent(value: number): string {
@@ -358,11 +344,21 @@ function abDiffTable(row: ScenarioRow): string {
     const run = (arm === 'on' ? onRuns : offRuns).find(run => run.repetition === rep)
     return run === undefined ? 0 : spec.value(run)
   }
+  const runFor = (arm: 'on' | 'off', rep: number): RunRecord | undefined =>
+    (arm === 'on' ? onRuns : offRuns).find(run => run.repetition === rep)
+  /** The rightmost cell: a per-run "view calls" button opening the modal. */
+  const detailCell = (arm: 'on' | 'off', rep: number): string => {
+    const run = runFor(arm, rep)
+    if (run === undefined) return '<td class="p-2 text-center"></td>'
+    const modalId = `modal-${sanitizeAttr(`${row.scenario}-${arm}-r${rep}`)}`
+    const label = `${row.scenario} · ${arm === 'on' ? 'ON' : 'OFF'} r${rep}`
+    return `<td class="p-2 text-center"><button data-open-modal="#${modalId}" data-run-label="${escapeHtml(label)}" class="inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用</button></td>`
+  }
   const medianOf = (values: number[]): number => {
     const sorted = [...values].sort((a, b) => a - b)
     return sorted[Math.floor(sorted.length / 2)] ?? 0
   }
-  const group = (label: string, onValues: number[], offValues: number[], emphasized: boolean): string => {
+  const group = (label: string, onValues: number[], offValues: number[], emphasized: boolean, rep: number | undefined): string => {
     const onCells = metrics.map(spec => `<td class="p-2 text-right align-middle tabular-nums ${emphasized ? 'font-semibold' : ''}">${spec.format(onValues[metrics.indexOf(spec)] ?? 0)}</td>`).join('')
     const offCells = metrics.map(spec => `<td class="p-2 text-right align-middle tabular-nums ${emphasized ? 'font-semibold' : 'text-muted-foreground'}">`
       + `${spec.format(offValues[metrics.indexOf(spec)] ?? 0)}</td>`).join('')
@@ -370,27 +366,42 @@ function abDiffTable(row: ScenarioRow): string {
       const d = spec.diff(onValues[metrics.indexOf(spec)] ?? 0, offValues[metrics.indexOf(spec)] ?? 0)
       return `<td class="p-2 text-center align-middle">${savingsCell(d.text, d.tone)}</td>`
     }).join('')
+    const detail = rep === undefined ? '<td class="p-2 text-center"></td>' : detailCell('off', rep)
     return [
       '<tr>',
       `<td class="p-2 pl-3 text-right text-xs text-muted-foreground">${label} OFF</td>`,
       offCells,
+      detail,
       '</tr>',
       '<tr>',
       `<td class="p-2 pl-3 text-right text-xs font-medium">${label} ON</td>`,
       onCells,
+      rep === undefined ? '<td class="p-2 text-center"></td>' : detailCell('on', rep),
       '</tr>',
       `<tr class="${emphasized ? 'bg-muted/40' : 'border-b-2'}">`,
       `<td class="p-2 pl-3 text-right text-[11px] font-semibold text-muted-foreground">Δ ${label}</td>`,
       diffCells,
+      '<td class="p-2 text-center"></td>',
       '</tr>',
     ].join('\n')
   }
   const rows = reps.map(rep =>
-    group(`r${rep}`, metrics.map(spec => runValue(spec, 'on', rep)), metrics.map(spec => runValue(spec, 'off', rep)), false)).join('\n')
+    group(`r${rep}`, metrics.map(spec => runValue(spec, 'on', rep)), metrics.map(spec => runValue(spec, 'off', rep)), false, rep)).join('\n')
   const medGroup = group('中位',
     metrics.map(spec => medianOf(onRuns.map(run => spec.value(run)))),
     metrics.map(spec => medianOf(offRuns.map(run => spec.value(run)))),
-    true)
+    true, undefined)
+  // Modal templates for every run of this scenario (one per detail button).
+  const templates = row.runs.map((run) => {
+    const modalId = `modal-${sanitizeAttr(`${row.scenario}-${run.arm}-r${run.repetition}`)}`
+    const content = [
+      `<div class="text-xs text-muted-foreground">工具：${escapeHtml(run.summary.toolCalls.join(', ') || '—')}</div>`,
+      renderRunMeta(run),
+      renderRunDetails(run),
+      renderRunJsonl(run),
+    ].join('\n')
+    return `<template id="${modalId}">${content}</template>`
+  }).join('\n')
   const descriptionBlock = meta === undefined ? '' : [
     '<div class="space-y-1 px-4 py-2 text-xs text-muted-foreground">',
     `<div><span class="font-medium">输入：</span>${escapeHtml(meta.description.input)}</div>`,
@@ -415,11 +426,13 @@ function abDiffTable(row: ScenarioRow): string {
     '<thead class="bg-muted/50 [&_th]:h-10 [&_th]:px-3 [&_th]:text-left [&_th]:align-middle [&_th]:font-medium [&_th]:text-muted-foreground">',
     '<tr><th class="w-24">eval</th>',
     metrics.map(spec => `<th class="text-right">${spec.name}</th>`).join(''),
+    '<th class="w-28 text-center">详情</th>',
     '</tr>',
     '</thead>',
     `<tbody>${rows}${medGroup}</tbody>`,
     '</table>',
     '</div>',
+    templates,
     '</div>',
   ].join('\n')
 }
@@ -467,23 +480,20 @@ function readRunProcess(record: RunRecord): { perStepTokens?: { step: number; in
   }
 }
 
-/** Collapsible trace.md embed (dsh-web-review trace parity). */
-function renderRunTrace(record: RunRecord): string {
+/** The FULL session.jsonl of one run, shown verbatim in the modal. */
+function renderRunJsonl(record: RunRecord): string {
   if (record.runDir === undefined) return ''
-  let trace = ''
+  let jsonl = ''
   try {
-    trace = readFileSync(join(EVAL_DIR, record.runDir, 'trace.md'), 'utf8')
+    jsonl = readFileSync(join(EVAL_DIR, record.runDir, 'session.jsonl'), 'utf8')
   } catch {
     return ''
   }
   return [
-    '<details class="group rounded-lg border bg-muted/30">',
-    '<summary class="flex cursor-pointer select-none items-center gap-2 px-3 py-2 text-xs font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">',
-    CHEVRON,
-    '<span>trace.md（完整过程轨迹）</span>',
-    '</summary>',
-    `<pre class="border-t p-3 text-xs font-mono whitespace-pre-wrap break-all max-h-96 overflow-auto">${escapeHtml(trace)}</pre>`,
-    '</details>',
+    '<div class="rounded-lg border bg-muted/30">',
+    '<div class="border-b px-3 py-2 text-xs font-medium text-muted-foreground">完整 session.jsonl（${jsonl.split(chr(10)).length} 行）</div>'.replace('${jsonl.split(chr(10)).length}', String(jsonl.split('\n').length)),
+    `<pre class="p-3 text-xs font-mono whitespace-pre-wrap break-all max-h-96 overflow-auto">${escapeHtml(jsonl)}</pre>`,
+    '</div>',
   ].join('\n')
 }
 
@@ -540,52 +550,15 @@ function renderRunDetails(record: RunRecord): string {
   ].join('\n')).join('\n')
 }
 
-/** Per-run DETAILS as a right-hand column next to its scenario's statistics
- * table: one compact card per run; the card's button opens a modal dialog
- * with the concrete tool calls, raw arguments, and results/errors. */
-function runDetailColumn(row: ScenarioRow): string {
-  const ordered = [...row.runs.filter(run => run.arm === 'on'), ...row.runs.filter(run => run.arm === 'off')]
-  const cards = ordered.map((run) => {
-    const modalId = `modal-${sanitizeAttr(`${row.scenario}-${run.arm}-r${run.repetition}`)}`
-    const content = [
-      `<div class="text-xs text-muted-foreground">工具：${escapeHtml(run.summary.toolCalls.join(', ') || '—')}</div>`,
-      renderRunMeta(run),
-      renderRunDetails(run),
-      renderRunTrace(run),
-    ].join('\n')
-    return [
-      `<div class="rounded-lg border bg-card text-card-foreground" data-run-label="${escapeHtml(row.scenario)} · ${run.arm === 'on' ? 'ON' : 'OFF'} r${run.repetition}">`,
-      '<div class="flex flex-wrap items-center gap-2 px-3 py-2.5">',
-      `<span class="text-sm font-medium">${run.arm === 'on' ? 'ON' : 'OFF'} r${run.repetition}</span>`,
-      statusBadge(run.summary.status ?? (run.summary.completed ? 'completed' : 'error')),
-      `<button data-open-modal="#${modalId}" class="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用详情</button>`,
-      '</div>',
-      `<template id="${modalId}">${content}</template>`,
-      '</div>',
-    ].join('\n')
-  }).join('\n')
-  return [
-    '<aside class="space-y-2 lg:max-h-[70rem] lg:overflow-y-auto lg:pr-1">',
-    '<h4 class="text-xs font-medium uppercase tracking-wide text-muted-foreground">运行详情（点击弹窗查看具体调用与错误）</h4>',
-    cards,
-    '</aside>',
-  ].join('\n')
-}
-
 /** Minimal tabs: vanilla toggling, no framework (shadcn Tabs look). */
 function tabPanels(rows: ScenarioRow[]): string {
   const presentModes = (['native', 'code'] as const).filter(mode => rows.some(row => row.mode === mode))
   const panels = (['native', 'code'] as const).map((mode) => {
     const group = rows.filter(row => row.mode === mode)
     if (group.length === 0) return ''
-    // Each scenario: statistics table on the left, its per-run detail column
-    // glued to the right (stacks on narrow viewports).
-    const blocks = group.map(row => [
-      '<div class="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">',
-      abDiffTable(row),
-      runDetailColumn(row),
-      '</div>',
-    ].join('\n')).join('\n')
+    // Each scenario: one statistics table whose rightmost column carries the
+    // per-eval "view calls" button (modal drill-down).
+    const blocks = group.map(row => abDiffTable(row)).join('\n')
     // The first present panel is visible on load; the tab handler toggles
     // the rest (and re-hides/shows this one when switching).
     const initial = mode === presentModes[0] ? 'space-y-6' : 'hidden space-y-6'
@@ -654,8 +627,7 @@ addEventListener('DOMContentLoaded', () => {
   const openModal = (button) => {
     const template = document.querySelector(button.getAttribute('data-open-modal'));
     if (!template) return;
-    const host = button.closest('[data-run-label]');
-    modalTitle.textContent = host ? host.getAttribute('data-run-label') : '调用详情';
+    modalTitle.textContent = button.getAttribute('data-run-label') || '调用详情';
     modalBody.innerHTML = template.innerHTML;
     modal.classList.remove('hidden');
   };

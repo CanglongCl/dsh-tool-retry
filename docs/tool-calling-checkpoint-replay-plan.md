@@ -325,7 +325,7 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工�
 **① 断点（break）作为 eval 起点——直接用 session.jsonl，不再做任何插件（十五轮评审定稿）**。所有场景对齐到同一个逻辑断点——「首个**不符合预期的工具调用**」：显式失败（`tool/result` isError）或「成功但结果不符合预期」的调用（后者见 ② 观察类）。ON 臂断点之后紧跟插件通知，OFF 臂断点之后直接接模型下一步；断点前的历史两臂天然相同，断点后才做测量。
 - **断点快照 = 一段 session.jsonl 前缀**（fixture）：**手写构造，或从本机存量 bad case 裁剪**——本机 ~/.dsh/sessions/ 下有大量含失败工具调用的真实会话日志（解压 .jsonl.zstd 后裁剪到「断点 + turn 边界」，脱敏后入库）；
 - **eval 起跑方式**：以该前缀启动/恢复会话（会话持久化按 session-id 载入 jsonl 日志，agent-loop 支持 resume，`ctx.agents.resume({ resumeSessionId })`，`packages/core/agent-loop/tests/resume.spec.ts`），**真模型从断点继续**，断点后的行为全部由真模型生成；
-- 两臂共用同一前缀：ON 臂前缀以插件通知 `user/message`（source=@canglongcl/dsh-tool-retry）收尾，OFF 臂前缀止于失败 `tool/result`（无通知）；
+- 两臂共用同一前缀（止于失败 `tool/result`）；ON 臂不再预注入通知 `user/message`——机制说明已由静态段（order 149）承载，模型凭静态协议自行决定重试路径（评测不测通知投递通道）；断点后模型新失败时插件仍真实注入通知，计入开销指标；
 - **与 §5 机制验证共用同一套断点快照语料库**：§5 用 llm-replay 回放这些前缀（脚本化、无 key），§6 用它们做真模型续跑的起点。
 
 **② 场景来源——聚焦「工具调用不符合预期」，不超出本特性边界（十五轮评审定稿）**：

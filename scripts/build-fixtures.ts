@@ -21,7 +21,7 @@
  *     breakpoint snapshot the real-model eval (plan §6) resumes from: the
  *     full pre-break history (task message, the assistant tool-call block,
  *     the raw `tool/call`, the failed `tool/result`, a completed step). The
- *     ON arm extends the prefix with the recorded failure notice; the eval
+ *     ON arm differs by composition and the pre-seeded checkpoint store
  *     runner pre-seeds the plugin's checkpoint store from the fixture so the
  *     resumed session replays the plugin's restart contract verbatim.
  *
@@ -249,9 +249,6 @@ interface EvalBlock {
   rawArguments: string
   /** The recorded failure text the tool/result carries. */
   errorText: string
-  /** The ON-arm notice for this block (the `__CHECKPOINT_DIR__` token is
-   * patched by the driver at load time). */
-  notice: string
 }
 
 /** The tool family one scenario's runner composition must mount. */
@@ -363,13 +360,6 @@ function deployArgsMissingKind(label: string): object {
 /** A truncated (invalid) JSON argument string for the invalid-JSON scenario. */
 const BROKEN_DEPLOY_JSON = '{"config": {"kind": "valid", "label": "payments", "replicas": 3, "template": "kind: Deployment\\n"'
 
-const nativeNotice = (callId: string): string => [
-  "Your failed call's arguments were saved.",
-  `- call id: ${callId}`,
-  'To apply a small fix and re-run the call, use `editPreviousToolCalling`',
-  `(with call_id "${callId}" — it stays valid).`,
-].join('\n')
-
 const EVAL_SCENARIOS: EvalScenario[] = [
   {
     name: 'native-invalid-args',
@@ -385,8 +375,7 @@ const EVAL_SCENARIOS: EvalScenario[] = [
       callId: 'break_1',
       tool: 'deploy',
       rawArguments: JSON.stringify(deployArgsMissingKind('payments')),
-      errorText: 'invalid arguments for deploy: required field config.kind is missing',
-      notice: nativeNotice('break_1'),
+      errorText: 'invalid arguments for deploy: required field config.kind is missing'
     }],
     task: 'Deploy the payments service with a long configuration (you forgot the config.kind field).',
     continuation: 'That deploy call failed. Retry it with the smallest possible change and report the outcome.',
@@ -405,8 +394,7 @@ const EVAL_SCENARIOS: EvalScenario[] = [
       callId: 'break_2',
       tool: 'deploy',
       rawArguments: BROKEN_DEPLOY_JSON,
-      errorText: 'tool call arguments are not valid JSON: unexpected end of input',
-      notice: nativeNotice('break_2'),
+      errorText: 'tool call arguments are not valid JSON: unexpected end of input'
     }],
     task: 'Deploy the payments service with a long configuration.',
     continuation: 'That deploy call failed. Retry it with the smallest possible change and report the outcome.',
@@ -426,13 +414,6 @@ const EVAL_SCENARIOS: EvalScenario[] = [
       tool: 'run_code',
       rawArguments: JSON.stringify({ code: PTC_ORIGINAL, description: 'run the failing program' }),
       errorText: 'code run failed (exception): boom failed on v1-marker',
-      notice: [
-        'Your failed `run_code` program was saved.',
-        '- path: __CHECKPOINT_DIR__/by-id/break_rc.json',
-        'To apply a small fix, read and JSON.parse it in a new `run_code`',
-        'program, replace the fragment, and run the corrected program with the',
-        'AsyncFunction constructor.',
-      ].join('\n'),
     }],
     task: 'Write one run_code program that calls tools.boom({ value: "v1-marker" }) and returns its value.',
     continuation: 'That program failed. Fix it with the smallest change, run the corrected program, and report the result.',
@@ -451,8 +432,7 @@ const EVAL_SCENARIOS: EvalScenario[] = [
       callId: 'break_boom',
       tool: 'boom',
       rawArguments: JSON.stringify({ value: 'v1-marker' }),
-      errorText: 'boom failed on v1-marker',
-      notice: nativeNotice('break_boom'),
+      errorText: 'boom failed on v1-marker'
     }],
     task: 'Call the boom tool with value "v1-marker" and return its result.',
     continuation: 'That call failed. Retry it with the smallest possible change and report the outcome.',
@@ -482,13 +462,6 @@ const EVAL_SCENARIOS: EvalScenario[] = [
         description: 'update notes.md via the edit tool',
       }),
       errorText: 'code run failed (exception): ToolCallError: old_string not found in notes.md (the file has changed)',
-      notice: [
-        'Your failed `run_code` program was saved.',
-        '- path: __CHECKPOINT_DIR__/by-id/break_fs_rc.json',
-        'To apply a small fix, read and JSON.parse it in a new `run_code`',
-        'program, replace the fragment, and run the corrected program with the',
-        'AsyncFunction constructor.',
-      ].join('\n'),
     }],
     task: 'Write one run_code program that updates notes.md with the tools.edit call (replace the stale header line with a longer revised handbook) and returns the result.',
     continuation: 'That program failed — the old_string no longer matches the file. Fix it with the smallest change, run the corrected program, and report the result.',
@@ -518,13 +491,6 @@ const EVAL_SCENARIOS: EvalScenario[] = [
         description: 'submit the plan for review',
       }),
       errorText: `code run failed (exception): ToolCallError: ${PLAN_REJECTION_FEEDBACK}`,
-      notice: [
-        'Your failed `run_code` program was saved.',
-        '- path: __CHECKPOINT_DIR__/by-id/break_plan_rc.json',
-        'To apply a small fix, read and JSON.parse it in a new `run_code`',
-        'program, replace the fragment, and run the corrected program with the',
-        'AsyncFunction constructor.',
-      ].join('\n'),
     }],
     task: 'Write one run_code program that submits the caching-refactor plan for review through tools.exit_plan_mode.',
     continuation: 'Your plan was rejected — the user feedback is in the failure result. Revise the plan with the smallest change and re-submit it through a corrected program, then report the outcome.',
@@ -544,9 +510,7 @@ const EVAL_SCENARIOS: EvalScenario[] = [
         callId: 'break_fs_w',
         tool: 'write',
         rawArguments: JSON.stringify({ content: LONG_BODY }),
-        errorText: 'invalid arguments for write: required field file_path is missing',
-        notice: nativeNotice('break_fs_w'),
-      },
+        errorText: 'invalid arguments for write: required field file_path is missing',      },
       {
         callId: 'break_fs_e',
         tool: 'edit',
@@ -555,9 +519,7 @@ const EVAL_SCENARIOS: EvalScenario[] = [
           old_string: NOTES_STALE_FRAGMENT,
           new_string: LONG_NEW_STRING,
         }),
-        errorText: 'edit failed: old_string not found in notes.md (the file has changed)',
-        notice: nativeNotice('break_fs_e'),
-      },
+        errorText: 'edit failed: old_string not found in notes.md (the file has changed)',      },
     ],
     task: 'Update notes.md (replace the migration-guide section with a longer revised handbook) and also write the new handbook to report.md.',
     continuation: "Both tool calls failed (the write lacked a required field; the edit's old_string no longer matches the file). Fix each one with the smallest change and retry, then report the outcome.",
@@ -581,8 +543,7 @@ const EVAL_SCENARIOS: EvalScenario[] = [
       callId: 'break_plan',
       tool: 'exit_plan_mode',
       rawArguments: JSON.stringify({ plan: LONG_PLAN }),
-      errorText: PLAN_REJECTION_FEEDBACK,
-      notice: nativeNotice('break_plan'),
+      errorText: PLAN_REJECTION_FEEDBACK
     }],
     task: 'Write an implementation plan for the caching refactor and submit it for review via exit_plan_mode.',
     continuation: 'Your plan was rejected — the user feedback is in the failure result. Revise the plan accordingly and re-submit it through exit_plan_mode with the smallest change, then report the outcome.',
@@ -669,10 +630,9 @@ export function buildEvalFixtures(root = EVAL_FIXTURES): string[] {
   for (const scenario of EVAL_SCENARIOS) {
     const dir = join(root, scenario.name)
     mkdirSync(dir, { recursive: true })
-    // The committed prefix ends at the breakpoint (the OFF-arm baseline).
-    // The ON arm's notice user/message is appended by the eval driver at
-    // load time (its text carries the machine-specific path token); the
-    // notice text itself is committed in scenario.json.
+    // The committed prefix ends at the breakpoint (the OFF-arm baseline);
+    // the ON arm adds no recorded notice — the model decides from the
+    // plugin's static protocol section alone.
     writeFileSync(join(dir, 'session-prefix.jsonl'), evalPrefix(scenario))
     written.push(join(dir, 'session-prefix.jsonl'))
     writeFileSync(join(dir, 'scenario.json'), `${JSON.stringify({
