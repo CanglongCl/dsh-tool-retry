@@ -15,8 +15,11 @@
  * model regenerates arguments against.
  */
 
+import { createHash } from 'node:crypto'
 import { Context } from '@deepseek-ai/cordis'
 import { installModelSelection } from '@deepseek-ai/dsh-agent'
+import { waitForIdle } from './real-e2e-runner.ts'
+import type { AgentHandle } from '@deepseek-ai/dsh-agent'
 import { createUserMessage } from '@deepseek-ai/dsh-llm/message'
 import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
@@ -30,13 +33,13 @@ import { SESSION_FORMAT_VERSION, SessionId } from '@deepseek-ai/dsh-session'
 import SessionPersistenceJsonl from '@deepseek-ai/dsh-session-persistence-jsonl'
 import * as ToolFs from '@deepseek-ai/dsh-tool-fs'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import * as ToolRetry from '../../src/index.ts'
 import { CHECKPOINT_ROOT, PLUGIN_ID, sanitizeId } from '../../src/invariant.ts'
 import { InlineRuntime } from './inline-runtime.ts'
-import { waitForIdle } from './real-e2e-runner.ts'
 
 export interface EvalFixture {
   name: string
@@ -64,9 +67,16 @@ export function loadEvalFixture(dir: string): EvalFixture {
   return { ...scenario, header, events }
 }
 
+/** When one arm run stops: at the successful retry (fast) or at idle (full). */
+export type StopAt = 'idle' | 'retry-success'
+
 export interface EvalRunOptions {
   fixture: EvalFixture
   arm: 'on' | 'off'
+  /** Stop the run the moment the retry succeeds (the criterion the summary
+   * reports) instead of waiting for the turn to converge; halves per-run
+   * wall time and output tokens, at the cost of the post-retry steps. */
+  stopAt?: StopAt
   /** Real provider model (deepseek adapter). */
   model: string
   /** Adapter reasoning effort (deepseek: off | high | max); absent = adapter default. */
@@ -75,8 +85,10 @@ export interface EvalRunOptions {
   /** Per-run artifact dir; when set, the FULL session log (every event, tool
    * calls included with raw arguments) is persisted as session.jsonl there —
    * the drill-down evidence the HTML report embeds (the dsh-web-review
-   * per-run session.jsonl pattern). */
+   * per-run session.jsonl pattern), alongside trace.md / process.json. */
   runDir?: string
+  /** Repetition + repo head for the immutable experiment identity. */
+  revision?: { repetition: number; repoHead: string }
   /** Scripted adapter for the keyless smoke; absent = real provider. */
   adapter?: LlmAdapter
   /** Hook logs for the smoke's behavioral assertions. */
@@ -108,8 +120,255 @@ export interface EvalRunSummary {
   toolCallArguments: string[]
   /** Whether the run reached a completed turn. */
   completed: boolean
+  /** Whether the run was cut off at the successful retry (stopAt mode). */
+  stoppedEarly: boolean
+  /** Run outcome classification (web-review status/attribution analogue). */
+  status: 'completed' | 'cutoff' | 'timeout' | 'error'
+  /** Structured grader evidence for the retry-success criterion. */
+  grader: { criterion: string; checks: { name: string; pass: boolean }[] }
+  /** Immutable identities: fixture / grader / execution revisions + experiment id. */
+  revisions: { scenario: string; grader: string; execution: string; experiment: string }
   /** Flat text of post-break tool/result contents (debug evidence). */
   resultTexts: string[]
+}
+
+/** Stable short identity for one input document. */
+function sha256(text: string): string {
+  return createHash('sha256').update(text).digest('hex').slice(0, 20)
+}
+
+/** Structural view of the session rows the criteria read. */
+interface RunRow {
+  type: string
+  data: {
+    callId?: string
+    name?: string
+    arguments?: string
+    content?: { type?: string; text?: string }[]
+    source?: { plugin?: string }
+    usage?: { inputTokens?: number; outputTokens?: number; reasoningTokens?: number }
+    message?: { content?: { toolCallId?: string; content?: { type?: string; text?: string }[]; isError?: boolean }[] }
+    reason?: { kind?: string }
+  }
+}
+
+/** The per-kind retry-success criterion (shared by the stop-at gate and the summary). */
+function computeRetrySuccess(
+  fixture: EvalFixture,
+  postBreak: RunRow[],
+  workspace: string,
+  options: EvalRunOptions,
+): boolean {
+  const callNamesById = new Map(postBreak
+    .filter(event => event.type === 'tool/call')
+    .map(event => [event.data.callId, event.data.name ?? '']))
+  const directOk = (toolName: string): boolean => postBreak.some(event =>
+    event.type === 'tool/result'
+    && event.data.message?.content?.some(block =>
+      callNamesById.get(block.toolCallId) === toolName && block.isError !== true) === true)
+  const resultTexts = postBreak
+    .filter(event => event.type === 'tool/result')
+    .map(event => (event.data.message?.content?.[0]?.content ?? [])
+      .filter(block => block.type === 'text')
+      .map(block => block.text ?? '')
+      .join('\n'))
+  const fsChecksPass = (fixture.successChecks ?? []).every((check) => {
+    const path = join(workspace, check.path)
+    if (check.kind === 'fileExists') return existsSync(path)
+    if (check.fragment === undefined) return false
+    try {
+      return readFileSync(path, 'utf8').includes(check.fragment)
+    } catch {
+      return false
+    }
+  })
+  switch (fixture.kind) {
+    case 'deploy':
+      return options.deployCalls?.some(call => call.kind === 'valid') === true
+    case 'boom':
+      // Native: the boom tool re-ran with any non-marker value (it only
+      // fails on the marker). Code: the plan §6 run_code criterion.
+      return fixture.mode === 'native'
+        ? options.boomCalls?.some(call => call.value !== 'v1-marker') === true
+        : directOk('run_code')
+    case 'fs':
+      // Code mode additionally requires the retry program to complete.
+      return fixture.mode === 'native' ? fsChecksPass : directOk('run_code') && fsChecksPass
+    case 'plan':
+      // Native: a direct re-submission (OFF) succeeds without error, or the
+      // nested replay inside editPreviousToolCalling renders the accepted
+      // outcome (ON). Code: the retry program completes.
+      return fixture.mode === 'native'
+        ? directOk('exit_plan_mode') || resultTexts.some(text => text.includes('plan accepted: true'))
+        : directOk('run_code')
+  }
+}
+
+/**
+ * stopAt='retry-success' gate: settle the moment the retry criterion flips
+ * true (evaluated on the tick after each tool result, so the loop's commit
+ * has landed), falling back to idle when the deadline expires or the turn
+ * completes without a success.
+ */
+async function waitForStopAt(
+  ctx: Context,
+  handle: AgentHandle,
+  prefixLength: number,
+  fixture: EvalFixture,
+  workspace: string,
+  options: EvalRunOptions,
+  deadlineMs: number,
+): Promise<'cutoff' | 'idle' | 'timeout'> {
+  return new Promise((resolve) => {
+    let settled = false
+    const finish = (outcome: 'cutoff' | 'idle' | 'timeout'): void => {
+      if (settled) return
+      settled = true
+      clearTimeout(timer)
+      disposeResult()
+      disposeStatus()
+      resolve(outcome)
+    }
+    const evaluate = (): boolean => {
+      const events = handle.agent.session.events as unknown as RunRow[]
+      return computeRetrySuccess(fixture, events.slice(prefixLength), workspace, options)
+    }
+    const timer = setTimeout(() => finish('timeout'), deadlineMs)
+    const disposeStatus = ctx.on('agent/status', ({ agent, status }) => {
+      if (agent === handle.agent && status === 'idle') finish('idle')
+    })
+    // The stop hook rides the tools/result waterfall (after each call body):
+    // the fast path is the replay tool itself — a successful
+    // editPreviousToolCalling result means the edit + nested replay both
+    // landed, which IS the retry the eval measures. PTC arms (no replay
+    // tool) and baseline arms fall back to the per-kind criterion.
+    const disposeResult = ctx.on('tools/result', (exec, result) => {
+      if ((exec as { parent?: unknown }).parent !== undefined) return
+      const editLanded = (exec as { name?: string }).name === 'editPreviousToolCalling'
+        && (result as { isError?: boolean }).isError !== true
+      // The loop appends its tool/result commit right around this emit; defer
+      // one tick so the criterion reads the committed event.
+      setImmediate(() => {
+        if (editLanded || evaluate()) finish('cutoff')
+      })
+    })
+  })
+}
+
+/** Flat text of a message's text blocks. */
+function textOfBlocks(content: { type?: string; text?: string }[] | undefined): string {
+  return (content ?? []).filter(block => block.type === 'text').map(block => block.text ?? '').join('\n')
+}
+
+/** Folded human-readable trace of the full session (dsh-web-review parity). */
+function renderTrace(events: RunRow[], summary: EvalRunSummary): string {
+  const out: string[] = [
+    `# Session trace — ${summary.scenario} ${summary.arm}/r?`,
+    '',
+    `_status: ${summary.status} · retry success: ${summary.retrySuccess} · adopted: ${summary.adopted} · notices: ${summary.noticeCount}_`,
+    `_revisions: scenario ${summary.revisions.scenario} · grader ${summary.revisions.grader} · execution ${summary.revisions.execution} · experiment ${summary.revisions.experiment}_`,
+    '',
+  ]
+  let currentTurn = 0
+  for (const event of events) {
+    const data = event.data
+    if (event.type === 'turn/start') {
+      currentTurn = (data as { turn?: number }).turn ?? currentTurn
+      out.push(`## Turn ${currentTurn}`)
+    } else if (event.type === 'user/message') {
+      const text = textOfBlocks(data.content)
+      out.push('', `### user message`, '```text', text.length > 4000 ? `${text.slice(0, 4000)}…` : text, '```')
+    } else if (event.type === 'assistant/message') {
+      const message = data.message
+      const content = message?.content ?? []
+      const reasoning = content.filter(block => (block as { type?: string }).type === 'reasoning')
+        .map(block => (block as { text?: string }).text ?? '').join('\n')
+      const usage = data.usage
+      out.push('', `### Turn ${currentTurn} · step ${(data as { step?: number }).step} · assistant`)
+      if (reasoning !== '') {
+        out.push('<details><summary>Thinking (reasoning block)</summary>', '', reasoning.length > 3000 ? `${reasoning.slice(0, 3000)}…` : reasoning, '', '</details>')
+      }
+      for (const block of content) {
+        if ((block as { type?: string }).type === 'tool-call') {
+          const call = block as { id?: string; name?: string; arguments?: string }
+          out.push('', `#### tool call ${call.name ?? ''} (${call.id ?? ''})`, '```json', call.arguments ?? '', '```')
+        }
+      }
+      if (usage !== undefined) {
+        out.push(`_usage: in ${usage.inputTokens ?? 0} · out ${usage.outputTokens ?? 0} · reasoning ${usage.reasoningTokens ?? 0}_`)
+      }
+    } else if (event.type === 'tool/result') {
+      const block = data.message?.content?.[0]
+      out.push(`#### result ${block?.isError === true ? '(error)' : ''}`, '```text', textOfBlocks(block?.content), '```')
+    } else if (event.type === 'turn/end') {
+      out.push(`_turn ended: ${(data.reason as { kind?: string }).kind ?? 'unknown'}_`)
+    }
+  }
+  return `${out.join('\n')}\n`
+}
+
+/** Structured process statistics (dsh-web-review process.json parity). */
+function processStats(events: RunRow[], summary: EvalRunSummary): Record<string, unknown> {
+  const toolCounts: Record<string, number> = {}
+  const filesRead = new Set<string>()
+  const perStepTokens: { step: number; input: number; output: number; cacheRead: number; cacheWrite: number; reasoning: number }[] = []
+  let errorResults = 0
+  let firstToolCallStep: number | undefined
+  let firstWriteStep: number | undefined
+  let finalText = ''
+  let endReason = 'unknown'
+  const totals = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, reasoning: 0 }
+  for (const event of events) {
+    const data = event.data
+    if (event.type === 'assistant/message') {
+      const usage = data.usage
+      if (usage !== undefined) {
+        perStepTokens.push({
+          step: (data as { step?: number }).step ?? 0,
+          input: usage.inputTokens ?? 0,
+          output: usage.outputTokens ?? 0,
+          cacheRead: 0,
+          cacheWrite: 0,
+          reasoning: usage.reasoningTokens ?? 0,
+        })
+        totals.input += usage.inputTokens ?? 0
+        totals.output += usage.outputTokens ?? 0
+        totals.reasoning += usage.reasoningTokens ?? 0
+      }
+      const content = data.message?.content ?? []
+      const text = textOfBlocks(content as { type?: string; text?: string }[])
+      if (text !== '') finalText = text
+    } else if (event.type === 'tool/call') {
+      const name = data.name ?? ''
+      toolCounts[name] = (toolCounts[name] ?? 0) + 1
+      if (firstToolCallStep === undefined) firstToolCallStep = (data as { step?: number }).step
+      if (firstWriteStep === undefined && /^(write|edit)$/u.test(name)) firstWriteStep = (data as { step?: number }).step
+      const match = /"(?:file_path|path|file)"\s*:\s*"([^"]+)"/u.exec(data.arguments ?? '')
+      if (match?.[1] !== undefined) filesRead.add(match[1])
+    } else if (event.type === 'tool/result') {
+      if (data.message?.content?.some(block => block.isError === true) === true) errorResults += 1
+    } else if (event.type === 'turn/end') {
+      endReason = (data.reason as { kind?: string }).kind ?? endReason
+    }
+  }
+  return {
+    sessionId: summary.sessionId,
+    status: summary.status,
+    turns: perStepTokens.length > 0 ? 1 : 0,
+    steps: perStepTokens.length,
+    toolCalls: toolCounts,
+    errorResults,
+    firstToolCallStep,
+    firstWriteStep,
+    filesRead: [...filesRead],
+    tokens: totals,
+    perStepTokens,
+    reasoningChars: 0,
+    finalText: finalText.slice(0, 4000),
+    endReason,
+    grader: summary.grader,
+    revisions: summary.revisions,
+  }
 }
 
 /**
@@ -290,7 +549,24 @@ export async function runEvalScenario(options: EvalRunOptions): Promise<EvalRunS
       content: [{ type: 'text', text: fixture.continuation }],
       source: { kind: 'user' },
     }))
-    await waitForIdle(ctx, handle.agent, options.deadlineMs)
+    let runStatus: 'completed' | 'cutoff' | 'timeout' | 'error' = 'completed'
+    let stoppedEarly = false
+    try {
+      if (options.stopAt === 'retry-success') {
+        const outcome = await waitForStopAt(ctx, handle, prefixEvents.length, fixture, workspace, options, options.deadlineMs)
+        if (outcome === 'cutoff') {
+          stoppedEarly = true
+          runStatus = 'cutoff'
+        } else if (outcome === 'timeout') {
+          runStatus = 'timeout'
+        }
+      } else {
+        await waitForIdle(ctx, handle.agent, options.deadlineMs)
+      }
+    } catch (error) {
+      runStatus = 'error'
+      ctx.logger.warn(`dsh-tool-retry eval: run errored: ${error instanceof Error ? error.message : String(error)}`)
+    }
 
     const events = handle.agent.session.events as unknown as {
       type: string
@@ -330,34 +606,7 @@ export async function runEvalScenario(options: EvalRunOptions): Promise<EvalRunS
     // sub-dispatch); PTC — the plan's own criterion, "the next run_code call
     // completes without error" (the model may legitimately fix the program
     // without reproducing the fixture's marker value).
-    const callNamesById = new Map(postBreak
-      .filter(event => event.type === 'tool/call')
-      .map(event => [event.data.callId, event.data.name ?? '']))
-    const planCriterion = (toolName: string): boolean => postBreak.some(event =>
-      event.type === 'tool/result'
-      && event.data.message?.content?.some(block =>
-        callNamesById.get(block.toolCallId) === toolName && block.isError !== true) === true)
-    const fsChecksPass = (fixture.successChecks ?? []).every((check) => {
-      const path = join(workspace, check.path)
-      if (check.kind === 'fileExists') return existsSync(path)
-      if (check.fragment === undefined) return false
-      try {
-        return readFileSync(path, 'utf8').includes(check.fragment)
-      } catch {
-        return false
-      }
-    })
-    const retrySuccess = fixture.kind === 'deploy'
-      ? options.deployCalls?.some(call => call.kind === 'valid') === true
-      : fixture.kind === 'boom'
-        ? planCriterion('run_code')
-        : fixture.kind === 'fs'
-          ? fsChecksPass
-          // plan: a direct re-submission (OFF) succeeds without error, or the
-          // nested replay inside editPreviousToolCalling renders the accepted
-          // outcome (ON).
-          : planCriterion('exit_plan_mode')
-            || resultTexts.some(text => text.includes('plan accepted: true'))
+    const retrySuccess = computeRetrySuccess(fixture, postBreak, workspace, options)
     const adopted = fixture.mode === 'native'
       ? toolCalls.includes('editPreviousToolCalling')
       : toolCallArguments.some(argumentsText =>
@@ -365,6 +614,60 @@ export async function runEvalScenario(options: EvalRunOptions): Promise<EvalRunS
     const notices = postBreak.filter(event =>
       event.type === 'user/message' && event.data.source?.plugin === PLUGIN_ID)
     const lastTurnEnd = [...events].reverse().find(event => event.type === 'turn/end')
+    // Structured grader evidence for the retry-success criterion.
+    const graderChecks: { name: string; pass: boolean }[] = (() => {
+      if (fixture.kind === 'deploy') {
+        return [{ name: 'deploy re-ran with kind "valid"', pass: options.deployCalls?.some(call => call.kind === 'valid') === true }]
+      }
+      if (fixture.kind === 'boom') {
+        return fixture.mode === 'native'
+          ? [{ name: 'boom re-ran with a non-marker value', pass: options.boomCalls?.some(call => call.value !== 'v1-marker') === true }]
+          : [{ name: 'post-break run_code completed without error', pass: postBreak.some(event =>
+            event.type === 'tool/result'
+            && event.data.message?.content?.some(block => block.isError !== true) === true) }]
+      }
+      if (fixture.kind === 'fs') {
+        const checks = (fixture.successChecks ?? []).map((check) => {
+          const path = join(workspace, check.path)
+          const pass = check.kind === 'fileExists'
+            ? existsSync(path)
+            : check.fragment !== undefined && (() => {
+              try {
+                return readFileSync(path, 'utf8').includes(check.fragment)
+              } catch {
+                return false
+              }
+            })()
+          return { name: `${check.kind} ${check.path}${check.fragment === undefined ? '' : ` contains ${check.fragment.slice(0, 30)}`}`, pass }
+        })
+        return fixture.mode === 'code'
+          ? [{ name: 'post-break run_code completed without error', pass: postBreak.some(event =>
+            event.type === 'tool/result'
+            && event.data.message?.content?.some(block => block.isError !== true) === true) }, ...checks]
+          : checks
+      }
+      return [{ name: 'exit_plan_mode accepted', pass: retrySuccess }]
+    })()
+    const revisionInput = {
+      scenario: readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'eval-fixtures', fixture.name, 'scenario.json'), 'utf8'),
+      grader: JSON.stringify({ kind: fixture.kind, mode: fixture.mode, checks: fixture.successChecks ?? [] }),
+      execution: readFileSync(fileURLToPath(import.meta.url), 'utf8'),
+    }
+    const revisions = {
+      scenario: sha256(revisionInput.scenario),
+      grader: sha256(revisionInput.grader),
+      execution: sha256(revisionInput.execution),
+      experiment: sha256(JSON.stringify({
+        scenario: sha256(revisionInput.scenario),
+        arm: options.arm,
+        mode: fixture.mode,
+        model: options.model,
+        reasoning: options.reasoningEffort ?? 'default',
+        repetition: options.revision?.repetition ?? 0,
+        repoHead: options.revision?.repoHead ?? 'unknown',
+        execution: sha256(revisionInput.execution),
+      })),
+    }
     const summary: EvalRunSummary = {
       scenario: fixture.name,
       arm: options.arm,
@@ -381,6 +684,13 @@ export async function runEvalScenario(options: EvalRunOptions): Promise<EvalRunS
       toolCalls,
       toolCallArguments,
       completed: lastTurnEnd?.data.reason?.kind === 'completed',
+      stoppedEarly,
+      status: runStatus,
+      grader: {
+        criterion: `${fixture.kind}/${fixture.mode}`,
+        checks: graderChecks,
+      },
+      revisions,
       resultTexts,
     }
     // Persist the FULL session log (every event, tool calls included with
@@ -394,6 +704,14 @@ export async function runEvalScenario(options: EvalRunOptions): Promise<EvalRunS
         ...events.map(event => JSON.stringify(event)),
       ]
       writeFileSync(join(options.runDir, 'session.jsonl'), `${lines.join('\n')}\n`)
+      // dsh-web-review parity artifacts: a folded human-readable trace, the
+      // structured process stats, and (fs scenarios) the final workspace.
+      writeFileSync(join(options.runDir, 'trace.md'), renderTrace(events, summary))
+      writeFileSync(join(options.runDir, 'process.json'), `${JSON.stringify(processStats(events, summary), null, 2)}\n`)
+      if (fixture.kind === 'fs') {
+        mkdirSync(join(options.runDir, 'workspace'), { recursive: true })
+        cpSync(workspace, join(options.runDir, 'workspace'), { recursive: true })
+      }
     }
     await handle.dispose()
     return summary

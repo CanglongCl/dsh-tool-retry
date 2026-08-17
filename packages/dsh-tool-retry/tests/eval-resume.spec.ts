@@ -254,3 +254,110 @@ it('resumes native-plan-rejected: ON edits the checkpointed plan, OFF resubmits 
   expect(off.adopted).toBe(false)
   expect(off.retrySuccess).toBe(true)
 })
+
+/** PTC loader with the self-read guard (the retry program shape). */
+function ptcLoader(checkpointDir: string, from: string, to: string): string {
+  return [
+    '// RETRY-GUARD',
+    'const text = (await tools.read({ file_path: "<CP>/previous/1.json" }))',
+    '  .lines.map(line => line.text).join("\\n")',
+    'const prev = JSON.parse(text)',
+    'if (prev.code.includes("RETRY-GUARD")) return { selfRead: true }',
+    'const AsyncFunction = (async () => {}).constructor',
+    `const fixed = prev.code.replace(${JSON.stringify(from)}, ${JSON.stringify(to)})`,
+    'return await new AsyncFunction("tools", "console", "\'use strict\';\\n" + fixed)(tools, console)',
+  ].join('\n').replace('<CP>', checkpointDir)
+}
+
+it('resumes native-boom-error: native arm of the boom family', async () => {
+  const fixture = loadEvalFixture(join(EVAL_FIXTURES, 'native-boom-error'))
+  const on = await runEvalScenario({
+    fixture, arm: 'on', model: 'mock', deadlineMs: DEADLINE_MS, boomCalls: [],
+    adapter: new MockAdapter([
+      toolCallResponse('sm_b_e', 'editPreviousToolCalling', {
+        call_id: 'break_boom', old_string: '"v1-marker"', new_string: '"v2-good"',
+      }),
+      textResponse('done'),
+    ]),
+  })
+  expect(on.adopted).toBe(true)
+  expect(on.retrySuccess).toBe(true)
+
+  const off = await runEvalScenario({
+    fixture, arm: 'off', model: 'mock', deadlineMs: DEADLINE_MS, boomCalls: [],
+    adapter: new MockAdapter([
+      toolCallResponse('sm_b_f', 'boom', { value: 'v2-good' }),
+      textResponse('done'),
+    ]),
+  })
+  expect(off.adopted).toBe(false)
+  expect(off.retrySuccess).toBe(true)
+})
+
+it('resumes ptc-long-fs-edit: code arm of the fs family', async () => {
+  const fixture = loadEvalFixture(join(EVAL_FIXTURES, 'ptc-long-fs-edit'))
+  const checkpointDir = join(CHECKPOINT_ROOT, fixture.header.id)
+  const RUN_LINE = "return await new AsyncFunction(\"tools\", \"console\", \"'use strict';\\n\" + fixed)(tools, console)"
+  const on = await runEvalScenario({
+    fixture, arm: 'on', model: 'mock', deadlineMs: DEADLINE_MS, deployCalls: [],
+    adapter: new MockAdapter([
+      toolCallResponse('sm_fs_rc', 'run_code', {
+        // Read notes.md inside the retry program so the corrected program's
+        // edit call passes the observation policy.
+        code: ptcLoader(checkpointDir,
+          '// notes.md — 初始版本（v1）',
+          '// 附录：本文件由评测场景自动生成，供长文本 edit 重试使用。')
+          .replace(RUN_LINE, 'await tools.read({ file_path: "notes.md" })\n' + RUN_LINE),
+        description: 'retry with a small correction',
+      }),
+      textResponse('done'),
+    ]),
+  })
+  expect(on.completed).toBe(true)
+  expect(on.adopted).toBe(true)
+  expect(on.retrySuccess).toBe(true)
+
+  const off = await runEvalScenario({
+    fixture, arm: 'off', model: 'mock', deadlineMs: DEADLINE_MS, deployCalls: [],
+    adapter: new MockAdapter([
+      toolCallResponse('sm_fs_f', 'run_code', {
+        code: 'await tools.read({ file_path: "notes.md" })\n'
+          + 'return await tools.edit({ file_path: "notes.md", old_string: "// 附录：本文件由评测场景自动生成，供长文本 edit 重试使用。", new_string: "缓存层迁移手册（修订版）" })',
+        description: 'run the corrected program',
+      }),
+      textResponse('done'),
+    ]),
+  })
+  expect(off.adopted).toBe(false)
+  expect(off.retrySuccess).toBe(true)
+})
+
+it('resumes ptc-plan-rejected: code arm of the plan family', async () => {
+  const fixture = loadEvalFixture(join(EVAL_FIXTURES, 'ptc-plan-rejected'))
+  const checkpointDir = join(CHECKPOINT_ROOT, fixture.header.id)
+  const on = await runEvalScenario({
+    fixture, arm: 'on', model: 'mock', deadlineMs: DEADLINE_MS, deployCalls: [],
+    adapter: new MockAdapter([
+      toolCallResponse('sm_p_rc', 'run_code', {
+        code: ptcLoader(checkpointDir, '直接改造现有模块', '新增独立缓存层服务'),
+        description: 'retry with a small correction',
+      }),
+      textResponse('done'),
+    ]),
+  })
+  expect(on.adopted).toBe(true)
+  expect(on.retrySuccess).toBe(true)
+
+  const off = await runEvalScenario({
+    fixture, arm: 'off', model: 'mock', deadlineMs: DEADLINE_MS, deployCalls: [],
+    adapter: new MockAdapter([
+      toolCallResponse('sm_p_f', 'run_code', {
+        code: 'return await tools.exit_plan_mode({ plan: "# 缓存改造实施计划\\n\\n修订版：新增独立缓存层服务。" })',
+        description: 're-submit the revised plan',
+      }),
+      textResponse('done'),
+    ]),
+  })
+  expect(off.adopted).toBe(false)
+  expect(off.retrySuccess).toBe(true)
+})

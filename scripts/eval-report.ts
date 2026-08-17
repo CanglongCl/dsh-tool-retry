@@ -31,6 +31,7 @@ interface BatchMeta {
   model: string
   provider: string
   reasoning?: string
+  stopAt?: string
   repeats: number
   repoHead: string
   packages: Record<string, string>
@@ -62,6 +63,10 @@ interface RunRecord {
     toolCalls: string[]
     toolCallArguments: string[]
     completed: boolean
+    stoppedEarly: boolean
+    status: 'completed' | 'cutoff' | 'timeout' | 'error'
+    grader: { criterion: string; checks: { name: string; pass: boolean }[] }
+    revisions: { scenario: string; grader: string; execution: string; experiment: string }
     resultTexts: string[]
   }
 }
@@ -248,6 +253,18 @@ function badge(label: string, tone: 'positive' | 'negative' | 'neutral' = 'neutr
   return `<span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap ${tones[tone]}">${label}</span>`
 }
 
+/** Run-status badge (completed / cutoff / timeout / error). */
+function statusBadge(status: string): string {
+  const map: Record<string, { label: string; tone: 'positive' | 'negative' | 'neutral' }> = {
+    completed: { label: '✅ 收敛', tone: 'positive' },
+    cutoff: { label: '⏹ 截断', tone: 'neutral' },
+    timeout: { label: '⏱ 超时', tone: 'negative' },
+    error: { label: '❌ 错误', tone: 'negative' },
+  }
+  const entry = map[status] ?? { label: status, tone: 'neutral' }
+  return badge(entry.label, entry.tone)
+}
+
 function savingsBadge(percentValue: number): string {
   if (percentValue >= 40) return badge(`${percentValue}%`, 'positive')
   if (percentValue < 0) return badge(`${percentValue}%`, 'negative')
@@ -302,6 +319,59 @@ function scenarioTable(title: string, rows: ScenarioRow[]): string {
     `<tbody>${body}</tbody>`,
     '</table>',
     '</div></div></section>',
+  ].join('\n')
+}
+
+/** Run metadata block: experiment identity, grader evidence, per-step tokens. */
+function renderRunMeta(record: RunRecord): string {
+  const s = record.summary
+  const revisions = s.revisions
+  const grader = (s.grader?.checks ?? []).map(check =>
+    `<li class="flex items-center gap-2"><span>${check.pass ? '✅' : '❌'}</span><span>${escapeHtml(check.name)}</span></li>`).join('')
+  const process = readRunProcess(record)
+  const stepRows = (process?.perStepTokens ?? []).map(step =>
+    `<tr><td class="num">${step.step}</td><td class="num">${step.input}</td><td class="num">${step.output}</td><td class="num">${step.reasoning}</td></tr>`).join('')
+  return [
+    '<div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs">',
+    `<div><span class="text-muted-foreground">判定准则</span> <code>${escapeHtml(s.grader?.criterion ?? 'unknown')}</code> · experiment <code>${escapeHtml(revisions?.experiment ?? 'unknown')}</code></div>`,
+    `<div><span class="text-muted-foreground">修订</span> scenario <code>${escapeHtml(revisions?.scenario ?? '-')}</code> · grader <code>${escapeHtml(revisions?.grader ?? '-')}</code> · execution <code>${escapeHtml(revisions?.execution ?? '-')}</code></div>`,
+    grader === '' ? '' : `<div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5">${grader}</ul></div>`,
+    stepRows === '' ? '' : [
+      '<div class="font-medium text-muted-foreground">每步 token（step | 输入 | 输出 | 推理）</div>',
+      '<table class="w-full text-xs"><thead><tr><th class="text-left">step</th><th class="text-right">in</th><th class="text-right">out</th><th class="text-right">reasoning</th></tr></thead>',
+      `<tbody>${stepRows}</tbody></table>`,
+    ].join(''),
+    '</div>',
+  ].join('')
+}
+
+/** Read one run's process.json (written alongside the session log). */
+function readRunProcess(record: RunRecord): { perStepTokens?: { step: number; input: number; output: number; reasoning: number }[] } | undefined {
+  if (record.runDir === undefined) return undefined
+  try {
+    return JSON.parse(readFileSync(join(EVAL_DIR, record.runDir, 'process.json'), 'utf8')) as never
+  } catch {
+    return undefined
+  }
+}
+
+/** Collapsible trace.md embed (dsh-web-review trace parity). */
+function renderRunTrace(record: RunRecord): string {
+  if (record.runDir === undefined) return ''
+  let trace = ''
+  try {
+    trace = readFileSync(join(EVAL_DIR, record.runDir, 'trace.md'), 'utf8')
+  } catch {
+    return ''
+  }
+  return [
+    '<details class="group rounded-lg border bg-muted/30">',
+    '<summary class="flex cursor-pointer select-none items-center gap-2 px-3 py-2 text-xs font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">',
+    CHEVRON,
+    '<span>trace.md（完整过程轨迹）</span>',
+    '</summary>',
+    `<pre class="border-t p-3 text-xs font-mono whitespace-pre-wrap break-all max-h-96 overflow-auto">${escapeHtml(trace)}</pre>`,
+    '</details>',
   ].join('\n')
 }
 
@@ -374,7 +444,7 @@ function runTables(rows: ScenarioRow[]): string {
         `<td class="p-3 text-right tabular-nums">${s.postBreakInputTokens}</td>`,
         `<td class="p-3">${s.adopted ? '✅' : '<span class="text-muted-foreground">—</span>'}</td>`,
         `<td class="p-3">${s.retrySuccess ? '✅' : '❌'}</td>`,
-        `<td class="p-3">${s.completed ? '✅' : '❌'}</td>`,
+        `<td class="p-3">${statusBadge(s.status ?? (s.completed ? 'completed' : 'error'))}</td>`,
         `<td class="p-3 text-right tabular-nums">${s.noticeCount}</td>`,
         `<td class="p-3 text-xs text-muted-foreground max-w-64 truncate">${escapeHtml(s.toolCalls.join(', '))}</td>`,
         '<td class="p-3 w-1/3">',
@@ -383,7 +453,7 @@ function runTables(rows: ScenarioRow[]): string {
         CHEVRON,
         '<span>完整调用详情</span>',
         '</summary>',
-        `<div class="border-t px-3 py-3 space-y-2">${renderRunDetails(run)}</div>`,
+        `<div class="border-t px-3 py-3 space-y-2">${renderRunMeta(run)}${renderRunDetails(run)}${renderRunTrace(run)}</div>`,
         '</details>',
         '</td>',
         '</tr>',
@@ -396,7 +466,7 @@ function runTables(rows: ScenarioRow[]): string {
       '<div class="overflow-x-auto">',
       '<table class="w-full caption-bottom text-sm">',
       '<thead class="bg-muted/50 [&_th]:h-10 [&_th]:px-3 [&_th]:text-left [&_th]:align-middle [&_th]:font-medium [&_th]:text-muted-foreground [&_th]:whitespace-nowrap">',
-      '<tr><th>臂</th><th class="text-right">重复</th><th class="text-right">断点后步数</th><th class="text-right">第一步输出<br><span class="font-normal">含推理</span></th><th class="text-right">第一步内容 token</th><th class="text-right">全程输出 token<br><span class="font-normal">含推理</span></th><th class="text-right">断点后输入 token</th><th>采用</th><th>重试成功</th><th>收敛</th><th class="text-right">通知条数</th><th>工具调用</th><th>详情</th></tr>',
+      '<tr><th>臂</th><th class="text-right">重复</th><th class="text-right">断点后步数</th><th class="text-right">第一步输出<br><span class="font-normal">含推理</span></th><th class="text-right">第一步内容 token</th><th class="text-right">全程输出 token<br><span class="font-normal">含推理</span></th><th class="text-right">断点后输入 token</th><th>采用</th><th>重试成功</th><th>状态</th><th class="text-right">通知条数</th><th>工具调用</th><th>详情</th></tr>',
       '</thead>',
       `<tbody>${runRows}</tbody>`,
       '</table>',
@@ -486,6 +556,7 @@ addEventListener('DOMContentLoaded', () => {
     ${badge(`provider ${escapeHtml(batch.provider)}`, 'neutral')}
     ${badge(`思考强度 ${escapeHtml(batch.reasoning ?? '默认')}`, 'neutral')}
     ${badge(`每场景每臂重复 ${batch.repeats} 次`, 'neutral')}
+    ${badge(`截断策略 ${escapeHtml(batch.stopAt ?? 'idle')}`, 'neutral')}
     ${badge(`git ${escapeHtml(batch.repoHead.slice(0, 12))}`, 'neutral')}
   </div>
 </header>

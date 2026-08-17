@@ -15,6 +15,7 @@
  * Env: DEEPSEEK_API_KEY (resolved through the layered chain; absent = skip),
  *      DSH_EVAL_MODEL (default deepseek-v4-flash),
  *      DSH_EVAL_REASONING (default high; off|high|max),
+ *      DSH_EVAL_STOP_AT (default retry-success; idle = full convergence),
  *      DSH_EVAL_REPEATS (default 3),
  *      DSH_EVAL_TIMEOUT_MS (per-arm deadline, default 15 min).
  */
@@ -32,6 +33,11 @@ const MODEL = process.env.DSH_EVAL_MODEL ?? 'deepseek-v4-flash'
 const REASONING = (process.env.DSH_EVAL_REASONING ?? 'high') as 'off' | 'high' | 'max'
 if (!['off', 'high', 'max'].includes(REASONING)) {
   console.error(`eval:real — DSH_EVAL_REASONING must be off|high|max, got ${JSON.stringify(REASONING)}`)
+  process.exit(1)
+}
+const STOP_AT = (process.env.DSH_EVAL_STOP_AT ?? 'retry-success')
+if (STOP_AT !== 'idle' && STOP_AT !== 'retry-success') {
+  console.error(`eval:real — DSH_EVAL_STOP_AT must be idle|retry-success, got ${JSON.stringify(STOP_AT)}`)
   process.exit(1)
 }
 const REPEATS = Math.max(1, Number(process.env.DSH_EVAL_REPEATS ?? 3))
@@ -99,6 +105,7 @@ interface BatchMeta {
   model: string
   provider: string
   reasoning: string
+  stopAt: string
   repeats: number
   repoHead: string
   packages: Record<string, string>
@@ -144,7 +151,9 @@ for (const name of scenarios) {
       const startedAt = new Date().toISOString()
       const runDir = join(OUT_DIR, 'runs', stamp, name, arm, `r${rep}`)
       const summary = await runEvalScenario({
-        fixture, arm, model: MODEL, reasoningEffort: REASONING, deadlineMs: DEADLINE_MS, deployCalls: [], boomCalls: [], runDir,
+        fixture, arm, model: MODEL, reasoningEffort: REASONING, deadlineMs: DEADLINE_MS,
+        stopAt: STOP_AT, deployCalls: [], boomCalls: [], runDir,
+        revision: { repetition: rep, repoHead: repoHead() },
       })
       if (arm === 'on') on.push(summary)
       else off.push(summary)
@@ -193,6 +202,7 @@ const batch: BatchMeta = {
   model: MODEL,
   provider: 'deepseek-official',
   reasoning: REASONING,
+  stopAt: STOP_AT,
   repeats: REPEATS,
   repoHead: repoHead(),
   packages: packageVersions(),
@@ -203,7 +213,7 @@ const batch: BatchMeta = {
 writeFileSync(join(OUT_DIR, 'batch.json'), `${JSON.stringify(batch, null, 2)}\n`)
 
 console.log('\n==== dsh-tool-retry real-model evaluation ====')
-console.log(`model=${MODEL} reasoning=${REASONING} repeats=${REPEATS} scenarios=${reports.length} repoHead=${batch.repoHead.slice(0, 12)}`)
+console.log(`model=${MODEL} reasoning=${REASONING} stopAt=${STOP_AT} repeats=${REPEATS} scenarios=${reports.length} repoHead=${batch.repoHead.slice(0, 12)}`)
 for (const mode of ['native', 'code'] as const) {
   const group = reports.filter(report => report.mode === mode)
   if (group.length === 0) continue
