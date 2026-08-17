@@ -19,14 +19,15 @@
  */
 
 import { rmSync } from 'node:fs'
+import { loadLayeredEnv } from './support/credential-env.ts'
 import { runRealArm } from './support/real-e2e-runner.ts'
 
 const MODEL = process.env.DSH_E2E_MODEL ?? 'deepseek-v4-flash'
 const DEADLINE_MS = Number(process.env.DSH_E2E_TIMEOUT_MS ?? 15 * 60 * 1000)
 
-// Provider-key gate: absent key = clean skip (the plan's auto-skip contract).
-if (process.env.DEEPSEEK_API_KEY === undefined || process.env.DEEPSEEK_API_KEY.trim() === '') {
-  console.log('e2e:real SKIPPED — DEEPSEEK_API_KEY is not set (provider-key gated, not part of the commit gate)')
+// Provider-key gate over the layered credential chain (nothing is printed).
+if (!loadLayeredEnv()) {
+  console.log('e2e:real SKIPPED — DEEPSEEK_API_KEY resolves nowhere (process env, repo .env, ~/.dsh/.env); provider-key gated, not part of the commit gate')
   process.exit(0)
 }
 

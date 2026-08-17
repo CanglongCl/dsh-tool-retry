@@ -84,6 +84,8 @@ export interface EvalRunSummary {
   sessionId: string
   /** First post-break assistant step output tokens (the retry cost). */
   retryStepOutputTokens: number
+  /** Post-break model input tokens (the retry request's context cost). */
+  postBreakInputTokens: number
   /** The breakpoint tool re-ran and its newest result is not an error. */
   retrySuccess: boolean
   /** The model took the plugin's replay path. */
@@ -242,7 +244,7 @@ export async function runEvalScenario(options: EvalRunOptions): Promise<EvalRunS
         name?: string
         content?: { type?: string; text?: string }[]
         source?: { plugin?: string }
-        usage?: { outputTokens?: number }
+        usage?: { inputTokens?: number; outputTokens?: number }
         message?: { content?: { toolCallId?: string; content?: { type?: string; text?: string }[]; isError?: boolean }[] }
         reason?: { kind?: string }
       }
@@ -262,6 +264,9 @@ export async function runEvalScenario(options: EvalRunOptions): Promise<EvalRunS
         .join('\n'))
     const retryStepOutputTokens = postBreak
       .find(event => event.type === 'assistant/message')?.data.usage?.outputTokens ?? 0
+    const postBreakInputTokens = postBreak
+      .filter(event => event.type === 'assistant/message')
+      .reduce((sum, event) => sum + (event.data.usage?.inputTokens ?? 0), 0)
     // Behavioral retry success: the breakpoint tool re-ran with valid inputs
     // (only post-break calls execute live — the recorded breakpoint never
     // re-runs; the ON arm reaches deploy through the replay sub-dispatch).
@@ -281,6 +286,7 @@ export async function runEvalScenario(options: EvalRunOptions): Promise<EvalRunS
       mode: fixture.mode,
       sessionId,
       retryStepOutputTokens,
+      postBreakInputTokens,
       retrySuccess,
       adopted,
       noticeCount: notices.length,

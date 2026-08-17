@@ -1,24 +1,28 @@
 /**
  * Real-model evaluation (plan §6), runnable via `pnpm eval:real` (the
  * repo-level wrapper spawns this file) or `pnpm exec tsx
- * packages/dsh-tool-retry/tests/eval-real.ts`. Auto-skips (exit 0) when
- * DEEPSEEK_API_KEY is absent.
+ * packages/dsh-tool-retry/tests/eval-real.ts`. Auto-skips (exit 0) when no
+ * DEEPSEEK_API_KEY resolves from the layered credential chain (process env →
+ * repository .env → ~/.dsh/.env).
  *
  * For every breakpoint fixture (eval-fixtures/) × arm (ON/OFF) × N repeats,
  * the runner resumes the recorded prefix through the published persistence
- * backend and lets the real model continue from the breakpoint. Per-scenario
- * JSON and an aggregated native/PTC table (token savings, adoption rate,
- * retry success, notice overhead) land under .artifacts/eval/ (gitignored).
+ * backend and lets the real model continue from the breakpoint. Each run
+ * appends one record to .artifacts/eval/results.jsonl and the batch identity
+ * (stamp, model, git head, package versions) to .artifacts/eval/batch.json —
+ * the input of `pnpm eval:report`, which renders the persistent HTML report.
  *
- * Env: DEEPSEEK_API_KEY (required; absent = skip),
+ * Env: DEEPSEEK_API_KEY (resolved through the layered chain; absent = skip),
  *      DSH_EVAL_MODEL (default deepseek-v4-flash),
  *      DSH_EVAL_REPEATS (default 3),
  *      DSH_EVAL_TIMEOUT_MS (per-arm deadline, default 15 min).
  */
 
-import { mkdirSync, readdirSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { appendFileSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { loadLayeredEnv } from './support/credential-env.ts'
 import { loadEvalFixture, runEvalScenario, type EvalRunSummary } from './support/real-eval-runner.ts'
 
 const EVAL_FIXTURES = fileURLToPath(new URL('./eval-fixtures', import.meta.url))
@@ -27,15 +31,69 @@ const MODEL = process.env.DSH_EVAL_MODEL ?? 'deepseek-v4-flash'
 const REPEATS = Math.max(1, Number(process.env.DSH_EVAL_REPEATS ?? 3))
 const DEADLINE_MS = Number(process.env.DSH_EVAL_TIMEOUT_MS ?? 15 * 60 * 1000)
 
-if (process.env.DEEPSEEK_API_KEY === undefined || process.env.DEEPSEEK_API_KEY.trim() === '') {
-  console.log('eval:real SKIPPED — DEEPSEEK_API_KEY is not set (provider-key gated, not part of the commit gate)')
+// Provider-key gate over the layered credential chain (nothing is printed).
+if (!loadLayeredEnv()) {
+  console.log('eval:real SKIPPED — DEEPSEEK_API_KEY resolves nowhere (process env, repo .env, ~/.dsh/.env); provider-key gated, not part of the commit gate')
   process.exit(0)
+}
+
+/** Best-effort repository HEAD (committed metadata for the report). */
+function repoHead(): string {
+  try {
+    return execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim()
+  } catch {
+    return 'unknown'
+  }
+}
+
+/** Installed published-package versions the runtime resolved against. */
+function packageVersions(): Record<string, string> {
+  const names = [
+    '@deepseek-ai/dsh-tools', '@deepseek-ai/dsh-llm', '@deepseek-ai/dsh-session',
+    '@deepseek-ai/dsh-agent-loop', '@deepseek-ai/dsh-session-persistence-jsonl',
+  ]
+  const versions: Record<string, string> = {}
+  for (const name of names) {
+    try {
+      const manifest = JSON.parse(readFileSync(
+        fileURLToPath(new URL(`../../../node_modules/${name}/package.json`, import.meta.url)), 'utf8')) as { version?: string }
+      versions[name] = manifest.version ?? 'unknown'
+    } catch {
+      versions[name] = 'unknown'
+    }
+  }
+  return versions
 }
 
 const scenarios = readdirSync(EVAL_FIXTURES, { withFileTypes: true })
   .filter(entry => entry.isDirectory())
   .map(entry => entry.name)
   .sort()
+
+interface RunRecord {
+  stamp: string
+  scenario: string
+  arm: 'on' | 'off'
+  mode: 'native' | 'code'
+  repetition: number
+  model: string
+  provider: string
+  startedAt: string
+  finishedAt: string
+  summary: EvalRunSummary
+}
+
+interface BatchMeta {
+  stamp: string
+  model: string
+  provider: string
+  repeats: number
+  repoHead: string
+  packages: Record<string, string>
+  startedAt: string
+  finishedAt: string
+  scenarios: string[]
+}
 
 interface ScenarioReport {
   scenario: string
@@ -58,22 +116,33 @@ interface ScenarioReport {
   }
 }
 
+mkdirSync(OUT_DIR, { recursive: true })
+const stamp = new Date().toISOString().replaceAll(':', '-')
+const batchStarted = new Date().toISOString()
+const records: RunRecord[] = []
 const reports: ScenarioReport[] = []
+
 for (const name of scenarios) {
   const fixture = loadEvalFixture(join(EVAL_FIXTURES, name))
   const on: EvalRunSummary[] = []
   const off: EvalRunSummary[] = []
   for (let rep = 1; rep <= REPEATS; rep += 1) {
     console.log(`eval:real ${name} arm=on repeat=${rep}/${REPEATS} ...`)
-    on.push(await runEvalScenario({
+    const startedAt = new Date().toISOString()
+    const summary = await runEvalScenario({
       fixture, arm: 'on', model: MODEL, deadlineMs: DEADLINE_MS, deployCalls: [], boomCalls: [],
-    }))
+    })
+    on.push(summary)
+    records.push({ stamp, scenario: name, arm: 'on', mode: fixture.mode, repetition: rep, model: MODEL, provider: 'deepseek-official', startedAt, finishedAt: new Date().toISOString(), summary })
   }
   for (let rep = 1; rep <= REPEATS; rep += 1) {
     console.log(`eval:real ${name} arm=off repeat=${rep}/${REPEATS} ...`)
-    off.push(await runEvalScenario({
+    const startedAt = new Date().toISOString()
+    const summary = await runEvalScenario({
       fixture, arm: 'off', model: MODEL, deadlineMs: DEADLINE_MS, deployCalls: [], boomCalls: [],
-    }))
+    })
+    off.push(summary)
+    records.push({ stamp, scenario: name, arm: 'off', mode: fixture.mode, repetition: rep, model: MODEL, provider: 'deepseek-official', startedAt, finishedAt: new Date().toISOString(), summary })
   }
   const median = (values: number[]): number => {
     const sorted = [...values].sort((a, b) => a - b)
@@ -100,14 +169,26 @@ for (const name of scenarios) {
   })
 }
 
-mkdirSync(OUT_DIR, { recursive: true })
-const stamp = new Date().toISOString().replaceAll(':', '-')
-for (const report of reports) {
-  writeFileSync(join(OUT_DIR, `${report.scenario}.${stamp}.json`), `${JSON.stringify(report, null, 2)}\n`)
+// Durable inputs for the report generator: one JSONL line per run + the batch
+// identity with the metadata the HTML report records.
+for (const record of records) {
+  appendFileSync(join(OUT_DIR, 'results.jsonl'), `${JSON.stringify(record)}\n`)
 }
+const batch: BatchMeta = {
+  stamp,
+  model: MODEL,
+  provider: 'deepseek-official',
+  repeats: REPEATS,
+  repoHead: repoHead(),
+  packages: packageVersions(),
+  startedAt: batchStarted,
+  finishedAt: new Date().toISOString(),
+  scenarios,
+}
+writeFileSync(join(OUT_DIR, 'batch.json'), `${JSON.stringify(batch, null, 2)}\n`)
 
 console.log('\n==== dsh-tool-retry real-model evaluation ====')
-console.log(`model=${MODEL} repeats=${REPEATS} scenarios=${reports.length}`)
+console.log(`model=${MODEL} repeats=${REPEATS} scenarios=${reports.length} repoHead=${batch.repoHead.slice(0, 12)}`)
 for (const mode of ['native', 'code'] as const) {
   const group = reports.filter(report => report.mode === mode)
   if (group.length === 0) continue
@@ -124,7 +205,8 @@ for (const mode of ['native', 'code'] as const) {
     )
   }
 }
-console.log(`\nreports: ${OUT_DIR}`)
+console.log(`\nrecords: ${join(OUT_DIR, 'results.jsonl')} (stamp ${stamp})`)
+console.log('next: pnpm eval:report')
 // The eval reports model behavior; exit non-zero only on runner-level failure
 // (every run reached completion). Adoption/retry metrics are observations.
 const allCompleted = reports.every(report => [...report.arms.on, ...report.arms.off].every(run => run.completed))

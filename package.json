@@ -20,7 +20,8 @@
     "check": "tsx scripts/check.ts",
     "e2e:real": "tsx scripts/e2e-real.ts",
     "build:fixtures": "tsx scripts/build-fixtures.ts",
-    "eval:real": "tsx scripts/eval.ts"
+    "eval:real": "tsx scripts/eval.ts",
+    "eval:report": "tsx scripts/eval-report.ts"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
