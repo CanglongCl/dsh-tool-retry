@@ -1,23 +1,30 @@
 /**
  * HTML evaluation report generator (`pnpm eval:report`): reads the latest
  * `.artifacts/eval/batch.json` + `results.jsonl` (written by
- * `pnpm eval:real`), renders one self-contained HTML report, and PERSISTS it
- * into the repository under `reports/NNN-<stamp>-<model>.html` with a
- * sequential zero-padded number (001, 002, …). The report records the eval
- * metadata — git head, model/provider, package versions, timestamps, and the
- * per-run/per-scenario token/adoption/retry-success numbers — and the
- * `reports/index.html` catalog is regenerated after each run.
+ * `pnpm eval:real`), renders one self-contained HTML report styled with
+ * shadcn/ui (New York design tokens, Tailwind v4 compiled offline and
+ * inlined), and PERSISTS it into the repository under
+ * `reports/NNN-<stamp>-<model>.html` with a sequential zero-padded number
+ * (001, 002, …). The report records the eval metadata — git head,
+ * model/provider/reasoning, package versions, timestamps, and the
+ * per-run/per-scenario token (reasoning-decomposed), adoption, and
+ * retry-success numbers — with click-to-expand drill-down of every tool call
+ * read from each run's persisted full session. `reports/index.html` is
+ * regenerated as the catalog.
  *
  * Flags: --batch <stamp> selects a historical batch (default: newest).
  */
 
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { spawnSync } from 'node:child_process'
+import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 const EVAL_DIR = join(ROOT, '.artifacts', 'eval')
 const REPORTS_DIR = join(ROOT, 'reports')
+const TAILWIND_CSS = join(ROOT, 'scripts', 'report.css')
+const TAILWIND_CLI = join(ROOT, 'node_modules', '@tailwindcss', 'cli', 'dist', 'index.mjs')
 
 interface BatchMeta {
   stamp: string
@@ -59,7 +66,6 @@ interface RunRecord {
   }
 }
 
-
 interface SessionLine {
   type?: string
   data?: {
@@ -69,68 +75,6 @@ interface SessionLine {
     usage?: { inputTokens?: number; outputTokens?: number; reasoningTokens?: number }
     message?: { content?: { toolCallId?: string; content?: { type?: string; text?: string }[]; isError?: boolean }[] }
   }
-}
-
-/** Read one run's persisted full session log (the drill-down evidence). */
-function readRunSession(record: RunRecord): SessionLine[] | undefined {
-  if (record.runDir === undefined) return undefined
-  try {
-    return readFileSync(join(EVAL_DIR, record.runDir, 'session.jsonl'), 'utf8')
-      .split('\n').filter(line => line.trim() !== '')
-      .map(line => JSON.parse(line) as SessionLine)
-  } catch {
-    return undefined
-  }
-}
-
-/** Render every tool call of one run with its raw arguments and result. */
-function renderRunDetails(record: RunRecord): string {
-  const lines = readRunSession(record)
-  const calls: { callId: string; name: string; arguments: string; result: string; isError: boolean }[] = []
-  const results = new Map<string, { text: string; isError: boolean }>()
-  if (lines !== undefined) {
-    for (const line of lines) {
-      const content = line.data?.message?.content?.[0]
-      if (line.type === 'tool/result' && content?.toolCallId !== undefined) {
-        const text = (content.content ?? []).filter(block => block.type === 'text').map(block => block.text ?? '').join('\n')
-        results.set(content.toolCallId, { text, isError: content.isError === true })
-      }
-    }
-    for (const line of lines) {
-      if (line.type !== 'tool/call' || line.data?.callId === undefined) continue
-      const result = results.get(line.data.callId)
-      calls.push({
-        callId: line.data.callId,
-        name: line.data.name ?? '',
-        arguments: line.data.arguments ?? '',
-        result: result?.text ?? '',
-        isError: result?.isError === true,
-      })
-    }
-  }
-  if (calls.length === 0) {
-    // Old batches without a persisted session: fall back to the summary.
-    for (const [index, argumentsText] of (record.summary.toolCallArguments ?? []).entries()) {
-      calls.push({
-        callId: `call-${index + 1}`,
-        name: record.summary.toolCalls[index] ?? 'unknown',
-        arguments: argumentsText,
-        result: record.summary.resultTexts[index] ?? '',
-        isError: false,
-      })
-    }
-  }
-  const blocks = calls.map((call, index) => [
-    '<div class="call">',
-    `<div class="call-head">#${index + 1} <code>${escapeHtml(call.name)}</code> · callId ${escapeHtml(call.callId)}${call.isError ? ' · <span class="err">失败</span>' : ''}</div>`,
-    '<div class="call-label">参数（原始字符串）：</div>',
-    `<pre>${escapeHtml(call.arguments)}</pre>`,
-    '<div class="call-label">结果：</div>',
-    `<pre>${escapeHtml(call.result)}</pre>`,
-    '</div>',
-  ].join('\n'))
-  if (blocks.length === 0) return '<div class="call">（无工具调用）</div>'
-  return blocks.join('\n')
 }
 
 /** HTML-escape one user/data string. */
@@ -146,20 +90,6 @@ function median(values: number[]): number {
 
 function rate(values: boolean[]): number {
   return values.length === 0 ? 0 : values.filter(value => value).length / values.length
-}
-
-/**
- * Report number for one batch: regeneration of the same batch is idempotent
- * (an existing report carrying the batch stamp keeps its number); a new batch
- * gets the next sequential zero-padded number (001, 002, …).
- */
-function numberForBatch(stamp: string): number {
-  const files = readdirSync(REPORTS_DIR, { withFileTypes: true })
-    .filter(entry => entry.isFile() && /^\d{3}-.+\.html$/u.test(entry.name))
-  const existing = files.find(entry => entry.name.includes(stamp))
-  if (existing !== undefined) return Number(existing.name.slice(0, 3))
-  const numbers = files.map(entry => Number(entry.name.slice(0, 3)))
-  return (numbers.length === 0 ? 0 : Math.max(...numbers)) + 1
 }
 
 /**
@@ -188,6 +118,42 @@ function loadBatch(stampFilter?: string): { batch: BatchMeta; records: RunRecord
     throw new Error(`eval:report — no run records for batch ${stamp}; run pnpm eval:real first`)
   }
   return { batch: { ...batch, stamp }, records }
+}
+
+/**
+ * Report number for one batch: regeneration of the same batch is idempotent
+ * (an existing report carrying the batch stamp keeps its number); a new batch
+ * gets the next sequential zero-padded number (001, 002, …).
+ */
+function numberForBatch(stamp: string): number {
+  const files = readdirSync(REPORTS_DIR, { withFileTypes: true })
+    .filter(entry => entry.isFile() && /^\d{3}-.+\.html$/u.test(entry.name))
+  const existing = files.find(entry => entry.name.includes(stamp))
+  if (existing !== undefined) return Number(existing.name.slice(0, 3))
+  const numbers = files.map(entry => Number(entry.name.slice(0, 3)))
+  return (numbers.length === 0 ? 0 : Math.max(...numbers)) + 1
+}
+
+/** Read one run's persisted full session log (the drill-down evidence). */
+function readRunSession(record: RunRecord): SessionLine[] | undefined {
+  if (record.runDir === undefined) return undefined
+  try {
+    return readFileSync(join(EVAL_DIR, record.runDir, 'session.jsonl'), 'utf8')
+      .split('\n').filter(line => line.trim() !== '')
+      .map(line => JSON.parse(line) as SessionLine)
+  } catch {
+    return undefined
+  }
+}
+
+/** Content tokens of one run's retry step (output minus reasoning). */
+function contentTokensForRecord(record: RunRecord): number {
+  const lines = readRunSession(record)
+  const first = lines?.find(line =>
+    line.type === 'assistant/message' && (line.data as { turn?: number }).turn === 2)
+  const reasoning = first?.data?.usage?.reasoningTokens
+    ?? record.summary.retryStepReasoningTokens ?? 0
+  return record.summary.retryStepOutputTokens - reasoning
 }
 
 interface ScenarioRow {
@@ -221,18 +187,8 @@ function buildScenarioRows(records: RunRecord[]): ScenarioRow[] {
     const off = runs.filter(run => run.arm === 'off')
     const onTokens = median(on.map(run => run.summary.retryStepOutputTokens))
     const offTokens = median(off.map(run => run.summary.retryStepOutputTokens))
-    const contentTokens = (run: RunRecord): number => {
-      // Reasoning tokens come from the persisted session usage when available
-      // (the authoritative source), else from the recorded summary field.
-      const lines = readRunSession(run)
-      const first = lines?.find(line =>
-        line.type === 'assistant/message' && (line.data as { turn?: number; step?: number }).turn === 2)
-      const reasoning = first?.data?.usage?.reasoningTokens
-        ?? run.summary.retryStepReasoningTokens ?? 0
-      return run.summary.retryStepOutputTokens - reasoning
-    }
-    const onContentTokens = median(on.map(contentTokens))
-    const offContentTokens = median(off.map(contentTokens))
+    const onContentTokens = median(on.map(contentTokensForRecord))
+    const offContentTokens = median(off.map(contentTokensForRecord))
     return {
       scenario,
       mode: runs[0]!.mode,
@@ -254,164 +210,309 @@ function buildScenarioRows(records: RunRecord[]): ScenarioRow[] {
   })
 }
 
+/* ------------------------------------------------------------------ */
+/* shadcn-standard render helpers                                       */
+/* ------------------------------------------------------------------ */
+
+const CHEVRON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5 shrink-0 transition-transform group-open:rotate-90"><path d="m6 12 4-4-4-4"/></svg>'
+
+/** Badge: savings/adoption sign-colored, shadcn badge anatomy. */
+function badge(label: string, tone: 'positive' | 'negative' | 'neutral' = 'neutral'): string {
+  const tones = {
+    positive: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400',
+    negative: 'border-destructive/30 bg-destructive/10 text-destructive dark:text-destructive-foreground',
+    neutral: 'border-border bg-muted text-muted-foreground',
+  }
+  return `<span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap ${tones[tone]}">${label}</span>`
+}
+
+function savingsBadge(percentValue: number): string {
+  if (percentValue >= 40) return badge(`${percentValue}%`, 'positive')
+  if (percentValue < 0) return badge(`${percentValue}%`, 'negative')
+  return badge(`${percentValue}%`, 'neutral')
+}
+
 function percent(value: number): string {
   return `${Math.round(value * 100)}%`
 }
 
-function renderReport(number: number, batch: BatchMeta, rows: ScenarioRow[]): string {
-  const title = `dsh-tool-retry 评测报告 ${String(number).padStart(3, '0')}`
-  const scenarioTable = (mode: 'native' | 'code'): string => {
-    const group = rows.filter(row => row.mode === mode)
-    if (group.length === 0) return ''
-    const head = [
-      '<h2>', mode === 'native' ? 'native 模式' : 'PTC（code）模式', '</h2>',
-      '<table><thead><tr>',
-      '<th>场景</th><th>ON 输出 token 含推理</th><th>OFF 输出 token 含推理</th>',
-      '<th>token 节省 %（含推理）</th><th>ON 内容 token</th><th>OFF 内容 token</th>',
-      '<th>内容 token 节省 %</th><th>采用率</th><th>重试成功率 ON</th><th>重试成功率 OFF</th>',
-      '<th>通知条数（中位）</th><th>通知字节（中位）</th><th>ON 断点后输入 token（中位）</th>',
-      '</tr></thead><tbody>',
-    ]
-    for (const row of group) {
-      head.push(
-        '<tr>',
-        `<td>${escapeHtml(row.scenario)}</td>`,
-        `<td class="num">${row.onTokens}</td>`,
-        `<td class="num">${row.offTokens}</td>`,
-        `<td class="num ${row.savingsPercent >= 40 ? 'good' : ''}">${row.savingsPercent}%</td>`,
-        `<td class="num">${row.onContentTokens}</td>`,
-        `<td class="num">${row.offContentTokens}</td>`,
-        `<td class="num ${row.contentSavingsPercent >= 40 ? 'good' : ''}">${row.contentSavingsPercent}%</td>`,
-        `<td class="num">${percent(row.adoptionRate)}</td>`,
-        `<td class="num">${percent(row.onRetryRate)}</td>`,
-        `<td class="num">${percent(row.offRetryRate)}</td>`,
-        `<td class="num">${row.notices}</td>`,
-        `<td class="num">${row.noticeBytes}</td>`,
-        `<td class="num">${row.onInput}</td>`,
-        '</tr>',
-      )
+/** Stat card (shadcn Card) for the overview row. */
+function statCard(label: string, value: string, hint: string, tone: 'positive' | 'negative' | 'neutral' = 'neutral'): string {
+  return [
+    '<div class="rounded-xl border bg-card text-card-foreground shadow-xs p-5 space-y-1.5">',
+    `<div class="text-xs font-medium uppercase tracking-wide text-muted-foreground">${label}</div>`,
+    `<div class="flex items-center gap-2"><span class="text-2xl font-semibold tracking-tight tabular-nums">${value}</span>${badge(hint, tone)}</div>`,
+    '</div>',
+  ].join('\n')
+}
+
+/** Scenario comparison table (shadcn Table inside a Card). */
+function scenarioTable(title: string, rows: ScenarioRow[]): string {
+  const body = rows.map((row) => [
+    '<tr class="border-t transition-colors hover:bg-muted/50">',
+    `<td class="p-3 font-medium">${escapeHtml(row.scenario)}</td>`,
+    `<td class="p-3 text-right tabular-nums">${row.onTokens}</td>`,
+    `<td class="p-3 text-right tabular-nums">${row.offTokens}</td>`,
+    `<td class="p-3 text-right">${savingsBadge(row.savingsPercent)}</td>`,
+    `<td class="p-3 text-right tabular-nums">${row.onContentTokens}</td>`,
+    `<td class="p-3 text-right tabular-nums">${row.offContentTokens}</td>`,
+    `<td class="p-3 text-right">${savingsBadge(row.contentSavingsPercent)}</td>`,
+    `<td class="p-3 text-right tabular-nums">${percent(row.adoptionRate)}</td>`,
+    `<td class="p-3 text-right tabular-nums">${percent(row.onRetryRate)}</td>`,
+    `<td class="p-3 text-right tabular-nums">${percent(row.offRetryRate)}</td>`,
+    `<td class="p-3 text-right tabular-nums">${row.notices}</td>`,
+    `<td class="p-3 text-right tabular-nums">${row.noticeBytes}</td>`,
+    '</tr>',
+  ].join('\n')).join('\n')
+  return [
+    '<section class="space-y-3">',
+    `<h2 class="text-lg font-semibold tracking-tight">${title}</h2>`,
+    '<div class="rounded-xl border bg-card text-card-foreground shadow-xs overflow-hidden">',
+    '<div class="overflow-x-auto">',
+    '<table class="w-full caption-bottom text-sm">',
+    '<thead class="bg-muted/50 [&_th]:h-10 [&_th]:px-3 [&_th]:text-left [&_th]:align-middle [&_th]:font-medium [&_th]:text-muted-foreground [&_th]:whitespace-nowrap">',
+    '<tr><th>场景</th><th class="text-right">ON 输出 token<br><span class="font-normal">含推理</span></th><th class="text-right">OFF 输出 token<br><span class="font-normal">含推理</span></th><th class="text-right">节省 %<br><span class="font-normal">含推理</span></th><th class="text-right">ON 内容 token</th><th class="text-right">OFF 内容 token</th><th class="text-right">内容节省 %</th><th class="text-right">采用率</th><th class="text-right">重试成功 ON</th><th class="text-right">重试成功 OFF</th><th class="text-right">通知条数</th><th class="text-right">通知字节</th></tr>',
+    '</thead>',
+    `<tbody>${body}</tbody>`,
+    '</table>',
+    '</div></div></section>',
+  ].join('\n')
+}
+
+/** Render every tool call of one run with its raw arguments and result. */
+function renderRunDetails(record: RunRecord): string {
+  const lines = readRunSession(record)
+  const calls: { callId: string; name: string; arguments: string; result: string; isError: boolean }[] = []
+  const results = new Map<string, { text: string; isError: boolean }>()
+  if (lines !== undefined) {
+    for (const line of lines) {
+      const content = line.data?.message?.content?.[0]
+      if (line.type === 'tool/result' && content?.toolCallId !== undefined) {
+        const text = (content.content ?? []).filter(block => block.type === 'text').map(block => block.text ?? '').join('\n')
+        results.set(content.toolCallId, { text, isError: content.isError === true })
+      }
     }
-    head.push('</tbody></table>')
-    return head.join('\n')
+    for (const line of lines) {
+      if (line.type !== 'tool/call' || line.data?.callId === undefined) continue
+      const result = results.get(line.data.callId)
+      calls.push({
+        callId: line.data.callId,
+        name: line.data.name ?? '',
+        arguments: line.data.arguments ?? '',
+        result: result?.text ?? '',
+        isError: result?.isError === true,
+      })
+    }
   }
-  const runTable = rows.map((row) => {
+  if (calls.length === 0) {
+    for (const [index, argumentsText] of (record.summary.toolCallArguments ?? []).entries()) {
+      calls.push({
+        callId: `call-${index + 1}`,
+        name: record.summary.toolCalls[index] ?? 'unknown',
+        arguments: argumentsText,
+        result: record.summary.resultTexts[index] ?? '',
+        isError: false,
+      })
+    }
+  }
+  if (calls.length === 0) return '<div class="text-sm text-muted-foreground">（无工具调用）</div>'
+  return calls.map((call, index) => [
+    '<div class="rounded-lg border bg-muted/30 p-3 space-y-1.5">',
+    '<div class="flex items-center gap-2 text-sm font-medium">',
+    `<span class="text-muted-foreground">#${index + 1}</span>`,
+    `<code class="rounded bg-muted px-1.5 py-0.5 text-xs">${escapeHtml(call.name)}</code>`,
+    `<span class="text-xs text-muted-foreground">callId ${escapeHtml(call.callId)}</span>`,
+    call.isError ? '<span class="ml-auto"><span class="inline-flex items-center rounded-md border border-destructive/30 bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive dark:text-destructive-foreground">失败</span></span>' : '',
+    '</div>',
+    '<div class="text-xs font-medium text-muted-foreground">参数（原始字符串）</div>',
+    `<pre class="rounded-md bg-muted p-3 text-xs font-mono whitespace-pre-wrap break-all max-h-72 overflow-auto">${escapeHtml(call.arguments)}</pre>`,
+    '<div class="text-xs font-medium text-muted-foreground">结果</div>',
+    `<pre class="rounded-md bg-muted p-3 text-xs font-mono whitespace-pre-wrap break-all max-h-72 overflow-auto">${escapeHtml(call.result)}</pre>`,
+    '</div>',
+  ].join('\n')).join('\n')
+}
+
+/** Per-run table with accordion drill-down (shadcn Table + accordion pattern). */
+function runTables(rows: ScenarioRow[]): string {
+  return rows.map((row) => {
     const runRows = row.runs.map((run) => {
       const s = run.summary
-      const details = renderRunDetails(run)
       return [
-        '<tr>',
-        `<td>${run.arm === 'on' ? 'ON' : 'OFF'}</td>`,
-        `<td class="num">${run.repetition}</td>`,
-        `<td class="num">${s.retryStepOutputTokens}</td>`,
-        `<td class="num">${s.postBreakInputTokens}</td>`,
-        `<td>${s.adopted ? '✅ 采用' : '—'}</td>`,
-        `<td>${s.retrySuccess ? '✅' : '❌'}</td>`,
-        `<td>${s.completed ? '✅' : '❌'}</td>`,
-        `<td class="num">${s.noticeCount}</td>`,
-        `<td>${escapeHtml(s.toolCalls.join(', '))}</td>`,
-        '<td>',
-        `<details><summary>完整调用详情（点击展开）</summary>${details}</details>`,
+        '<tr class="border-t transition-colors hover:bg-muted/50 align-top">',
+        `<td class="p-3"><span class="inline-flex items-center rounded-md border border-border bg-muted px-2 py-0.5 text-xs font-medium">${run.arm === 'on' ? 'ON' : 'OFF'}</span></td>`,
+        `<td class="p-3 text-right tabular-nums">${run.repetition}</td>`,
+        `<td class="p-3 text-right tabular-nums">${s.retryStepOutputTokens}</td>`,
+        `<td class="p-3 text-right tabular-nums text-muted-foreground">${contentTokensForRecord(run)}</td>`,
+        `<td class="p-3 text-right tabular-nums">${s.postBreakInputTokens}</td>`,
+        `<td class="p-3">${s.adopted ? '✅' : '<span class="text-muted-foreground">—</span>'}</td>`,
+        `<td class="p-3">${s.retrySuccess ? '✅' : '❌'}</td>`,
+        `<td class="p-3">${s.completed ? '✅' : '❌'}</td>`,
+        `<td class="p-3 text-right tabular-nums">${s.noticeCount}</td>`,
+        `<td class="p-3 text-xs text-muted-foreground max-w-64 truncate">${escapeHtml(s.toolCalls.join(', '))}</td>`,
+        '<td class="p-3 w-1/3">',
+        '<details class="group rounded-lg border bg-card text-card-foreground">',
+        '<summary class="flex cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">',
+        CHEVRON,
+        '<span>完整调用详情</span>',
+        '</summary>',
+        `<div class="border-t px-3 py-3 space-y-2">${renderRunDetails(run)}</div>`,
+        '</details>',
         '</td>',
         '</tr>',
       ].join('\n')
-    })
+    }).join('\n')
     return [
-      `<h3>${escapeHtml(row.scenario)} — 每次运行明细</h3>`,
-      '<table class="runs"><thead><tr>',
-      '<th>臂</th><th>重复</th><th>重试步输出 token</th><th>断点后输入 token</th>',
-      '<th>采用</th><th>重试成功</th><th>收敛</th><th>通知条数</th><th>工具调用</th><th>详情</th>',
-      '</tr></thead><tbody>',
-      ...runRows,
-      '</tbody></table>',
+      '<section class="space-y-3">',
+      `<h3 class="text-base font-semibold tracking-tight">${escapeHtml(row.scenario)} · 每次运行明细</h3>`,
+      '<div class="rounded-xl border bg-card text-card-foreground shadow-xs overflow-hidden">',
+      '<div class="overflow-x-auto">',
+      '<table class="w-full caption-bottom text-sm">',
+      '<thead class="bg-muted/50 [&_th]:h-10 [&_th]:px-3 [&_th]:text-left [&_th]:align-middle [&_th]:font-medium [&_th]:text-muted-foreground [&_th]:whitespace-nowrap">',
+      '<tr><th>臂</th><th class="text-right">重复</th><th class="text-right">输出 token<br><span class="font-normal">含推理</span></th><th class="text-right">内容 token</th><th class="text-right">断点后输入 token</th><th>采用</th><th>重试成功</th><th>收敛</th><th class="text-right">通知条数</th><th>工具调用</th><th>详情</th></tr>',
+      '</thead>',
+      `<tbody>${runRows}</tbody>`,
+      '</table>',
+      '</div></div></section>',
     ].join('\n')
+  }).join('\n')
+}
+
+/** Minimal tabs: vanilla toggling, no framework (shadcn Tabs look). */
+function tabPanels(rows: ScenarioRow[]): string {
+  const panels = (['native', 'code'] as const).map((mode) => {
+    const group = rows.filter(row => row.mode === mode)
+    if (group.length === 0) return ''
+    return `<div data-panel="${mode}" class="hidden space-y-6">${scenarioTable(mode === 'native' ? 'native 模式' : 'PTC（code）模式', group)}</div>`
   })
+  const tabs = (['native', 'code'] as const)
+    .filter(mode => rows.some(row => row.mode === mode))
+    .map((mode, index) => [
+      `<button data-tab="${mode}" class="inline-flex items-center justify-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${index === 0
+        ? 'bg-background text-foreground shadow-xs'
+        : 'text-muted-foreground hover:text-foreground'}" aria-pressed="${index === 0}">`,
+      mode === 'native' ? 'native 模式' : 'PTC（code）模式',
+      '</button>',
+    ].join(''))
+  return [
+    '<div class="space-y-4">',
+    '<div class="inline-flex items-center rounded-lg bg-muted p-1 text-muted-foreground">',
+    ...tabs,
+    '</div>',
+    ...panels,
+    '</div>',
+  ].join('\n')
+}
+
+function renderReport(number: number, batch: BatchMeta, rows: ScenarioRow[]): string {
+  const onRows = rows.flatMap(row => row.runs.filter(run => run.arm === 'on'))
+  const offRows = rows.flatMap(row => row.runs.filter(run => run.arm === 'off'))
+  const onTokens = median(onRows.map(run => run.summary.retryStepOutputTokens))
+  const offTokens = median(offRows.map(run => run.summary.retryStepOutputTokens))
+  const savings = offTokens > 0 ? Math.round((1 - onTokens / offTokens) * 1000) / 10 : 0
+  const onContent = median(onRows.map(contentTokensForRecord))
+  const offContent = median(offRows.map(contentTokensForRecord))
+  const contentSavings = offContent > 0 ? Math.round((1 - onContent / offContent) * 1000) / 10 : 0
+  const adoption = rate(onRows.map(run => run.summary.adopted))
   const packages = Object.entries(batch.packages)
-    .map(([name, version]) => `<li><code>${escapeHtml(name)}</code> = ${escapeHtml(version)}</li>`)
+    .map(([name, version]) => `<li class="text-xs"><code class="rounded bg-muted px-1 py-0.5">${escapeHtml(name)}</code> <span class="text-muted-foreground">${escapeHtml(version)}</span></li>`)
     .join('')
-  const contentTokensForRecord = (run: RunRecord): number => {
-    const lines = readRunSession(run)
-    const first = lines?.find(line =>
-      line.type === 'assistant/message' && (line.data as { turn?: number; step?: number }).turn === 2)
-    const reasoning = first?.data?.usage?.reasoningTokens
-      ?? run.summary.retryStepReasoningTokens ?? 0
-    return run.summary.retryStepOutputTokens - reasoning
-  }
-  const overall = ((): string => {
-    const onRows = rows.flatMap(row => row.runs.filter(run => run.arm === 'on'))
-    const offRows = rows.flatMap(row => row.runs.filter(run => run.arm === 'off'))
-    const onTokens = median(onRows.map(run => run.summary.retryStepOutputTokens))
-    const offTokens = median(offRows.map(run => run.summary.retryStepOutputTokens))
-    const savings = offTokens > 0 ? Math.round((1 - onTokens / offTokens) * 1000) / 10 : 0
-    return [
-      '<h2>总体（全部场景合并）</h2>',
-      '<table><tbody>',
-      `<tr><th>ON 重试步输出 token（中位）</th><td class="num">${onTokens}</td></tr>`,
-      `<tr><th>OFF 重试步输出 token（中位）</th><td class="num">${offTokens}</td></tr>`,
-      `<tr><th>token 节省 %（中位，含推理）</th><td class="num ${savings >= 40 ? 'good' : ''}">${savings}%</td></tr>`,
-      `<tr><th>ON 内容 token（中位）</th><td class="num">${median(onRows.map(contentTokensForRecord))}</td></tr>`,
-      `<tr><th>OFF 内容 token（中位）</th><td class="num">${median(offRows.map(contentTokensForRecord))}</td></tr>`,
-      `<tr><th>采用率</th><td class="num">${percent(rate(onRows.map(run => run.summary.adopted)))}</td></tr>`,
-      `<tr><th>重试成功率 ON</th><td class="num">${percent(rate(onRows.map(run => run.summary.retrySuccess)))}</td></tr>`,
-      `<tr><th>重试成功率 OFF</th><td class="num">${percent(rate(offRows.map(run => run.summary.retrySuccess)))}</td></tr>`,
-      '</tbody></table>',
-    ].join('\n')
-  })()
+
   return `<!doctype html>
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>${escapeHtml(title)}</title>
-<style>
-:root { color-scheme: light; }
-body { font-family: ui-sans-serif, system-ui, "PingFang SC", sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; color: #1a1d21; line-height: 1.6; }
-h1 { font-size: 1.5rem; border-bottom: 2px solid #2f6fed; padding-bottom: .4rem; }
-h2 { margin-top: 2rem; font-size: 1.2rem; }
-h3 { margin-top: 1.6rem; font-size: 1rem; }
-table { border-collapse: collapse; width: 100%; margin: .6rem 0 1.4rem; font-size: .9rem; }
-th, td { border: 1px solid #d9dee5; padding: .35rem .55rem; text-align: left; vertical-align: top; }
-thead th { background: #eef3fb; }
-td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
-td.good { color: #0b7a3e; font-weight: 600; }
-.meta { background: #f6f8fa; border: 1px solid #d9dee5; border-radius: 6px; padding: .8rem 1rem; font-size: .85rem; }
-.meta ul { margin: .3rem 0; padding-left: 1.2rem; }
-.meta code { background: #eef1f4; padding: 0 .25rem; border-radius: 3px; }
-table.runs td { font-size: .8rem; }
-details { margin: .1rem 0; }
-details summary { cursor: pointer; color: #2f6fed; font-weight: 600; }
-.call { border-left: 3px solid #d9dee5; padding: .2rem .6rem; margin: .4rem 0; background: #fbfcfd; }
-.call-head { font-weight: 600; }
-.call-head .err { color: #b42318; }
-.call-label { color: #6b7280; font-size: .78rem; margin-top: .3rem; }
-.call pre { white-space: pre-wrap; word-break: break-word; background: #f6f8fa; border: 1px solid #e5e9ee; border-radius: 4px; padding: .4rem .5rem; margin: .15rem 0; max-height: 24em; overflow: auto; }
-footer { margin-top: 2rem; color: #6b7280; font-size: .8rem; }
-</style>
+<title>dsh-tool-retry 评测报告 ${String(number).padStart(3, '0')}</title>
+<script>
+document.documentElement.classList.toggle('dark', window.matchMedia('(prefers-color-scheme: dark)').matches);
+addEventListener('DOMContentLoaded', () => {
+  for (const tab of document.querySelectorAll('[data-tab]')) {
+    tab.addEventListener('click', () => {
+      for (const other of document.querySelectorAll('[data-tab]')) {
+        const active = other === tab;
+        other.setAttribute('aria-pressed', String(active));
+        other.className = active
+          ? 'inline-flex items-center justify-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors bg-background text-foreground shadow-xs'
+          : 'inline-flex items-center justify-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors text-muted-foreground hover:text-foreground';
+      }
+      for (const panel of document.querySelectorAll('[data-panel]')) {
+        panel.classList.toggle('hidden', panel.getAttribute('data-panel') !== tab.getAttribute('data-tab'));
+      }
+    });
+  }
+});
+</script>
+<style id="tailwind"></style>
 </head>
-<body>
-<h1>${escapeHtml(title)}</h1>
-<div class="meta">
-<ul>
-<li><strong>编号</strong>：${String(number).padStart(3, '0')}（批次 stamp：<code>${escapeHtml(batch.stamp)}</code>）</li>
-<li><strong>模型</strong>：${escapeHtml(batch.model)}（provider ${escapeHtml(batch.provider)}）· 思考强度 <strong>${escapeHtml(batch.reasoning ?? '默认')}</strong> · 每场景每臂重复 <strong>${batch.repeats}</strong> 次</li>
-<li><strong>仓库 git head</strong>：<code>${escapeHtml(batch.repoHead)}</code></li>
-<li><strong>运行时间</strong>：${escapeHtml(batch.startedAt)} → ${escapeHtml(batch.finishedAt)}</li>
-<li><strong>运行期依赖版本</strong>：<ul>${packages}</ul></li>
-<li><strong>场景</strong>：${batch.scenarios.map(escapeHtml).join('、')}</li>
-</ul>
-</div>
-${overall}
-${scenarioTable('native')}
-${scenarioTable('code')}
-${runTable.join('\n')}
-<footer>
-方法说明：每场景 × 臂（ON=挂载插件 / OFF=基线）× ${batch.repeats} 次独立运行；断点快照为持久化的失败工具调用前缀（恢复式续跑），
-指标取自断点后的权威会话日志：重试步输出 token = 断点后第一条 assistant/message 的 usage.outputTokens（含推理 token）；内容 token = 输出 token − reasoningTokens（不含推理，衡量模型实际产出的编辑/重生成文本）；
-采用 = native 出现 editPreviousToolCalling 调用 / PTC 后续 run_code 参数引用 checkpoint 路径；重试成功 = native 断点工具以合法输入重跑（行为级）/ PTC 按 plan §6 判据「断点后的 run_code 调用无 error」。
-原始逐条记录见 .artifacts/eval/results.jsonl。本报告由 pnpm eval:report 生成并持久化于仓库 reports/。
+<body class="min-h-screen bg-background font-sans antialiased">
+<div class="mx-auto max-w-6xl space-y-8 px-6 py-10">
+
+<header class="space-y-3">
+  <div class="flex flex-wrap items-center gap-3">
+    <h1 class="text-3xl font-semibold tracking-tight">dsh-tool-retry 评测报告</h1>
+    <span class="inline-flex items-center rounded-md border border-border bg-muted px-2.5 py-1 text-sm font-semibold tabular-nums">№ ${String(number).padStart(3, '0')}</span>
+  </div>
+  <p class="text-sm text-muted-foreground">工具调用自动暂存/失败通知/局部编辑重放插件的真实模型评测 —— 断点恢复式续跑，ON（挂载插件）vs OFF（基线）双臂对比。</p>
+  <div class="flex flex-wrap items-center gap-2">
+    ${badge(`模型 ${escapeHtml(batch.model)}`, 'neutral')}
+    ${badge(`provider ${escapeHtml(batch.provider)}`, 'neutral')}
+    ${badge(`思考强度 ${escapeHtml(batch.reasoning ?? '默认')}`, 'neutral')}
+    ${badge(`每场景每臂重复 ${batch.repeats} 次`, 'neutral')}
+    ${badge(`git ${escapeHtml(batch.repoHead.slice(0, 12))}`, 'neutral')}
+  </div>
+</header>
+
+<section class="rounded-xl border bg-card text-card-foreground shadow-xs">
+  <div class="grid grid-cols-2 gap-x-8 gap-y-4 p-6 lg:grid-cols-4">
+    <div class="space-y-1"><div class="text-xs font-medium uppercase tracking-wide text-muted-foreground">批次 stamp</div><code class="text-sm">${escapeHtml(batch.stamp)}</code></div>
+    <div class="space-y-1"><div class="text-xs font-medium uppercase tracking-wide text-muted-foreground">运行时间</div><div class="text-sm tabular-nums">${escapeHtml(batch.startedAt)}</div><div class="text-xs text-muted-foreground tabular-nums">→ ${escapeHtml(batch.finishedAt)}</div></div>
+    <div class="space-y-1"><div class="text-xs font-medium uppercase tracking-wide text-muted-foreground">场景</div><div class="text-sm">${batch.scenarios.map(escapeHtml).join('、')}</div></div>
+    <div class="space-y-1"><div class="text-xs font-medium uppercase tracking-wide text-muted-foreground">运行期依赖版本</div><ul class="space-y-0.5">${packages}</ul></div>
+  </div>
+</section>
+
+<section class="space-y-3">
+  <h2 class="text-lg font-semibold tracking-tight">总体（全部场景合并，中位数）</h2>
+  <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
+    ${statCard('ON 内容 token', String(onContent), `${onTokens} 含推理`)}
+    ${statCard('OFF 内容 token', String(offContent), `${offTokens} 含推理`)}
+    ${statCard('内容 token 节省', `${contentSavings}%`, `${savings}% 含推理`, contentSavings >= 40 ? 'positive' : contentSavings < 0 ? 'negative' : 'neutral')}
+    ${statCard('采用率', percent(adoption), `${percent(rate(onRows.map(run => run.summary.retrySuccess)))} 重试成功`, adoption > 0.5 ? 'positive' : 'neutral')}
+  </div>
+</section>
+
+${tabPanels(rows)}
+
+<section class="space-y-6">${runTables(rows)}</section>
+
+<footer class="space-y-2 border-t pt-6 text-xs text-muted-foreground">
+<p>方法说明：每场景 × 臂（ON=挂载插件 / OFF=基线）× ${batch.repeats} 次独立运行；断点快照为持久化的失败工具调用前缀（恢复式续跑）。指标取自断点后的权威会话日志：重试步输出 token = 断点后第一条 assistant/message 的 usage.outputTokens（含推理 token）；内容 token = 输出 token − reasoningTokens，衡量模型实际产出的编辑/重生成文本；采用 = native 出现 editPreviousToolCalling / PTC 后续 run_code 参数引用 checkpoint 路径；重试成功 = native 断点工具以合法输入重跑（行为级）/ PTC 按 plan §6 判据「断点后的 run_code 调用无 error」。</p>
+<p>每次运行的完整会话（全部工具调用的原始参数与结果）已落盘于 .artifacts/eval/runs/，可在上表「完整调用详情」中点击展开；逐条记录见 .artifacts/eval/results.jsonl。本报告由 pnpm eval:report 生成并持久化于仓库 reports/。</p>
 </footer>
+
+</div>
 </body>
 </html>
 `
+}
+
+/** Compile the shadcn/tailwind stylesheet for one HTML file and inline it. */
+function inlineTailwind(htmlPath: string): void {
+  const cssPath = `${htmlPath}.css`
+  const result = spawnSync(process.execPath, [
+    TAILWIND_CLI,
+    '-i', TAILWIND_CSS,
+    '-o', cssPath,
+    '--content', htmlPath,
+    '--minify',
+  ], { encoding: 'utf8' })
+  if (result.status !== 0) {
+    throw new Error(`eval:report — tailwind compile failed: ${result.stderr}`)
+  }
+  const css = readFileSync(cssPath, 'utf8')
+  rmSync(cssPath, { force: true })
+  const html = readFileSync(htmlPath, 'utf8').replace('<style id="tailwind"></style>', `<style id="tailwind">\n${css}\n</style>`)
+  writeFileSync(htmlPath, html)
 }
 
 /** Regenerate the catalog listing every persisted report. */
@@ -420,17 +521,33 @@ function renderIndex(batch: BatchMeta, latestNumber: number): void {
     .filter(entry => entry.isFile() && /^\d{3}-.+\.html$/u.test(entry.name))
     .map(entry => entry.name)
     .sort()
-  const items = files.map((name) => {
-    return `<li><a href="${escapeHtml(name)}">${escapeHtml(name)}</a></li>`
-  }).join('\n')
+  const items = files.map((name) => [
+    '<li>',
+    '<a class="group block rounded-xl border bg-card text-card-foreground shadow-xs transition-colors hover:bg-muted/50 p-4 space-y-1" '
+    + `href="${escapeHtml(name)}">`,
+    `<div class="flex items-center gap-2"><span class="text-sm font-semibold tabular-nums">${escapeHtml(name)}</span>${name.includes(batch.stamp) ? badge('最新', 'positive') : ''}</div>`,
+    '<div class="text-xs text-muted-foreground">dsh-tool-retry 真实模型评测报告</div>',
+    '</a>',
+    '</li>',
+  ].join('\n')).join('\n')
   const html = `<!doctype html>
 <html lang="zh-CN">
-<head><meta charset="utf-8"><title>dsh-tool-retry 评测报告目录</title></head>
-<body style="font-family: ui-sans-serif, system-ui, 'PingFang SC', sans-serif; max-width: 800px; margin: 2rem auto;">
-<h1>dsh-tool-retry 评测报告目录</h1>
-<p>最新批次：<code>${escapeHtml(batch.stamp)}</code> · 最新报告编号 <strong>${String(latestNumber).padStart(3, '0')}</strong> · 模型 ${escapeHtml(batch.model)}</p>
-<ul>${items}</ul>
-<p style="color:#6b7280; font-size:.8rem;">由 pnpm eval:report 自动生成。</p>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dsh-tool-retry 评测报告目录</title>
+<script>document.documentElement.classList.toggle('dark', window.matchMedia('(prefers-color-scheme: dark)').matches);</script>
+<style id="tailwind"></style>
+</head>
+<body class="min-h-screen bg-background font-sans antialiased">
+<div class="mx-auto max-w-3xl space-y-8 px-6 py-10">
+<header class="space-y-2">
+  <h1 class="text-3xl font-semibold tracking-tight">dsh-tool-retry 评测报告目录</h1>
+  <p class="text-sm text-muted-foreground">最新批次 <code class="rounded bg-muted px-1 py-0.5">${escapeHtml(batch.stamp)}</code> · 最新报告 № ${String(latestNumber).padStart(3, '0')} · 模型 ${escapeHtml(batch.model)}</p>
+</header>
+<ul class="space-y-3">${items}</ul>
+<footer class="border-t pt-6 text-xs text-muted-foreground">由 pnpm eval:report 自动生成。</footer>
+</div>
 </body>
 </html>
 `
@@ -448,6 +565,9 @@ const number = numberForBatch(batch.stamp)
 const fileName = `${String(number).padStart(3, '0')}-${batch.stamp}-${batch.model}.html`
 const path = join(REPORTS_DIR, fileName)
 writeFileSync(path, renderReport(number, batch, rows))
+inlineTailwind(path)
+const indexPath = join(REPORTS_DIR, 'index.html')
 renderIndex(batch, number)
+inlineTailwind(indexPath)
 console.log(`eval:report — wrote ${path}`)
-console.log(`eval:report — catalog refreshed at ${join(REPORTS_DIR, 'index.html')}`)
+console.log(`eval:report — catalog refreshed at ${indexPath}`)
