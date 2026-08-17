@@ -75,14 +75,24 @@ describe('eval resume mechanics (keyless smoke, REAL corpus)', () => {
 
   it('real-edit-stale: ON re-points the stale old_string at the real file content', async () => {
     const { fixture, args, file } = fsFixture('real-edit-stale')
+    // The grader's ground truth is the session's OWN eventual fix (the later
+    // edit's new_string), not the recorded failed call's superseded one — the
+    // scripted retry re-points old_string at the real file's first line, then
+    // swaps the checkpoint's new_string for that fix (each edit replays).
+    const fix = fixture.successChecks![0]!.fragment!
     const on = await runEvalScenario({
       fixture, arm: 'on', model: 'mock', deadlineMs: DEADLINE_MS, deployCalls: [],
       adapter: new MockAdapter([
         toolCallResponse('sm_s_read', 'read', { file_path: file.path }),
-        toolCallResponse('sm_s_edit', 'editPreviousToolCalling', {
+        toolCallResponse('sm_s_edit1', 'editPreviousToolCalling', {
           call_id: fixture.blocks[0]!.callId,
           old_string: jsonEsc(String(args.old_string)),
           new_string: jsonEsc(firstLine(file.content)),
+        }),
+        toolCallResponse('sm_s_edit2', 'editPreviousToolCalling', {
+          call_id: fixture.blocks[0]!.callId,
+          old_string: jsonEsc(String(args.new_string)),
+          new_string: jsonEsc(fix),
         }),
         textResponse('done'),
       ]),

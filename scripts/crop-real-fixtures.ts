@@ -298,8 +298,15 @@ function cropOne(caseDef: RealCase): void {
 
     // Reverse the session's later successful edit/write on the same file, if any.
     const failedPath = parsed.file_path ?? ''
-    let laterEdit: { new_string: string; old_string: string } | undefined
-    let laterWrite: { content: string } | undefined
+    // The ground truth is the session's OWN eventual fix: every later
+    // successful edit/write on the failed file. Reverse ALL later edits (in
+    // reverse order) to reach the failure-time bytes the model actually saw,
+    // and grade against the LAST later edit's new_string — never the
+    // recorded failed call's own (possibly superseded) new_string. A single-
+    // edit reversal left mid-fix states that made the model judge the file
+    // "already correct".
+    const laterEdits: { new_string: string; old_string: string }[] = []
+    const laterWrites: { content: string }[] = []
     for (let index = breakResultIndex + 1; index < events.length; index += 1) {
       const event = events[index]!
       if (event.type !== 'tool/call') continue
@@ -319,46 +326,52 @@ function cropOne(caseDef: RealCase): void {
       const isError = (result?.data?.message as { content?: { isError?: boolean }[] } | undefined)?.content?.[0]?.isError
       if (isError === true) continue
       if (data.name === 'edit' && callArgs.new_string !== undefined && callArgs.old_string !== undefined) {
-        laterEdit = { new_string: callArgs.new_string, old_string: callArgs.old_string }
+        laterEdits.push({ new_string: callArgs.new_string, old_string: callArgs.old_string })
       } else if (data.name === 'write' && callArgs.content !== undefined) {
-        laterWrite = { content: callArgs.content }
+        laterWrites.push({ content: callArgs.content })
       }
-      break
     }
 
     let failureState = target.content
-    if (laterEdit !== undefined && failureState.includes(laterEdit.new_string)) {
-      if (failureState.split(laterEdit.new_string).length - 1 !== 1) {
-        throw new Error(`cannot reverse later edit for ${caseDef.name}: new_string present ${failureState.split(laterEdit.new_string).length - 1}x`)
+    let groundTruth = intended
+    for (const laterWrite of laterWrites) {
+      if (!failureState.includes(laterWrite.content)) continue // sandboxed, never landed here
+      if (failureState === laterWrite.content) continue // content-equal no-op rewrite
+      // The write landed and the file diverged further: failure-time state
+      // is unrecoverable from the current snapshot.
+      throw new Error(`cannot recover failure-time state for ${caseDef.name}: a later successful write landed in the snapshot`)
+    }
+    if (laterEdits.length > 0) {
+      // Reverse every later edit, newest first — the failure-time bytes.
+      for (const laterEdit of [...laterEdits].reverse()) {
+        const occurrences = failureState.split(laterEdit.new_string).length - 1
+        if (occurrences !== 1) {
+          throw new Error(`cannot reverse later edit for ${caseDef.name}: new_string present ${occurrences}x`)
+        }
+        failureState = failureState.replace(laterEdit.new_string, laterEdit.old_string)
       }
-      failureState = failureState.replace(laterEdit.new_string, laterEdit.old_string)
-    } else if (laterWrite !== undefined && failureState.includes(laterWrite.content)) {
-      if (failureState !== laterWrite.content) {
-        // The write landed and the file diverged further: failure-time state
-        // is unrecoverable from the current snapshot.
-        throw new Error(`cannot recover failure-time state for ${caseDef.name}: a later successful write landed in the snapshot`)
-      }
-      // Content-equal no-op rewrite: the snapshot IS the failure-time state.
+      // Grade the REAL fix (the last later edit's content).
+      groundTruth = laterEdits.at(-1)!.new_string
     } else if (failureState.includes(intended)) {
       const occurrences = failureState.split(intended).length - 1
       if (parsed.new_string !== undefined && parsed.old_string !== undefined && occurrences === 1) {
-        // Reverse the recorded failed call itself: failure-time state =
-        // new_string swapped back to the old_string it had tried to match.
+        // No later edits: reverse the recorded failed call itself (its
+        // new_string was the eventual fix, applied on a retry).
         failureState = failureState.replace(intended, parsed.old_string)
       } else {
         throw new Error(`cannot recover failure-time state for ${caseDef.name}: snapshot already contains the intended content (${occurrences}x)`)
       }
     }
     target.content = failureState
-    // Pick the first 60-char window of the intended content that the
+    // Pick the first 60-char window of the ground-truth content that the
     // failure-time file does NOT already contain (the shared heading can
     // make the first window degenerate, e.g. a README rewrite).
-    let fragment = intended.slice(0, 60)
-    for (let offset = 60; offset < intended.length && failureState.includes(fragment); offset += 60) {
-      fragment = intended.slice(offset, offset + 60)
+    let fragment = groundTruth.slice(0, 60)
+    for (let offset = 60; offset < groundTruth.length && failureState.includes(fragment); offset += 60) {
+      fragment = groundTruth.slice(offset, offset + 60)
     }
     if (failureState.includes(fragment)) {
-      throw new Error(`degenerate success check for ${caseDef.name}: every 60-char window of the intended content is already present`)
+      throw new Error(`degenerate success check for ${caseDef.name}: every 60-char window of the ground-truth content is already present`)
     }
     successChecks = [{ kind: 'fileContains', path: target.path, fragment }]
   }
