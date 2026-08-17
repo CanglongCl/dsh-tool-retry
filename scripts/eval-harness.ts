@@ -129,6 +129,7 @@ interface Queued {
   arm: 'on' | 'off'
   rep: number
 }
+const forceAll = process.argv.includes('--force')
 const baseQueue: Queued[] = scenarios.flatMap(name =>
   MODES.filter(mode => modeFilter === '' || mode === modeFilter).flatMap(mode =>
     ARMS.filter(arm => armFilter === '' || arm === armFilter).flatMap(arm =>
@@ -147,6 +148,7 @@ try {
   }
 } catch { /* no prior results */ }
 const queue = baseQueue.filter((queued) => {
+  if (forceAll) return true
   const loaded = loadedByName.get(queued.name)!
   const id = revisionsFor(loaded, queued.mode, queued.arm, REASONING, queued.rep, repoHead()).experiment
   return !finishedExperiments.has(id)
