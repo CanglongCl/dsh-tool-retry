@@ -30,10 +30,12 @@ const LOCKFILE = readFileSync(join(ROOT, 'pnpm-lock.yaml'), 'utf8')
 const EXPECTED_PUBLIC_DEVELOPMENT_VERSIONS: Record<string, string> = {
   '@deepseek-ai/cordis': '4.0.1',
   '@deepseek-ai/dsh-agent': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-code-runtime': '0.1.0-rc.6',
   '@deepseek-ai/dsh-fs': '0.1.0-rc.6',
   '@deepseek-ai/dsh-llm': '0.1.0-rc.6',
   '@deepseek-ai/dsh-session': '0.1.0-rc.6',
   '@deepseek-ai/dsh-system-prompt': '0.1.0-rc.6',
+  '@deepseek-ai/dsh-tool-fs': '0.1.0-rc.6',
   '@deepseek-ai/dsh-tools': '0.1.0-rc.6',
   '@deepseek-ai/dsh-scope': '0.1.0-rc.6',
   '@deepseek-ai/dsh-agent-loop': '0.1.0-rc.6',
