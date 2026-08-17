@@ -4,18 +4,25 @@
   "kind": "fs",
   "fresh": true,
   "targetTool": true,
-  "task": "调用 eval_target 工具，参数 version 设为 \"v1\"。如果这次调用失败，就修正后重新调用直到成功，然后汇报最终结果。",
-  "title": "最小场景：标记值工具失败（实时触发，参考真实失败类型）",
+  "task": "调用 eval_target 工具，参数 version 传 1。如果调用失败，就修正参数后重新调用直到成功，然后汇报最终结果。",
+  "title": "最小场景：标记值工具失败（实时触发）",
   "description": {
-    "input": "任务强制模型以 version=v1 调用 eval_target——第一次必然失败（与真实 bad case 同类：参数本身导致工具拒绝）。失败发生在本次运行内，插件在场时真实通知随失败注入。",
-    "expected": "失败后模型修正参数重试成功（ON 臂可经 editPreviousToolCalling 一步修正，OFF 臂重新生成参数）。"
+    "input": "任务强制模型以 version=1 调用 eval_target——工具体必然拒绝（与真实 bad case 同类：参数导致工具拒绝）。失败发生在本次运行内，插件在场时真实通知随失败注入。",
+    "expected": "失败后模型修正参数重试成功（ON 臂可经 editPreviousToolCalling 一步修正）。"
   },
   "blocks": [],
   "continuation": "",
   "workspaceFiles": [
-    { "path": "README.md", "content": "# mini\n\n最小场景工作区：只有一个文件，无构建、无外部依赖。\n" }
+    {
+      "path": "README.md",
+      "content": "# mini\n\n最小场景工作区：只有一个文件，无构建、无外部依赖。\n"
+    }
   ],
   "successChecks": [
-    { "kind": "fileContains", "path": "target-result.txt", "fragment": "OK-" }
+    {
+      "kind": "fileContains",
+      "path": "target-result.txt",
+      "fragment": "OK-"
+    }
   ]
 }

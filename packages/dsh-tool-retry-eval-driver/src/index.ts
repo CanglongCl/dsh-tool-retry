@@ -154,24 +154,66 @@ function lastReason(session: { events: readonly { type: string; data?: { reason?
   return 'unknown'
 }
 
-/** The deterministic minimal-scenario tool: the first call the task forces
- * (version 'v1') fails for real; any later call succeeds and writes the
- * grader marker into the workspace. */
+const fsWrite = async (path: string, content: string): Promise<void> => {
+  const { writeFileSync } = await import('node:fs')
+  const { join } = await import('node:path')
+  writeFileSync(join(process.cwd(), path), content)
+}
+const fsRead = async (path: string): Promise<string> => {
+  const { readFileSync } = await import('node:fs')
+  const { join } = await import('node:path')
+  try {
+    return readFileSync(join(process.cwd(), path), 'utf8')
+  } catch {
+    return ''
+  }
+}
+
+/** The deterministic minimal-scenario tools:
+ * - eval_target: version is a NUMBER; 1 is rejected by the body (the
+ *   marker-failure class), any other number writes OK-<version>. The
+ *   INVALID_ARGS class comes from the same tool's schema (a string version
+ *   violates the number type).
+ * - eval_edit: mimics the fs edit tool's stale-old_string rejection — the
+ *   body throws exactly like FS_EDIT_NOT_FOUND when old_string is absent
+ *   from the workspace file, and applies the literal edit otherwise. */
 function registerTargetTool(ctx: Context): void {
   ctx.tools.register(defineTool({
     name: 'eval_target',
-    description: 'Submit a version marker for the evaluation target.',
-    parameters: { version: { type: 'string', required: true, description: 'The version marker to submit.' } },
+    description: 'Submit a numeric version marker for the evaluation target.',
+    parameters: { version: { type: 'number', required: true, description: 'The numeric version marker to submit.' } },
     output: {
       schema: { type: 'object', additionalProperties: false, properties: { ok: { type: 'boolean', required: true } } },
       render: (_args, value) => [{ type: 'text', text: `target ok: ${String(value.ok)}` }],
     },
     async execute(args) {
-      const version = String(args.version)
-      if (version === 'v1') throw new Error('target rejected version "v1"')
-      const { writeFileSync } = await import('node:fs')
-      const { join } = await import('node:path')
-      writeFileSync(join(process.cwd(), 'target-result.txt'), `OK-${version}\n`)
+      const version = Number(args.version)
+      if (version === 1) throw new Error('target rejected version 1')
+      await fsWrite('target-result.txt', `OK-${version}\n`)
+      return { ok: true }
+    },
+  }))
+  ctx.tools.register(defineTool({
+    name: 'eval_edit',
+    description: 'Apply a literal edit to a workspace file; fails when old_string is not in the file (like the fs edit tool).',
+    parameters: {
+      file_path: { type: 'string', required: true, description: 'The workspace file to edit.' },
+      old_string: { type: 'string', required: true, description: 'The literal text to replace.' },
+      new_string: { type: 'string', required: true, description: 'The literal replacement.' },
+    },
+    output: {
+      schema: { type: 'object', additionalProperties: false, properties: { ok: { type: 'boolean', required: true } } },
+      render: (_args, value) => [{ type: 'text', text: `edit ok: ${String(value.ok)}` }],
+    },
+    async execute(args) {
+      const filePath = String(args.file_path)
+      const oldString = String(args.old_string)
+      const newString = String(args.new_string)
+      const content = await fsRead(filePath)
+      if (!content.includes(oldString)) {
+        throw new Error(`old_string was not found in "${filePath}"`)
+      }
+      await fsWrite(filePath, content.replace(oldString, newString))
       return { ok: true }
     },
   }))
