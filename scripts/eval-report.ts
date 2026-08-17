@@ -46,6 +46,7 @@ interface RunRecord {
   finishedAt: string
   summary: {
     retryStepOutputTokens: number
+    retryStepReasoningTokens?: number
     postBreakInputTokens: number
     retrySuccess: boolean
     adopted: boolean
@@ -65,7 +66,7 @@ interface SessionLine {
     callId?: string
     name?: string
     arguments?: string
-    usage?: { inputTokens?: number; outputTokens?: number }
+    usage?: { inputTokens?: number; outputTokens?: number; reasoningTokens?: number }
     message?: { content?: { toolCallId?: string; content?: { type?: string; text?: string }[]; isError?: boolean }[] }
   }
 }
@@ -195,6 +196,9 @@ interface ScenarioRow {
   onTokens: number
   offTokens: number
   savingsPercent: number
+  onContentTokens: number
+  offContentTokens: number
+  contentSavingsPercent: number
   adoptionRate: number
   onRetryRate: number
   offRetryRate: number
@@ -217,12 +221,27 @@ function buildScenarioRows(records: RunRecord[]): ScenarioRow[] {
     const off = runs.filter(run => run.arm === 'off')
     const onTokens = median(on.map(run => run.summary.retryStepOutputTokens))
     const offTokens = median(off.map(run => run.summary.retryStepOutputTokens))
+    const contentTokens = (run: RunRecord): number => {
+      // Reasoning tokens come from the persisted session usage when available
+      // (the authoritative source), else from the recorded summary field.
+      const lines = readRunSession(run)
+      const first = lines?.find(line =>
+        line.type === 'assistant/message' && (line.data as { turn?: number; step?: number }).turn === 2)
+      const reasoning = first?.data?.usage?.reasoningTokens
+        ?? run.summary.retryStepReasoningTokens ?? 0
+      return run.summary.retryStepOutputTokens - reasoning
+    }
+    const onContentTokens = median(on.map(contentTokens))
+    const offContentTokens = median(off.map(contentTokens))
     return {
       scenario,
       mode: runs[0]!.mode,
       onTokens,
       offTokens,
       savingsPercent: offTokens > 0 ? Math.round((1 - onTokens / offTokens) * 1000) / 10 : 0,
+      onContentTokens,
+      offContentTokens,
+      contentSavingsPercent: offContentTokens > 0 ? Math.round((1 - onContentTokens / offContentTokens) * 1000) / 10 : 0,
       adoptionRate: rate(on.map(run => run.summary.adopted)),
       onRetryRate: rate(on.map(run => run.summary.retrySuccess)),
       offRetryRate: rate(off.map(run => run.summary.retrySuccess)),
@@ -247,8 +266,9 @@ function renderReport(number: number, batch: BatchMeta, rows: ScenarioRow[]): st
     const head = [
       '<h2>', mode === 'native' ? 'native 模式' : 'PTC（code）模式', '</h2>',
       '<table><thead><tr>',
-      '<th>场景</th><th>ON 重试步输出 token（中位）</th><th>OFF 重试步输出 token（中位）</th>',
-      '<th>token 节省 %</th><th>采用率</th><th>重试成功率 ON</th><th>重试成功率 OFF</th>',
+      '<th>场景</th><th>ON 输出 token 含推理</th><th>OFF 输出 token 含推理</th>',
+      '<th>token 节省 %（含推理）</th><th>ON 内容 token</th><th>OFF 内容 token</th>',
+      '<th>内容 token 节省 %</th><th>采用率</th><th>重试成功率 ON</th><th>重试成功率 OFF</th>',
       '<th>通知条数（中位）</th><th>通知字节（中位）</th><th>ON 断点后输入 token（中位）</th>',
       '</tr></thead><tbody>',
     ]
@@ -259,6 +279,9 @@ function renderReport(number: number, batch: BatchMeta, rows: ScenarioRow[]): st
         `<td class="num">${row.onTokens}</td>`,
         `<td class="num">${row.offTokens}</td>`,
         `<td class="num ${row.savingsPercent >= 40 ? 'good' : ''}">${row.savingsPercent}%</td>`,
+        `<td class="num">${row.onContentTokens}</td>`,
+        `<td class="num">${row.offContentTokens}</td>`,
+        `<td class="num ${row.contentSavingsPercent >= 40 ? 'good' : ''}">${row.contentSavingsPercent}%</td>`,
         `<td class="num">${percent(row.adoptionRate)}</td>`,
         `<td class="num">${percent(row.onRetryRate)}</td>`,
         `<td class="num">${percent(row.offRetryRate)}</td>`,
@@ -305,6 +328,14 @@ function renderReport(number: number, batch: BatchMeta, rows: ScenarioRow[]): st
   const packages = Object.entries(batch.packages)
     .map(([name, version]) => `<li><code>${escapeHtml(name)}</code> = ${escapeHtml(version)}</li>`)
     .join('')
+  const contentTokensForRecord = (run: RunRecord): number => {
+    const lines = readRunSession(run)
+    const first = lines?.find(line =>
+      line.type === 'assistant/message' && (line.data as { turn?: number; step?: number }).turn === 2)
+    const reasoning = first?.data?.usage?.reasoningTokens
+      ?? run.summary.retryStepReasoningTokens ?? 0
+    return run.summary.retryStepOutputTokens - reasoning
+  }
   const overall = ((): string => {
     const onRows = rows.flatMap(row => row.runs.filter(run => run.arm === 'on'))
     const offRows = rows.flatMap(row => row.runs.filter(run => run.arm === 'off'))
@@ -316,7 +347,9 @@ function renderReport(number: number, batch: BatchMeta, rows: ScenarioRow[]): st
       '<table><tbody>',
       `<tr><th>ON 重试步输出 token（中位）</th><td class="num">${onTokens}</td></tr>`,
       `<tr><th>OFF 重试步输出 token（中位）</th><td class="num">${offTokens}</td></tr>`,
-      `<tr><th>token 节省 %（中位）</th><td class="num ${savings >= 40 ? 'good' : ''}">${savings}%</td></tr>`,
+      `<tr><th>token 节省 %（中位，含推理）</th><td class="num ${savings >= 40 ? 'good' : ''}">${savings}%</td></tr>`,
+      `<tr><th>ON 内容 token（中位）</th><td class="num">${median(onRows.map(contentTokensForRecord))}</td></tr>`,
+      `<tr><th>OFF 内容 token（中位）</th><td class="num">${median(offRows.map(contentTokensForRecord))}</td></tr>`,
       `<tr><th>采用率</th><td class="num">${percent(rate(onRows.map(run => run.summary.adopted)))}</td></tr>`,
       `<tr><th>重试成功率 ON</th><td class="num">${percent(rate(onRows.map(run => run.summary.retrySuccess)))}</td></tr>`,
       `<tr><th>重试成功率 OFF</th><td class="num">${percent(rate(offRows.map(run => run.summary.retrySuccess)))}</td></tr>`,
@@ -372,7 +405,7 @@ ${scenarioTable('code')}
 ${runTable.join('\n')}
 <footer>
 方法说明：每场景 × 臂（ON=挂载插件 / OFF=基线）× ${batch.repeats} 次独立运行；断点快照为持久化的失败工具调用前缀（恢复式续跑），
-指标取自断点后的权威会话日志：重试步输出 token = 断点后第一条 assistant/message 的 usage.outputTokens（含推理 token，adapter 默认档）；
+指标取自断点后的权威会话日志：重试步输出 token = 断点后第一条 assistant/message 的 usage.outputTokens（含推理 token）；内容 token = 输出 token − reasoningTokens（不含推理，衡量模型实际产出的编辑/重生成文本）；
 采用 = native 出现 editPreviousToolCalling 调用 / PTC 后续 run_code 参数引用 checkpoint 路径；重试成功 = native 断点工具以合法输入重跑（行为级）/ PTC 按 plan §6 判据「断点后的 run_code 调用无 error」。
 原始逐条记录见 .artifacts/eval/results.jsonl。本报告由 pnpm eval:report 生成并持久化于仓库 reports/。
 </footer>

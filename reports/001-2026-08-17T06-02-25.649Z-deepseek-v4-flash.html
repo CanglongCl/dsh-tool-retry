@@ -1,0 +1,1075 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dsh-tool-retry 评测报告 001</title>
+<style>
+:root { color-scheme: light; }
+body { font-family: ui-sans-serif, system-ui, "PingFang SC", sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; color: #1a1d21; line-height: 1.6; }
+h1 { font-size: 1.5rem; border-bottom: 2px solid #2f6fed; padding-bottom: .4rem; }
+h2 { margin-top: 2rem; font-size: 1.2rem; }
+h3 { margin-top: 1.6rem; font-size: 1rem; }
+table { border-collapse: collapse; width: 100%; margin: .6rem 0 1.4rem; font-size: .9rem; }
+th, td { border: 1px solid #d9dee5; padding: .35rem .55rem; text-align: left; vertical-align: top; }
+thead th { background: #eef3fb; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+td.good { color: #0b7a3e; font-weight: 600; }
+.meta { background: #f6f8fa; border: 1px solid #d9dee5; border-radius: 6px; padding: .8rem 1rem; font-size: .85rem; }
+.meta ul { margin: .3rem 0; padding-left: 1.2rem; }
+.meta code { background: #eef1f4; padding: 0 .25rem; border-radius: 3px; }
+table.runs td { font-size: .8rem; }
+details { margin: .1rem 0; }
+details summary { cursor: pointer; color: #2f6fed; font-weight: 600; }
+.call { border-left: 3px solid #d9dee5; padding: .2rem .6rem; margin: .4rem 0; background: #fbfcfd; }
+.call-head { font-weight: 600; }
+.call-head .err { color: #b42318; }
+.call-label { color: #6b7280; font-size: .78rem; margin-top: .3rem; }
+.call pre { white-space: pre-wrap; word-break: break-word; background: #f6f8fa; border: 1px solid #e5e9ee; border-radius: 4px; padding: .4rem .5rem; margin: .15rem 0; max-height: 24em; overflow: auto; }
+footer { margin-top: 2rem; color: #6b7280; font-size: .8rem; }
+</style>
+</head>
+<body>
+<h1>dsh-tool-retry 评测报告 001</h1>
+<div class="meta">
+<ul>
+<li><strong>编号</strong>：001（批次 stamp：<code>2026-08-17T06-02-25.649Z</code>）</li>
+<li><strong>模型</strong>：deepseek-v4-flash（provider deepseek-official）· 思考强度 <strong>high</strong> · 每场景每臂重复 <strong>3</strong> 次</li>
+<li><strong>仓库 git head</strong>：<code>79952a6802e33e4f5fc6a14c4eb8214d85df2c76</code></li>
+<li><strong>运行时间</strong>：2026-08-17T06:02:25.649Z → 2026-08-17T06:13:47.717Z</li>
+<li><strong>运行期依赖版本</strong>：<ul><li><code>@deepseek-ai/dsh-tools</code> = unknown</li><li><code>@deepseek-ai/dsh-llm</code> = unknown</li><li><code>@deepseek-ai/dsh-session</code> = unknown</li><li><code>@deepseek-ai/dsh-agent-loop</code> = unknown</li><li><code>@deepseek-ai/dsh-session-persistence-jsonl</code> = unknown</li></ul></li>
+<li><strong>场景</strong>：native-invalid-args、native-invalid-json、ptc-program-error</li>
+</ul>
+</div>
+<h2>总体（全部场景合并）</h2>
+<table><tbody>
+<tr><th>ON 重试步输出 token（中位）</th><td class="num">500</td></tr>
+<tr><th>OFF 重试步输出 token（中位）</th><td class="num">258</td></tr>
+<tr><th>token 节省 %（中位，含推理）</th><td class="num ">-93.8%</td></tr>
+<tr><th>ON 内容 token（中位）</th><td class="num">103</td></tr>
+<tr><th>OFF 内容 token（中位）</th><td class="num">161</td></tr>
+<tr><th>采用率</th><td class="num">89%</td></tr>
+<tr><th>重试成功率 ON</th><td class="num">100%</td></tr>
+<tr><th>重试成功率 OFF</th><td class="num">100%</td></tr>
+</tbody></table>
+<h2>
+native 模式
+</h2>
+<table><thead><tr>
+<th>场景</th><th>ON 输出 token 含推理</th><th>OFF 输出 token 含推理</th>
+<th>token 节省 %（含推理）</th><th>ON 内容 token</th><th>OFF 内容 token</th>
+<th>内容 token 节省 %</th><th>采用率</th><th>重试成功率 ON</th><th>重试成功率 OFF</th>
+<th>通知条数（中位）</th><th>通知字节（中位）</th><th>ON 断点后输入 token（中位）</th>
+</tr></thead><tbody>
+<tr>
+<td>native-invalid-args</td>
+<td class="num">287</td>
+<td class="num">445</td>
+<td class="num ">35.5%</td>
+<td class="num">103</td>
+<td class="num">334</td>
+<td class="num good">69.2%</td>
+<td class="num">100%</td>
+<td class="num">100%</td>
+<td class="num">100%</td>
+<td class="num">5</td>
+<td class="num">1120</td>
+<td class="num">1218</td>
+</tr>
+<tr>
+<td>native-invalid-json</td>
+<td class="num">2290</td>
+<td class="num">255</td>
+<td class="num ">-798%</td>
+<td class="num">100</td>
+<td class="num">161</td>
+<td class="num ">37.9%</td>
+<td class="num">100%</td>
+<td class="num">100%</td>
+<td class="num">100%</td>
+<td class="num">0</td>
+<td class="num">0</td>
+<td class="num">221</td>
+</tr>
+</tbody></table>
+<h2>
+PTC（code）模式
+</h2>
+<table><thead><tr>
+<th>场景</th><th>ON 输出 token 含推理</th><th>OFF 输出 token 含推理</th>
+<th>token 节省 %（含推理）</th><th>ON 内容 token</th><th>OFF 内容 token</th>
+<th>内容 token 节省 %</th><th>采用率</th><th>重试成功率 ON</th><th>重试成功率 OFF</th>
+<th>通知条数（中位）</th><th>通知字节（中位）</th><th>ON 断点后输入 token（中位）</th>
+</tr></thead><tbody>
+<tr>
+<td>ptc-program-error</td>
+<td class="num">500</td>
+<td class="num">180</td>
+<td class="num ">-177.8%</td>
+<td class="num">204</td>
+<td class="num">79</td>
+<td class="num ">-158.2%</td>
+<td class="num">67%</td>
+<td class="num">100%</td>
+<td class="num">100%</td>
+<td class="num">0</td>
+<td class="num">0</td>
+<td class="num">195</td>
+</tr>
+</tbody></table>
+<h3>native-invalid-args — 每次运行明细</h3>
+<table class="runs"><thead><tr>
+<th>臂</th><th>重复</th><th>重试步输出 token</th><th>断点后输入 token</th>
+<th>采用</th><th>重试成功</th><th>收敛</th><th>通知条数</th><th>工具调用</th><th>详情</th>
+</tr></thead><tbody>
+<tr>
+<td>ON</td>
+<td class="num">1</td>
+<td class="num">287</td>
+<td class="num">1324</td>
+<td>✅ 采用</td>
+<td>✅</td>
+<td>✅</td>
+<td class="num">6</td>
+<td>editPreviousToolCalling, editPreviousToolCalling, editPreviousToolCalling, editPreviousToolCalling, editPreviousToolCalling, editPreviousToolCalling, editPreviousToolCalling</td>
+<td>
+<details><summary>完整调用详情（点击展开）</summary><div class="call">
+<div class="call-head">#1 <code>deploy</code> · callId break_1 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;config&quot;:{&quot;label&quot;:&quot;payments&quot;,&quot;replicas&quot;:3,&quot;region&quot;:&quot;cn-east-1&quot;,&quot;image&quot;:&quot;registry.example.com/app:2026.08.01-rc7&quot;,&quot;env&quot;:{&quot;LOG_LEVEL&quot;:&quot;debug&quot;,&quot;FEATURE_FLAGS&quot;:{&quot;retry&quot;:true,&quot;tracing&quot;:true,&quot;canary&quot;:false}},&quot;resources&quot;:{&quot;cpu&quot;:&quot;2&quot;,&quot;memory&quot;:&quot;4Gi&quot;,&quot;gpu&quot;:null},&quot;template&quot;:&quot;kind: Deployment\napiVersion: apps/v1\nmetadata:\n  name: {name}\nspec:\n  replicas: {replicas}\n  selector:\n    matchLabels:\n      app: {name}\n  template:\n    metadata:\n      labels:\n        app: {name}\n    spec:\n      containers:\n      - name: app\n        image: {image}\n        ports:\n        - containerPort: 8080\n        env:\n        - name: LOG_LEVEL\n          value: \&quot;{loglevel}\&quot;\n        resources:\n          limits:\n            cpu: \&quot;2\&quot;\n            memory: \&quot;4Gi\&quot;\n          requests:\n            cpu: \&quot;500m\&quot;\n            memory: \&quot;512Mi\&quot;\n      restartPolicy: Always\n&quot;}}</pre>
+<div class="call-label">结果：</div>
+<pre>invalid arguments for deploy: required field config.kind is missing</pre>
+</div>
+<div class="call">
+<div class="call-head">#2 <code>editPreviousToolCalling</code> · callId call_00_i46dlMcQGO5ZNmPgAM6l0477 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;call_id&quot;: &quot;break_1&quot;, &quot;old_string&quot;: &quot;\&quot;label\&quot;: \&quot;payments\&quot;&quot;, &quot;new_string&quot;: &quot;\&quot;kind\&quot;: \&quot;Deployment\&quot;, \&quot;label\&quot;: \&quot;payments\&quot;&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: old_string was not found in &quot;/var/folders/wy/4zgpdmbn777_2ngd2bfv60mc0000gn/T/.dsh/tool-checkpoints/native-invalid-args-prefix/by-id/break_1.json&quot;</pre>
+</div>
+<div class="call">
+<div class="call-head">#3 <code>editPreviousToolCalling</code> · callId call_00_n0oWK7BtKGcG6sIZPdOx3861 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;call_id&quot;: &quot;call_00_i46dlMcQGO5ZNmPgAM6l0477&quot;, &quot;new_string&quot;: &quot;\&quot;kind\&quot;:\&quot;Deployment\&quot;,\&quot;label\&quot;:\&quot;payments\&quot;&quot;, &quot;old_string&quot;: &quot;\&quot;label\&quot;:\&quot;payments\&quot;&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: old_string was not found in &quot;/var/folders/wy/4zgpdmbn777_2ngd2bfv60mc0000gn/T/.dsh/tool-checkpoints/native-invalid-args-prefix/by-id/call_00_i46dlMcQGO5ZNmPgAM6l0477.json&quot;</pre>
+</div>
+<div class="call">
+<div class="call-head">#4 <code>editPreviousToolCalling</code> · callId call_00_QtkCMuiDTSJung3Z2uk50980 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;call_id&quot;: &quot;break_1&quot;, &quot;new_string&quot;: &quot;\\\&quot;kind\\\&quot;: \\\&quot;Deployment\\\&quot;, \\\&quot;label\\\&quot;: \\\&quot;payments\\\&quot;&quot;, &quot;old_string&quot;: &quot;\\\&quot;label\\\&quot;: \\\&quot;payments\\\&quot;&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: old_string was not found in &quot;/var/folders/wy/4zgpdmbn777_2ngd2bfv60mc0000gn/T/.dsh/tool-checkpoints/native-invalid-args-prefix/by-id/break_1.json&quot;</pre>
+</div>
+<div class="call">
+<div class="call-head">#5 <code>editPreviousToolCalling</code> · callId call_00_PSxqWP6cIa7XGAb1HH9B7382 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;call_id&quot;: &quot;break_1&quot;, &quot;new_string&quot;: &quot;\\\&quot;kind\\\&quot;:\\\&quot;Deployment\\\&quot;,\\\&quot;label\\\&quot;:\\\&quot;payments\\\&quot;&quot;, &quot;old_string&quot;: &quot;\\\&quot;label\\\&quot;:\\\&quot;payments\\\&quot;&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: old_string was not found in &quot;/var/folders/wy/4zgpdmbn777_2ngd2bfv60mc0000gn/T/.dsh/tool-checkpoints/native-invalid-args-prefix/by-id/break_1.json&quot;</pre>
+</div>
+<div class="call">
+<div class="call-head">#6 <code>editPreviousToolCalling</code> · callId call_00_EMGWn5PhYGAUwpYYt6NK8269 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;call_id&quot;: &quot;break_1&quot;, &quot;new_string&quot;: &quot;\&quot;kind\&quot;:\&quot;Deployment\&quot;,\&quot;label\&quot;:\&quot;payments\&quot;&quot;, &quot;old_string&quot;: &quot;\&quot;label\&quot;:\&quot;payments\&quot;&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: Replay of deploy failed: Error: deploy rejected config: kind must be &quot;valid&quot;</pre>
+</div>
+<div class="call">
+<div class="call-head">#7 <code>editPreviousToolCalling</code> · callId call_00_PRO4ZfZcMZZZQGVXDU6R0827 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;call_id&quot;: &quot;call_00_EMGWn5PhYGAUwpYYt6NK8269&quot;, &quot;new_string&quot;: &quot;\&quot;kind\&quot;:\&quot;valid\&quot;&quot;, &quot;old_string&quot;: &quot;\&quot;kind\&quot;:\&quot;Deployment\&quot;&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: old_string was not found in &quot;/var/folders/wy/4zgpdmbn777_2ngd2bfv60mc0000gn/T/.dsh/tool-checkpoints/native-invalid-args-prefix/by-id/call_00_EMGWn5PhYGAUwpYYt6NK8269.json&quot;</pre>
+</div>
+<div class="call">
+<div class="call-head">#8 <code>editPreviousToolCalling</code> · callId call_00_2FGlNVa0KFVMnV5pZvUO6083</div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;call_id&quot;: &quot;break_1&quot;, &quot;new_string&quot;: &quot;\&quot;kind\&quot;:\&quot;valid\&quot;&quot;, &quot;old_string&quot;: &quot;\&quot;kind\&quot;:\&quot;Deployment\&quot;&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>Replayed deploy with the edited arguments (call break_1:replay):
+deployed true</pre>
+</div></details>
+</td>
+</tr>
+<tr>
+<td>ON</td>
+<td class="num">2</td>
+<td class="num">213</td>
+<td class="num">1218</td>
+<td>✅ 采用</td>
+<td>✅</td>
+<td>✅</td>
+<td class="num">5</td>
+<td>editPreviousToolCalling, editPreviousToolCalling, editPreviousToolCalling, editPreviousToolCalling, editPreviousToolCalling, editPreviousToolCalling</td>
+<td>
+<details><summary>完整调用详情（点击展开）</summary><div class="call">
+<div class="call-head">#1 <code>deploy</code> · callId break_1 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;config&quot;:{&quot;label&quot;:&quot;payments&quot;,&quot;replicas&quot;:3,&quot;region&quot;:&quot;cn-east-1&quot;,&quot;image&quot;:&quot;registry.example.com/app:2026.08.01-rc7&quot;,&quot;env&quot;:{&quot;LOG_LEVEL&quot;:&quot;debug&quot;,&quot;FEATURE_FLAGS&quot;:{&quot;retry&quot;:true,&quot;tracing&quot;:true,&quot;canary&quot;:false}},&quot;resources&quot;:{&quot;cpu&quot;:&quot;2&quot;,&quot;memory&quot;:&quot;4Gi&quot;,&quot;gpu&quot;:null},&quot;template&quot;:&quot;kind: Deployment\napiVersion: apps/v1\nmetadata:\n  name: {name}\nspec:\n  replicas: {replicas}\n  selector:\n    matchLabels:\n      app: {name}\n  template:\n    metadata:\n      labels:\n        app: {name}\n    spec:\n      containers:\n      - name: app\n        image: {image}\n        ports:\n        - containerPort: 8080\n        env:\n        - name: LOG_LEVEL\n          value: \&quot;{loglevel}\&quot;\n        resources:\n          limits:\n            cpu: \&quot;2\&quot;\n            memory: \&quot;4Gi\&quot;\n          requests:\n            cpu: \&quot;500m\&quot;\n            memory: \&quot;512Mi\&quot;\n      restartPolicy: Always\n&quot;}}</pre>
+<div class="call-label">结果：</div>
+<pre>invalid arguments for deploy: required field config.kind is missing</pre>
+</div>
+<div class="call">
+<div class="call-head">#2 <code>editPreviousToolCalling</code> · callId call_00_Oy3xo8BtjaiOsh66xV4C3681 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;call_id&quot;: &quot;break_1&quot;, &quot;old_string&quot;: &quot;{\&quot;label\&quot;: \&quot;payments\&quot;&quot;, &quot;new_string&quot;: &quot;{\&quot;kind\&quot;: \&quot;Deployment\&quot;, \&quot;label\&quot;: \&quot;payments\&quot;&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: old_string was not found in &quot;/var/folders/wy/4zgpdmbn777_2ngd2bfv60mc0000gn/T/.dsh/tool-checkpoints/native-invalid-args-prefix/by-id/break_1.json&quot;</pre>
+</div>
+<div class="call">
+<div class="call-head">#3 <code>editPreviousToolCalling</code> · callId call_00_ZOeN9qwpCO7iuqZmxoib0764 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;call_id&quot;: &quot;break_1&quot;, &quot;old_string&quot;: &quot;\&quot;label\&quot;: \&quot;payments\&quot;&quot;, &quot;new_string&quot;: &quot;\&quot;kind\&quot;: \&quot;Deployment\&quot;, \&quot;label\&quot;: \&quot;payments\&quot;&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: old_string was not found in &quot;/var/folders/wy/4zgpdmbn777_2ngd2bfv60mc0000gn/T/.dsh/tool-checkpoints/native-invalid-args-prefix/by-id/break_1.json&quot;</pre>
+</div>
+<div class="call">
+<div class="call-head">#4 <code>editPreviousToolCalling</code> · callId call_00_2xtS7zB45NyKWOxzFFs08643 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;call_id&quot;: &quot;break_1&quot;, &quot;new_string&quot;: &quot;\&quot;kind\&quot;:\&quot;Deployment\&quot;,\&quot;label\&quot;:\&quot;payments\&quot;&quot;, &quot;old_string&quot;: &quot;\&quot;label\&quot;:\&quot;payments\&quot;&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: Replay of deploy failed: Error: deploy rejected config: kind must be &quot;valid&quot;</pre>
+</div>
+<div class="call">
+<div class="call-head">#5 <code>editPreviousToolCalling</code> · callId call_00_fEF42eNxxEmaQDkGMwko2016 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;call_id&quot;: &quot;call_00_2xtS7zB45NyKWOxzFFs08643&quot;, &quot;new_string&quot;: &quot;\&quot;kind\&quot;:\&quot;valid\&quot;&quot;, &quot;old_string&quot;: &quot;\&quot;kind\&quot;:\&quot;Deployment\&quot;&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: old_string was not found in &quot;/var/folders/wy/4zgpdmbn777_2ngd2bfv60mc0000gn/T/.dsh/tool-checkpoints/native-invalid-args-prefix/by-id/call_00_2xtS7zB45NyKWOxzFFs08643.json&quot;</pre>
+</div>
+<div class="call">
+<div class="call-head">#6 <code>editPreviousToolCalling</code> · callId call_00_60m3cN6NQH5Abw1xJSOM5296 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;call_id&quot;: &quot;call_00_2xtS7zB45NyKWOxzFFs08643&quot;, &quot;new_string&quot;: &quot;\&quot;valid\&quot;&quot;, &quot;old_string&quot;: &quot;\&quot;Deployment\&quot;&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: old_string was not found in &quot;/var/folders/wy/4zgpdmbn777_2ngd2bfv60mc0000gn/T/.dsh/tool-checkpoints/native-invalid-args-prefix/by-id/call_00_2xtS7zB45NyKWOxzFFs08643.json&quot;</pre>
+</div>
+<div class="call">
+<div class="call-head">#7 <code>editPreviousToolCalling</code> · callId call_00_7aK7ZkRqfFEy9HVwKg1O1221</div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;call_id&quot;: &quot;call_00_2xtS7zB45NyKWOxzFFs08643&quot;, &quot;new_string&quot;: &quot;valid&quot;, &quot;old_string&quot;: &quot;Deployment&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>Replayed editPreviousToolCalling with the edited arguments (call call_00_2xtS7zB45NyKWOxzFFs08643:replay):
+Replayed deploy with the edited arguments (call break_1:replay):
+deployed true</pre>
+</div></details>
+</td>
+</tr>
+<tr>
+<td>ON</td>
+<td class="num">3</td>
+<td class="num">288</td>
+<td class="num">882</td>
+<td>✅ 采用</td>
+<td>✅</td>
+<td>✅</td>
+<td class="num">4</td>
+<td>editPreviousToolCalling, editPreviousToolCalling, editPreviousToolCalling, editPreviousToolCalling, editPreviousToolCalling</td>
+<td>
+<details><summary>完整调用详情（点击展开）</summary><div class="call">
+<div class="call-head">#1 <code>deploy</code> · callId break_1 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;config&quot;:{&quot;label&quot;:&quot;payments&quot;,&quot;replicas&quot;:3,&quot;region&quot;:&quot;cn-east-1&quot;,&quot;image&quot;:&quot;registry.example.com/app:2026.08.01-rc7&quot;,&quot;env&quot;:{&quot;LOG_LEVEL&quot;:&quot;debug&quot;,&quot;FEATURE_FLAGS&quot;:{&quot;retry&quot;:true,&quot;tracing&quot;:true,&quot;canary&quot;:false}},&quot;resources&quot;:{&quot;cpu&quot;:&quot;2&quot;,&quot;memory&quot;:&quot;4Gi&quot;,&quot;gpu&quot;:null},&quot;template&quot;:&quot;kind: Deployment\napiVersion: apps/v1\nmetadata:\n  name: {name}\nspec:\n  replicas: {replicas}\n  selector:\n    matchLabels:\n      app: {name}\n  template:\n    metadata:\n      labels:\n        app: {name}\n    spec:\n      containers:\n      - name: app\n        image: {image}\n        ports:\n        - containerPort: 8080\n        env:\n        - name: LOG_LEVEL\n          value: \&quot;{loglevel}\&quot;\n        resources:\n          limits:\n            cpu: \&quot;2\&quot;\n            memory: \&quot;4Gi\&quot;\n          requests:\n            cpu: \&quot;500m\&quot;\n            memory: \&quot;512Mi\&quot;\n      restartPolicy: Always\n&quot;}}</pre>
+<div class="call-label">结果：</div>
+<pre>invalid arguments for deploy: required field config.kind is missing</pre>
+</div>
+<div class="call">
+<div class="call-head">#2 <code>editPreviousToolCalling</code> · callId call_00_sKLJ7NAssuMaPQzHEdZx5910 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;call_id&quot;: &quot;break_1&quot;, &quot;old_string&quot;: &quot;{\&quot;label\&quot;: \&quot;payments\&quot;&quot;, &quot;new_string&quot;: &quot;{\&quot;kind\&quot;: \&quot;Deployment\&quot;, \&quot;label\&quot;: \&quot;payments\&quot;&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: old_string was not found in &quot;/var/folders/wy/4zgpdmbn777_2ngd2bfv60mc0000gn/T/.dsh/tool-checkpoints/native-invalid-args-prefix/by-id/break_1.json&quot;</pre>
+</div>
+<div class="call">
+<div class="call-head">#3 <code>editPreviousToolCalling</code> · callId call_00_MpfNPrKmixkGSyGK8yZh4952 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;call_id&quot;: &quot;call_00_sKLJ7NAssuMaPQzHEdZx5910&quot;, &quot;old_string&quot;: &quot;\&quot;label\&quot;: \&quot;payments\&quot;&quot;, &quot;new_string&quot;: &quot;\&quot;kind\&quot;: \&quot;Deployment\&quot;, \&quot;label\&quot;: \&quot;payments\&quot;&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: old_string was not found in &quot;/var/folders/wy/4zgpdmbn777_2ngd2bfv60mc0000gn/T/.dsh/tool-checkpoints/native-invalid-args-prefix/by-id/call_00_sKLJ7NAssuMaPQzHEdZx5910.json&quot;</pre>
+</div>
+<div class="call">
+<div class="call-head">#4 <code>editPreviousToolCalling</code> · callId call_00_LCweVyggHHXjme2nAOXp4253 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;call_id&quot;: &quot;break_1&quot;, &quot;old_string&quot;: &quot;\&quot;replicas\&quot;&quot;, &quot;new_string&quot;: &quot;\&quot;kind\&quot;: \&quot;Deployment\&quot;, \&quot;replicas\&quot;&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: Replay of deploy failed: Error: deploy rejected config: kind must be &quot;valid&quot;</pre>
+</div>
+<div class="call">
+<div class="call-head">#5 <code>editPreviousToolCalling</code> · callId call_00_JfP7E8c507gfT8NYTq8y7730 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;call_id&quot;: &quot;call_00_LCweVyggHHXjme2nAOXp4253&quot;, &quot;old_string&quot;: &quot;\&quot;Deployment\&quot;&quot;, &quot;new_string&quot;: &quot;\&quot;valid\&quot;&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: old_string was not found in &quot;/var/folders/wy/4zgpdmbn777_2ngd2bfv60mc0000gn/T/.dsh/tool-checkpoints/native-invalid-args-prefix/by-id/call_00_LCweVyggHHXjme2nAOXp4253.json&quot;</pre>
+</div>
+<div class="call">
+<div class="call-head">#6 <code>editPreviousToolCalling</code> · callId call_00_z4dTA0lkuQLBatfzLIJT4063</div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;call_id&quot;: &quot;break_1&quot;, &quot;new_string&quot;: &quot;\&quot;valid\&quot;&quot;, &quot;old_string&quot;: &quot;\&quot;Deployment\&quot;&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>Replayed deploy with the edited arguments (call break_1:replay):
+deployed true</pre>
+</div></details>
+</td>
+</tr>
+<tr>
+<td>OFF</td>
+<td class="num">1</td>
+<td class="num">445</td>
+<td class="num">200</td>
+<td>—</td>
+<td>✅</td>
+<td>✅</td>
+<td class="num">0</td>
+<td>deploy, deploy</td>
+<td>
+<details><summary>完整调用详情（点击展开）</summary><div class="call">
+<div class="call-head">#1 <code>deploy</code> · callId break_1 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;config&quot;:{&quot;label&quot;:&quot;payments&quot;,&quot;replicas&quot;:3,&quot;region&quot;:&quot;cn-east-1&quot;,&quot;image&quot;:&quot;registry.example.com/app:2026.08.01-rc7&quot;,&quot;env&quot;:{&quot;LOG_LEVEL&quot;:&quot;debug&quot;,&quot;FEATURE_FLAGS&quot;:{&quot;retry&quot;:true,&quot;tracing&quot;:true,&quot;canary&quot;:false}},&quot;resources&quot;:{&quot;cpu&quot;:&quot;2&quot;,&quot;memory&quot;:&quot;4Gi&quot;,&quot;gpu&quot;:null},&quot;template&quot;:&quot;kind: Deployment\napiVersion: apps/v1\nmetadata:\n  name: {name}\nspec:\n  replicas: {replicas}\n  selector:\n    matchLabels:\n      app: {name}\n  template:\n    metadata:\n      labels:\n        app: {name}\n    spec:\n      containers:\n      - name: app\n        image: {image}\n        ports:\n        - containerPort: 8080\n        env:\n        - name: LOG_LEVEL\n          value: \&quot;{loglevel}\&quot;\n        resources:\n          limits:\n            cpu: \&quot;2\&quot;\n            memory: \&quot;4Gi\&quot;\n          requests:\n            cpu: \&quot;500m\&quot;\n            memory: \&quot;512Mi\&quot;\n      restartPolicy: Always\n&quot;}}</pre>
+<div class="call-label">结果：</div>
+<pre>invalid arguments for deploy: required field config.kind is missing</pre>
+</div>
+<div class="call">
+<div class="call-head">#2 <code>deploy</code> · callId call_00_yVeSvSyo3TVtr3lwquw77055 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;config&quot;: {&quot;kind&quot;: &quot;Deployment&quot;, &quot;label&quot;: &quot;payments&quot;, &quot;replicas&quot;: 3, &quot;region&quot;: &quot;cn-east-1&quot;, &quot;image&quot;: &quot;registry.example.com/app:2026.08.01-rc7&quot;, &quot;env&quot;: {&quot;LOG_LEVEL&quot;: &quot;debug&quot;, &quot;FEATURE_FLAGS&quot;: {&quot;retry&quot;: true, &quot;tracing&quot;: true, &quot;canary&quot;: false}}, &quot;resources&quot;: {&quot;cpu&quot;: &quot;2&quot;, &quot;memory&quot;: &quot;4Gi&quot;, &quot;gpu&quot;: null}, &quot;template&quot;: &quot;kind: Deployment\napiVersion: apps/v1\nmetadata:\n  name: {name}\nspec:\n  replicas: {replicas}\n  selector:\n    matchLabels:\n      app: {name}\n  template:\n    metadata:\n      labels:\n        app: {name}\n    spec:\n      containers:\n      - name: app\n        image: {image}\n        ports:\n        - containerPort: 8080\n        env:\n        - name: LOG_LEVEL\n          value: \&quot;{loglevel}\&quot;\n        resources:\n          limits:\n            cpu: \&quot;2\&quot;\n            memory: \&quot;4Gi\&quot;\n          requests:\n            cpu: \&quot;500m\&quot;\n            memory: \&quot;512Mi\&quot;\n      restartPolicy: Always\n&quot;}}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: deploy rejected config: kind must be &quot;valid&quot;</pre>
+</div>
+<div class="call">
+<div class="call-head">#3 <code>deploy</code> · callId call_00_EwLWJvNPWITW1zPt7jl85630</div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;config&quot;: {&quot;kind&quot;: &quot;valid&quot;, &quot;label&quot;: &quot;payments&quot;, &quot;replicas&quot;: 3, &quot;region&quot;: &quot;cn-east-1&quot;, &quot;image&quot;: &quot;registry.example.com/app:2026.08.01-rc7&quot;, &quot;env&quot;: {&quot;LOG_LEVEL&quot;: &quot;debug&quot;, &quot;FEATURE_FLAGS&quot;: {&quot;retry&quot;: true, &quot;tracing&quot;: true, &quot;canary&quot;: false}}, &quot;resources&quot;: {&quot;cpu&quot;: &quot;2&quot;, &quot;memory&quot;: &quot;4Gi&quot;, &quot;gpu&quot;: null}, &quot;template&quot;: &quot;kind: Deployment\napiVersion: apps/v1\nmetadata:\n  name: {name}\nspec:\n  replicas: {replicas}\n  selector:\n    matchLabels:\n      app: {name}\n  template:\n    metadata:\n      labels:\n        app: {name}\n    spec:\n      containers:\n      - name: app\n        image: {image}\n        ports:\n        - containerPort: 8080\n        env:\n        - name: LOG_LEVEL\n          value: \&quot;{loglevel}\&quot;\n        resources:\n          limits:\n            cpu: \&quot;2\&quot;\n            memory: \&quot;4Gi\&quot;\n          requests:\n            cpu: \&quot;500m\&quot;\n            memory: \&quot;512Mi\&quot;\n      restartPolicy: Always\n&quot;}}</pre>
+<div class="call-label">结果：</div>
+<pre>deployed true</pre>
+</div></details>
+</td>
+</tr>
+<tr>
+<td>OFF</td>
+<td class="num">2</td>
+<td class="num">466</td>
+<td class="num">134</td>
+<td>—</td>
+<td>✅</td>
+<td>✅</td>
+<td class="num">0</td>
+<td>deploy, deploy</td>
+<td>
+<details><summary>完整调用详情（点击展开）</summary><div class="call">
+<div class="call-head">#1 <code>deploy</code> · callId break_1 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;config&quot;:{&quot;label&quot;:&quot;payments&quot;,&quot;replicas&quot;:3,&quot;region&quot;:&quot;cn-east-1&quot;,&quot;image&quot;:&quot;registry.example.com/app:2026.08.01-rc7&quot;,&quot;env&quot;:{&quot;LOG_LEVEL&quot;:&quot;debug&quot;,&quot;FEATURE_FLAGS&quot;:{&quot;retry&quot;:true,&quot;tracing&quot;:true,&quot;canary&quot;:false}},&quot;resources&quot;:{&quot;cpu&quot;:&quot;2&quot;,&quot;memory&quot;:&quot;4Gi&quot;,&quot;gpu&quot;:null},&quot;template&quot;:&quot;kind: Deployment\napiVersion: apps/v1\nmetadata:\n  name: {name}\nspec:\n  replicas: {replicas}\n  selector:\n    matchLabels:\n      app: {name}\n  template:\n    metadata:\n      labels:\n        app: {name}\n    spec:\n      containers:\n      - name: app\n        image: {image}\n        ports:\n        - containerPort: 8080\n        env:\n        - name: LOG_LEVEL\n          value: \&quot;{loglevel}\&quot;\n        resources:\n          limits:\n            cpu: \&quot;2\&quot;\n            memory: \&quot;4Gi\&quot;\n          requests:\n            cpu: \&quot;500m\&quot;\n            memory: \&quot;512Mi\&quot;\n      restartPolicy: Always\n&quot;}}</pre>
+<div class="call-label">结果：</div>
+<pre>invalid arguments for deploy: required field config.kind is missing</pre>
+</div>
+<div class="call">
+<div class="call-head">#2 <code>deploy</code> · callId call_00_n5NZ0Zo2CbbIZfLtUDGT5462 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;config&quot;: {&quot;kind&quot;: &quot;Deployment&quot;, &quot;label&quot;: &quot;payments&quot;, &quot;replicas&quot;: 3, &quot;region&quot;: &quot;cn-east-1&quot;, &quot;image&quot;: &quot;registry.example.com/app:2026.08.01-rc7&quot;, &quot;env&quot;: {&quot;LOG_LEVEL&quot;: &quot;debug&quot;, &quot;FEATURE_FLAGS&quot;: {&quot;retry&quot;: true, &quot;tracing&quot;: true, &quot;canary&quot;: false}}, &quot;resources&quot;: {&quot;cpu&quot;: &quot;2&quot;, &quot;memory&quot;: &quot;4Gi&quot;, &quot;gpu&quot;: null}, &quot;template&quot;: &quot;kind: Deployment\napiVersion: apps/v1\nmetadata:\n  name: {name}\nspec:\n  replicas: {replicas}\n  selector:\n    matchLabels:\n      app: {name}\n  template:\n    metadata:\n      labels:\n        app: {name}\n    spec:\n      containers:\n      - name: app\n        image: {image}\n        ports:\n        - containerPort: 8080\n        env:\n        - name: LOG_LEVEL\n          value: \&quot;{loglevel}\&quot;\n        resources:\n          limits:\n            cpu: \&quot;2\&quot;\n            memory: \&quot;4Gi\&quot;\n          requests:\n            cpu: \&quot;500m\&quot;\n            memory: \&quot;512Mi\&quot;\n      restartPolicy: Always\n&quot;}}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: deploy rejected config: kind must be &quot;valid&quot;</pre>
+</div>
+<div class="call">
+<div class="call-head">#3 <code>deploy</code> · callId call_00_VffGaNXaqGIFhYzZrgMY0983</div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;config&quot;: {&quot;kind&quot;: &quot;valid&quot;, &quot;label&quot;: &quot;payments&quot;, &quot;replicas&quot;: 3, &quot;region&quot;: &quot;cn-east-1&quot;, &quot;image&quot;: &quot;registry.example.com/app:2026.08.01-rc7&quot;, &quot;env&quot;: {&quot;LOG_LEVEL&quot;: &quot;debug&quot;, &quot;FEATURE_FLAGS&quot;: {&quot;retry&quot;: true, &quot;tracing&quot;: true, &quot;canary&quot;: false}}, &quot;resources&quot;: {&quot;cpu&quot;: &quot;2&quot;, &quot;memory&quot;: &quot;4Gi&quot;, &quot;gpu&quot;: null}, &quot;template&quot;: &quot;kind: Deployment\napiVersion: apps/v1\nmetadata:\n  name: {name}\nspec:\n  replicas: {replicas}\n  selector:\n    matchLabels:\n      app: {name}\n  template:\n    metadata:\n      labels:\n        app: {name}\n    spec:\n      containers:\n      - name: app\n        image: {image}\n        ports:\n        - containerPort: 8080\n        env:\n        - name: LOG_LEVEL\n          value: \&quot;{loglevel}\&quot;\n        resources:\n          limits:\n            cpu: \&quot;2\&quot;\n            memory: \&quot;4Gi\&quot;\n          requests:\n            cpu: \&quot;500m\&quot;\n            memory: \&quot;512Mi\&quot;\n      restartPolicy: Always\n&quot;}}</pre>
+<div class="call-label">结果：</div>
+<pre>deployed true</pre>
+</div></details>
+</td>
+</tr>
+<tr>
+<td>OFF</td>
+<td class="num">3</td>
+<td class="num">444</td>
+<td class="num">188</td>
+<td>—</td>
+<td>✅</td>
+<td>✅</td>
+<td class="num">0</td>
+<td>deploy, deploy</td>
+<td>
+<details><summary>完整调用详情（点击展开）</summary><div class="call">
+<div class="call-head">#1 <code>deploy</code> · callId break_1 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;config&quot;:{&quot;label&quot;:&quot;payments&quot;,&quot;replicas&quot;:3,&quot;region&quot;:&quot;cn-east-1&quot;,&quot;image&quot;:&quot;registry.example.com/app:2026.08.01-rc7&quot;,&quot;env&quot;:{&quot;LOG_LEVEL&quot;:&quot;debug&quot;,&quot;FEATURE_FLAGS&quot;:{&quot;retry&quot;:true,&quot;tracing&quot;:true,&quot;canary&quot;:false}},&quot;resources&quot;:{&quot;cpu&quot;:&quot;2&quot;,&quot;memory&quot;:&quot;4Gi&quot;,&quot;gpu&quot;:null},&quot;template&quot;:&quot;kind: Deployment\napiVersion: apps/v1\nmetadata:\n  name: {name}\nspec:\n  replicas: {replicas}\n  selector:\n    matchLabels:\n      app: {name}\n  template:\n    metadata:\n      labels:\n        app: {name}\n    spec:\n      containers:\n      - name: app\n        image: {image}\n        ports:\n        - containerPort: 8080\n        env:\n        - name: LOG_LEVEL\n          value: \&quot;{loglevel}\&quot;\n        resources:\n          limits:\n            cpu: \&quot;2\&quot;\n            memory: \&quot;4Gi\&quot;\n          requests:\n            cpu: \&quot;500m\&quot;\n            memory: \&quot;512Mi\&quot;\n      restartPolicy: Always\n&quot;}}</pre>
+<div class="call-label">结果：</div>
+<pre>invalid arguments for deploy: required field config.kind is missing</pre>
+</div>
+<div class="call">
+<div class="call-head">#2 <code>deploy</code> · callId call_00_FM9vWyANeufVsHHQJiyH7801 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;config&quot;: {&quot;label&quot;: &quot;payments&quot;, &quot;kind&quot;: &quot;Deployment&quot;, &quot;replicas&quot;: 3, &quot;region&quot;: &quot;cn-east-1&quot;, &quot;image&quot;: &quot;registry.example.com/app:2026.08.01-rc7&quot;, &quot;env&quot;: {&quot;LOG_LEVEL&quot;: &quot;debug&quot;, &quot;FEATURE_FLAGS&quot;: {&quot;retry&quot;: true, &quot;tracing&quot;: true, &quot;canary&quot;: false}}, &quot;resources&quot;: {&quot;cpu&quot;: &quot;2&quot;, &quot;memory&quot;: &quot;4Gi&quot;, &quot;gpu&quot;: null}, &quot;template&quot;: &quot;kind: Deployment\napiVersion: apps/v1\nmetadata:\n  name: {name}\nspec:\n  replicas: {replicas}\n  selector:\n    matchLabels:\n      app: {name}\n  template:\n    metadata:\n      labels:\n        app: {name}\n    spec:\n      containers:\n      - name: app\n        image: {image}\n        ports:\n        - containerPort: 8080\n        env:\n        - name: LOG_LEVEL\n          value: \&quot;{loglevel}\&quot;\n        resources:\n          limits:\n            cpu: \&quot;2\&quot;\n            memory: \&quot;4Gi\&quot;\n          requests:\n            cpu: \&quot;500m\&quot;\n            memory: \&quot;512Mi\&quot;\n      restartPolicy: Always\n&quot;}}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: deploy rejected config: kind must be &quot;valid&quot;</pre>
+</div>
+<div class="call">
+<div class="call-head">#3 <code>deploy</code> · callId call_00_dI3uchLxfEf7krLXfu113151</div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;config&quot;: {&quot;label&quot;: &quot;payments&quot;, &quot;kind&quot;: &quot;valid&quot;, &quot;replicas&quot;: 3, &quot;region&quot;: &quot;cn-east-1&quot;, &quot;image&quot;: &quot;registry.example.com/app:2026.08.01-rc7&quot;, &quot;env&quot;: {&quot;LOG_LEVEL&quot;: &quot;debug&quot;, &quot;FEATURE_FLAGS&quot;: {&quot;retry&quot;: true, &quot;tracing&quot;: true, &quot;canary&quot;: false}}, &quot;resources&quot;: {&quot;cpu&quot;: &quot;2&quot;, &quot;memory&quot;: &quot;4Gi&quot;, &quot;gpu&quot;: null}, &quot;template&quot;: &quot;kind: Deployment\napiVersion: apps/v1\nmetadata:\n  name: {name}\nspec:\n  replicas: {replicas}\n  selector:\n    matchLabels:\n      app: {name}\n  template:\n    metadata:\n      labels:\n        app: {name}\n    spec:\n      containers:\n      - name: app\n        image: {image}\n        ports:\n        - containerPort: 8080\n        env:\n        - name: LOG_LEVEL\n          value: \&quot;{loglevel}\&quot;\n        resources:\n          limits:\n            cpu: \&quot;2\&quot;\n            memory: \&quot;4Gi\&quot;\n          requests:\n            cpu: \&quot;500m\&quot;\n            memory: \&quot;512Mi\&quot;\n      restartPolicy: Always\n&quot;}}</pre>
+<div class="call-label">结果：</div>
+<pre>deployed true</pre>
+</div></details>
+</td>
+</tr>
+</tbody></table>
+<h3>native-invalid-json — 每次运行明细</h3>
+<table class="runs"><thead><tr>
+<th>臂</th><th>重复</th><th>重试步输出 token</th><th>断点后输入 token</th>
+<th>采用</th><th>重试成功</th><th>收敛</th><th>通知条数</th><th>工具调用</th><th>详情</th>
+</tr></thead><tbody>
+<tr>
+<td>ON</td>
+<td class="num">1</td>
+<td class="num">3776</td>
+<td class="num">221</td>
+<td>✅ 采用</td>
+<td>✅</td>
+<td>✅</td>
+<td class="num">0</td>
+<td>editPreviousToolCalling</td>
+<td>
+<details><summary>完整调用详情（点击展开）</summary><div class="call">
+<div class="call-head">#1 <code>deploy</code> · callId break_2 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;config&quot;: {&quot;kind&quot;: &quot;valid&quot;, &quot;label&quot;: &quot;payments&quot;, &quot;replicas&quot;: 3, &quot;template&quot;: &quot;kind: Deployment\n&quot;</pre>
+<div class="call-label">结果：</div>
+<pre>tool call arguments are not valid JSON: unexpected end of input</pre>
+</div>
+<div class="call">
+<div class="call-head">#2 <code>editPreviousToolCalling</code> · callId call_00_qZcs8ANIuHWAEBm2j4bQ8962</div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;call_id&quot;: &quot;break_2&quot;, &quot;old_string&quot;: &quot;\&quot;kind: Deployment\\n\&quot;&quot;, &quot;new_string&quot;: &quot;\&quot;kind: Deployment\\n\&quot;}}&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>Replayed deploy with the edited arguments (call break_2:replay):
+deployed true</pre>
+</div></details>
+</td>
+</tr>
+<tr>
+<td>ON</td>
+<td class="num">2</td>
+<td class="num">2290</td>
+<td class="num">271</td>
+<td>✅ 采用</td>
+<td>✅</td>
+<td>✅</td>
+<td class="num">0</td>
+<td>editPreviousToolCalling</td>
+<td>
+<details><summary>完整调用详情（点击展开）</summary><div class="call">
+<div class="call-head">#1 <code>deploy</code> · callId break_2 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;config&quot;: {&quot;kind&quot;: &quot;valid&quot;, &quot;label&quot;: &quot;payments&quot;, &quot;replicas&quot;: 3, &quot;template&quot;: &quot;kind: Deployment\n&quot;</pre>
+<div class="call-label">结果：</div>
+<pre>tool call arguments are not valid JSON: unexpected end of input</pre>
+</div>
+<div class="call">
+<div class="call-head">#2 <code>editPreviousToolCalling</code> · callId call_00_aH4T9LVf7IfwvFwwILTJ8174</div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;call_id&quot;: &quot;break_2&quot;, &quot;old_string&quot;: &quot;\\n\&quot;&quot;, &quot;new_string&quot;: &quot;\\n\&quot;}}&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>Replayed deploy with the edited arguments (call break_2:replay):
+deployed true</pre>
+</div></details>
+</td>
+</tr>
+<tr>
+<td>ON</td>
+<td class="num">3</td>
+<td class="num">661</td>
+<td class="num">178</td>
+<td>✅ 采用</td>
+<td>✅</td>
+<td>✅</td>
+<td class="num">0</td>
+<td>editPreviousToolCalling</td>
+<td>
+<details><summary>完整调用详情（点击展开）</summary><div class="call">
+<div class="call-head">#1 <code>deploy</code> · callId break_2 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;config&quot;: {&quot;kind&quot;: &quot;valid&quot;, &quot;label&quot;: &quot;payments&quot;, &quot;replicas&quot;: 3, &quot;template&quot;: &quot;kind: Deployment\n&quot;</pre>
+<div class="call-label">结果：</div>
+<pre>tool call arguments are not valid JSON: unexpected end of input</pre>
+</div>
+<div class="call">
+<div class="call-head">#2 <code>editPreviousToolCalling</code> · callId call_00_1FuATW2tbJyhrdmcPdnT8148</div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;call_id&quot;: &quot;break_2&quot;, &quot;old_string&quot;: &quot;\&quot;template\&quot;: \&quot;kind: Deployment\\n\&quot;&quot;, &quot;new_string&quot;: &quot;\&quot;template\&quot;: \&quot;kind: Deployment\\n\&quot;}}&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>Replayed deploy with the edited arguments (call break_2:replay):
+deployed true</pre>
+</div></details>
+</td>
+</tr>
+<tr>
+<td>OFF</td>
+<td class="num">1</td>
+<td class="num">225</td>
+<td class="num">466</td>
+<td>—</td>
+<td>✅</td>
+<td>✅</td>
+<td class="num">0</td>
+<td>deploy, deploy, deploy</td>
+<td>
+<details><summary>完整调用详情（点击展开）</summary><div class="call">
+<div class="call-head">#1 <code>deploy</code> · callId break_2 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;config&quot;: {&quot;kind&quot;: &quot;valid&quot;, &quot;label&quot;: &quot;payments&quot;, &quot;replicas&quot;: 3, &quot;template&quot;: &quot;kind: Deployment\n&quot;</pre>
+<div class="call-label">结果：</div>
+<pre>tool call arguments are not valid JSON: unexpected end of input</pre>
+</div>
+<div class="call">
+<div class="call-head">#2 <code>deploy</code> · callId call_00_0GhqI5he7RvF4UPbXh4t2824 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;config&quot;: {&quot;kind&quot;: &quot;Deployment&quot;, &quot;metadata&quot;: {&quot;name&quot;: &quot;payments&quot;, &quot;labels&quot;: {&quot;app&quot;: &quot;payments&quot;}}, &quot;spec&quot;: {&quot;replicas&quot;: 3, &quot;selector&quot;: {&quot;matchLabels&quot;: {&quot;app&quot;: &quot;payments&quot;}}, &quot;template&quot;: {&quot;metadata&quot;: {&quot;labels&quot;: {&quot;app&quot;: &quot;payments&quot;}}, &quot;spec&quot;: {&quot;containers&quot;: [{&quot;name&quot;: &quot;payments&quot;, &quot;image&quot;: &quot;payments:latest&quot;, &quot;ports&quot;: [{&quot;containerPort&quot;: 8080}]}]}}}}}}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: invalid arguments: &quot;arguments&quot; must be an object</pre>
+</div>
+<div class="call">
+<div class="call-head">#3 <code>deploy</code> · callId call_00_eud6iLx8IW3FWltD7Vwe6723 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;config&quot;: {&quot;kind&quot;: &quot;Deployment&quot;, &quot;metadata&quot;: {&quot;name&quot;: &quot;payments&quot;, &quot;labels&quot;: {&quot;app&quot;: &quot;payments&quot;}}, &quot;spec&quot;: {&quot;replicas&quot;: 3, &quot;selector&quot;: {&quot;matchLabels&quot;: {&quot;app&quot;: &quot;payments&quot;}}, &quot;template&quot;: {&quot;metadata&quot;: {&quot;labels&quot;: {&quot;app&quot;: &quot;payments&quot;}}, &quot;spec&quot;: {&quot;containers&quot;: [{&quot;name&quot;: &quot;payments&quot;, &quot;image&quot;: &quot;payments:latest&quot;, &quot;ports&quot;: [{&quot;containerPort&quot;: 8080}]}]}}}}}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: deploy rejected config: kind must be &quot;valid&quot;</pre>
+</div>
+<div class="call">
+<div class="call-head">#4 <code>deploy</code> · callId call_00_ou2DX1UZJDJvzA0uPwmk5024</div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;config&quot;: {&quot;kind&quot;: &quot;valid&quot;, &quot;metadata&quot;: {&quot;name&quot;: &quot;payments&quot;, &quot;labels&quot;: {&quot;app&quot;: &quot;payments&quot;}}, &quot;spec&quot;: {&quot;replicas&quot;: 3, &quot;selector&quot;: {&quot;matchLabels&quot;: {&quot;app&quot;: &quot;payments&quot;}}, &quot;template&quot;: {&quot;metadata&quot;: {&quot;labels&quot;: {&quot;app&quot;: &quot;payments&quot;}}, &quot;spec&quot;: {&quot;containers&quot;: [{&quot;name&quot;: &quot;payments&quot;, &quot;image&quot;: &quot;payments:latest&quot;, &quot;ports&quot;: [{&quot;containerPort&quot;: 8080}]}]}}}}}</pre>
+<div class="call-label">结果：</div>
+<pre>deployed true</pre>
+</div></details>
+</td>
+</tr>
+<tr>
+<td>OFF</td>
+<td class="num">2</td>
+<td class="num">610</td>
+<td class="num">13712</td>
+<td>—</td>
+<td>✅</td>
+<td>✅</td>
+<td class="num">0</td>
+<td>deploy, deploy, deploy, deploy, deploy, deploy, deploy, deploy, deploy, deploy, deploy, deploy, deploy, deploy, deploy, deploy, deploy, deploy, deploy, deploy, deploy, deploy, deploy, deploy, deploy, deploy, deploy, deploy, deploy, deploy, deploy, deploy, deploy, deploy, deploy, deploy, deploy, deploy, deploy, deploy</td>
+<td>
+<details><summary>完整调用详情（点击展开）</summary><div class="call">
+<div class="call-head">#1 <code>deploy</code> · callId break_2 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;config&quot;: {&quot;kind&quot;: &quot;valid&quot;, &quot;label&quot;: &quot;payments&quot;, &quot;replicas&quot;: 3, &quot;template&quot;: &quot;kind: Deployment\n&quot;</pre>
+<div class="call-label">结果：</div>
+<pre>tool call arguments are not valid JSON: unexpected end of input</pre>
+</div>
+<div class="call">
+<div class="call-head">#2 <code>deploy</code> · callId call_00_b5Eweug6GRoFiPdItWMt0902 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;config&quot;: {&quot;kind&quot;: &quot;Deployment&quot;, &quot;apiVersion&quot;: &quot;apps/v1&quot;, &quot;metadata&quot;: {&quot;name&quot;: &quot;payments-service&quot;, &quot;namespace&quot;: &quot;payments&quot;, &quot;labels&quot;: {&quot;app&quot;: &quot;payments&quot;, &quot;tier&quot;: &quot;backend&quot;}}, &quot;spec&quot;: {&quot;replicas&quot;: 3, &quot;selector&quot;: {&quot;matchLabels&quot;: {&quot;app&quot;: &quot;payments&quot;}}, &quot;template&quot;: {&quot;metadata&quot;: {&quot;labels&quot;: {&quot;app&quot;: &quot;payments&quot;}}, &quot;spec&quot;: {&quot;containers&quot;: [{&quot;name&quot;: &quot;payments&quot;, &quot;image&quot;: &quot;payments:1.0.0&quot;, &quot;ports&quot;: [{&quot;containerPort&quot;: 8080}], &quot;env&quot;: [{&quot;name&quot;: &quot;ENV&quot;, &quot;value&quot;: &quot;production&quot;}, {&quot;name&quot;: &quot;LOG_LEVEL&quot;, &quot;value&quot;: &quot;info&quot;}, {&quot;name&quot;: &quot;DB_HOST&quot;, &quot;value&quot;: &quot;payments-db.internal&quot;}, {&quot;name&quot;: &quot;DB_PORT&quot;, &quot;value&quot;: &quot;5432&quot;}, {&quot;name&quot;: &quot;DB_NAME&quot;, &quot;value&quot;: &quot;payments&quot;}, {&quot;name&quot;: &quot;CACHE_HOST&quot;, &quot;value&quot;: &quot;redis.internal&quot;}, {&quot;name&quot;: &quot;CACHE_PORT&quot;, &quot;value&quot;: &quot;6379&quot;}, {&quot;name&quot;: &quot;MESSAGE_BROKER&quot;, &quot;value&quot;: &quot;kafka.internal:9092&quot;}, {&quot;name&quot;: &quot;MAX_RETRIES&quot;, &quot;value&quot;: &quot;5&quot;}, {&quot;name&quot;: &quot;TIMEOUT_MS&quot;, &quot;value&quot;: &quot;30000&quot;}], &quot;resources&quot;: {&quot;requests&quot;: {&quot;cpu&quot;: &quot;500m&quot;, &quot;memory&quot;: &quot;512Mi&quot;}, &quot;limits&quot;: {&quot;cpu&quot;: &quot;2000m&quot;, &quot;memory&quot;: &quot;2Gi&quot;}}, &quot;livenessProbe&quot;: {&quot;httpGet&quot;: {&quot;path&quot;: &quot;/healthz&quot;, &quot;port&quot;: 8080}, &quot;initialDelaySeconds&quot;: 10, &quot;periodSeconds&quot;: 30}, &quot;readinessProbe&quot;: {&quot;httpGet&quot;: {&quot;path&quot;: &quot;/ready&quot;, &quot;port&quot;: 8080}, &quot;initialDelaySeconds&quot;: 5, &quot;periodSeconds&quot;: 10}}}}}}}}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: invalid arguments: &quot;arguments&quot; must be an object</pre>
+</div>
+<div class="call">
+<div class="call-head">#3 <code>deploy</code> · callId call_00_M4iLsSLWPuKoJnKmBAO57503 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;config&quot;: {&quot;kind&quot;: &quot;Deployment&quot;, &quot;apiVersion&quot;: &quot;apps/v1&quot;, &quot;metadata&quot;: {&quot;name&quot;: &quot;payments-service&quot;, &quot;namespace&quot;: &quot;payments&quot;, &quot;labels&quot;: {&quot;app&quot;: &quot;payments&quot;, &quot;tier&quot;: &quot;backend&quot;}}, &quot;spec&quot;: {&quot;replicas&quot;: 3, &quot;selector&quot;: {&quot;matchLabels&quot;: {&quot;app&quot;: &quot;payments&quot;}}, &quot;template&quot;: {&quot;metadata&quot;: {&quot;labels&quot;: {&quot;app&quot;: &quot;payments&quot;}}, &quot;spec&quot;: {&quot;containers&quot;: [{&quot;name&quot;: &quot;payments&quot;, &quot;image&quot;: &quot;payments:1.0.0&quot;, &quot;ports&quot;: [{&quot;containerPort&quot;: 8080}], &quot;env&quot;: [{&quot;name&quot;: &quot;ENV&quot;, &quot;value&quot;: &quot;production&quot;}, {&quot;name&quot;: &quot;LOG_LEVEL&quot;, &quot;value&quot;: &quot;info&quot;}, {&quot;name&quot;: &quot;DB_HOST&quot;, &quot;value&quot;: &quot;payments-db.internal&quot;}, {&quot;name&quot;: &quot;DB_PORT&quot;, &quot;value&quot;: &quot;5432&quot;}, {&quot;name&quot;: &quot;DB_NAME&quot;, &quot;value&quot;: &quot;payments&quot;}, {&quot;name&quot;: &quot;CACHE_HOST&quot;, &quot;value&quot;: &quot;redis.internal&quot;}, {&quot;name&quot;: &quot;CACHE_PORT&quot;, &quot;value&quot;: &quot;6379&quot;}, {&quot;name&quot;: &quot;MESSAGE_BROKER&quot;, &quot;value&quot;: &quot;kafka.internal:9092&quot;}, {&quot;name&quot;: &quot;MAX_RETRIES&quot;, &quot;value&quot;: &quot;5&quot;}, {&quot;name&quot;: &quot;TIMEOUT_MS&quot;, &quot;value&quot;: &quot;30000&quot;}], &quot;resources&quot;: {&quot;requests&quot;: {&quot;cpu&quot;: &quot;500m&quot;, &quot;memory&quot;: &quot;512Mi&quot;}, &quot;limits&quot;: {&quot;cpu&quot;: &quot;2000m&quot;, &quot;memory&quot;: &quot;2Gi&quot;}}, &quot;livenessProbe&quot;: {&quot;httpGet&quot;: {&quot;path&quot;: &quot;/healthz&quot;, &quot;port&quot;: 8080}, &quot;initialDelaySeconds&quot;: 10, &quot;periodSeconds&quot;: 30}, &quot;readinessProbe&quot;: {&quot;httpGet&quot;: {&quot;path&quot;: &quot;/ready&quot;, &quot;port&quot;: 8080}, &quot;initialDelaySeconds&quot;: 5, &quot;periodSeconds&quot;: 10}}}}}}}}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: invalid arguments: &quot;arguments&quot; must be an object</pre>
+</div>
+<div class="call">
+<div class="call-head">#4 <code>deploy</code> · callId call_00_b9bpnU5Gcbg1xK1szM0o7593 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;config&quot;: {&quot;kind&quot;: &quot;Deployment&quot;, &quot;apiVersion&quot;: &quot;apps/v1&quot;, &quot;metadata&quot;: {&quot;name&quot;: &quot;payments-service&quot;, &quot;namespace&quot;: &quot;payments&quot;, &quot;labels&quot;: {&quot;app&quot;: &quot;payments&quot;, &quot;tier&quot;: &quot;backend&quot;}}, &quot;spec&quot;: {&quot;replicas&quot;: 3, &quot;selector&quot;: {&quot;matchLabels&quot;: {&quot;app&quot;: &quot;payments&quot;}}, &quot;template&quot;: {&quot;metadata&quot;: {&quot;labels&quot;: {&quot;app&quot;: &quot;payments&quot;}}, &quot;spec&quot;: {&quot;containers&quot;: [{&quot;name&quot;: &quot;payments&quot;, &quot;image&quot;: &quot;payments:1.0.0&quot;, &quot;ports&quot;: [{&quot;containerPort&quot;: 8080}], &quot;env&quot;: [{&quot;name&quot;: &quot;ENV&quot;, &quot;value&quot;: &quot;production&quot;}, {&quot;name&quot;: &quot;LOG_LEVEL&quot;, &quot;value&quot;: &quot;info&quot;}, {&quot;name&quot;: &quot;DB_HOST&quot;, &quot;value&quot;: &quot;payments-db.internal&quot;}, {&quot;name&quot;: &quot;DB_PORT&quot;, &quot;value&quot;: &quot;5432&quot;}, {&quot;name&quot;: &quot;DB_NAME&quot;, &quot;value&quot;: &quot;payments&quot;}, {&quot;name&quot;: &quot;CACHE_HOST&quot;, &quot;value&quot;: &quot;redis.internal&quot;}, {&quot;name&quot;: &quot;CACHE_PORT&quot;, &quot;value&quot;: &quot;6379&quot;}, {&quot;name&quot;: &quot;MESSAGE_BROKER&quot;, &quot;value&quot;: &quot;kafka.internal:9092&quot;}, {&quot;name&quot;: &quot;MAX_RETRIES&quot;, &quot;value&quot;: &quot;5&quot;}, {&quot;name&quot;: &quot;TIMEOUT_MS&quot;, &quot;value&quot;: &quot;30000&quot;}], &quot;resources&quot;: {&quot;requests&quot;: {&quot;cpu&quot;: &quot;500m&quot;, &quot;memory&quot;: &quot;512Mi&quot;}, &quot;limits&quot;: {&quot;cpu&quot;: &quot;2000m&quot;, &quot;memory&quot;: &quot;2Gi&quot;}}, &quot;livenessProbe&quot;: {&quot;httpGet&quot;: {&quot;path&quot;: &quot;/healthz&quot;, &quot;port&quot;: 8080}, &quot;initialDelaySeconds&quot;: 10, &quot;periodSeconds&quot;: 30}, &quot;readinessProbe&quot;: {&quot;httpGet&quot;: {&quot;path&quot;: &quot;/ready&quot;, &quot;port&quot;: 8080}, &quot;initialDelaySeconds&quot;: 5, &quot;periodSeconds&quot;: 10}}}}}}}}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: invalid arguments: &quot;arguments&quot; must be an object</pre>
+</div>
+<div class="call">
+<div class="call-head">#5 <code>deploy</code> · callId call_00_QbReLZFgtbPp1JgFWA940882 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;config&quot;: {&quot;kind&quot;: &quot;Deployment&quot;, &quot;apiVersion&quot;: &quot;apps/v1&quot;, &quot;metadata&quot;: {&quot;name&quot;: &quot;payments-service&quot;, &quot;namespace&quot;: &quot;payments&quot;, &quot;labels&quot;: {&quot;app&quot;: &quot;payments&quot;, &quot;tier&quot;: &quot;backend&quot;}}, &quot;spec&quot;: {&quot;replicas&quot;: 3, &quot;selector&quot;: {&quot;matchLabels&quot;: {&quot;app&quot;: &quot;payments&quot;}}, &quot;template&quot;: {&quot;metadata&quot;: {&quot;labels&quot;: {&quot;app&quot;: &quot;payments&quot;}}, &quot;spec&quot;: {&quot;containers&quot;: [{&quot;name&quot;: &quot;payments&quot;, &quot;image&quot;: &quot;payments:1.0.0&quot;, &quot;ports&quot;: [{&quot;containerPort&quot;: 8080}], &quot;env&quot;: [{&quot;name&quot;: &quot;ENV&quot;, &quot;value&quot;: &quot;production&quot;}, {&quot;name&quot;: &quot;LOG_LEVEL&quot;, &quot;value&quot;: &quot;info&quot;}, {&quot;name&quot;: &quot;DB_HOST&quot;, &quot;value&quot;: &quot;payments-db.internal&quot;}, {&quot;name&quot;: &quot;DB_PORT&quot;, &quot;value&quot;: &quot;5432&quot;}, {&quot;name&quot;: &quot;DB_NAME&quot;, &quot;value&quot;: &quot;payments&quot;}, {&quot;name&quot;: &quot;CACHE_HOST&quot;, &quot;value&quot;: &quot;redis.internal&quot;}, {&quot;name&quot;: &quot;CACHE_PORT&quot;, &quot;value&quot;: &quot;6379&quot;}, {&quot;name&quot;: &quot;MESSAGE_BROKER&quot;, &quot;value&quot;: &quot;kafka.internal:9092&quot;}, {&quot;name&quot;: &quot;MAX_RETRIES&quot;, &quot;value&quot;: &quot;5&quot;}, {&quot;name&quot;: &quot;TIMEOUT_MS&quot;, &quot;value&quot;: &quot;30000&quot;}], &quot;resources&quot;: {&quot;requests&quot;: {&quot;cpu&quot;: &quot;500m&quot;, &quot;memory&quot;: &quot;512Mi&quot;}, &quot;limits&quot;: {&quot;cpu&quot;: &quot;2000m&quot;, &quot;memory&quot;: &quot;2Gi&quot;}}, &quot;livenessProbe&quot;: {&quot;httpGet&quot;: {&quot;path&quot;: &quot;/healthz&quot;, &quot;port&quot;: 8080}, &quot;initialDelaySeconds&quot;: 10, &quot;periodSeconds&quot;: 30}, &quot;readinessProbe&quot;: {&quot;httpGet&quot;: {&quot;path&quot;: &quot;/ready&quot;, &quot;port&quot;: 8080}, &quot;initialDelaySeconds&quot;: 5, &quot;periodSeconds&quot;: 10}}}}}}}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: invalid arguments: &quot;arguments&quot; must be an object</pre>
+</div>
+<div class="call">
+<div class="call-head">#6 <code>deploy</code> · callId call_00_VDk5Vy9SnjNO3fJ1Y1vt4589 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;arguments&quot;: &quot;{\&quot;config\&quot;: {\&quot;kind\&quot;: \&quot;Deployment\&quot;, \&quot;apiVersion\&quot;: \&quot;apps/v1\&quot;, \&quot;metadata\&quot;: {\&quot;name\&quot;: \&quot;payments-service\&quot;, \&quot;namespace\&quot;: \&quot;payments\&quot;, \&quot;labels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;, \&quot;tier\&quot;: \&quot;backend\&quot;}}, \&quot;spec\&quot;: {\&quot;replicas\&quot;: 3, \&quot;selector\&quot;: {\&quot;matchLabels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;}}, \&quot;template\&quot;: {\&quot;metadata\&quot;: {\&quot;labels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;}}, \&quot;spec\&quot;: {\&quot;containers\&quot;: [{\&quot;name\&quot;: \&quot;payments\&quot;, \&quot;image\&quot;: \&quot;payments:1.0.0\&quot;, \&quot;ports\&quot;: [{\&quot;containerPort\&quot;: 8080}], \&quot;env\&quot;: [{\&quot;name\&quot;: \&quot;ENV\&quot;, \&quot;value\&quot;: \&quot;production\&quot;}, {\&quot;name\&quot;: \&quot;LOG_LEVEL\&quot;, \&quot;value\&quot;: \&quot;info\&quot;}, {\&quot;name\&quot;: \&quot;DB_HOST\&quot;, \&quot;value\&quot;: \&quot;payments-db.internal\&quot;}, {\&quot;name\&quot;: \&quot;DB_PORT\&quot;, \&quot;value\&quot;: \&quot;5432\&quot;}, {\&quot;name\&quot;: \&quot;DB_NAME\&quot;, \&quot;value\&quot;: \&quot;payments\&quot;}, {\&quot;name\&quot;: \&quot;CACHE_HOST\&quot;, \&quot;value\&quot;: \&quot;redis.internal\&quot;}, {\&quot;name\&quot;: \&quot;CACHE_PORT\&quot;, \&quot;value\&quot;: \&quot;6379\&quot;}, {\&quot;name\&quot;: \&quot;MESSAGE_BROKER\&quot;, \&quot;value\&quot;: \&quot;kafka.internal:9092\&quot;}, {\&quot;name\&quot;: \&quot;MAX_RETRIES\&quot;, \&quot;value\&quot;: \&quot;5\&quot;}, {\&quot;name\&quot;: \&quot;TIMEOUT_MS\&quot;, \&quot;value\&quot;: \&quot;30000\&quot;}], \&quot;resources\&quot;: {\&quot;requests\&quot;: {\&quot;cpu\&quot;: \&quot;500m\&quot;, \&quot;memory\&quot;: \&quot;512Mi\&quot;}, \&quot;limits\&quot;: {\&quot;cpu\&quot;: \&quot;2000m\&quot;, \&quot;memory\&quot;: \&quot;2Gi\&quot;}}, \&quot;livenessProbe\&quot;: {\&quot;httpGet\&quot;: {\&quot;path\&quot;: \&quot;/healthz\&quot;, \&quot;port\&quot;: 8080}, \&quot;initialDelaySeconds\&quot;: 10, \&quot;periodSeconds\&quot;: 30}, \&quot;readinessProbe\&quot;: {\&quot;httpGet\&quot;: {\&quot;path\&quot;: \&quot;/ready\&quot;, \&quot;port\&quot;: 8080}, \&quot;initialDelaySeconds\&quot;: 5, \&quot;periodSeconds\&quot;: 10}}}}}}}&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: invalid arguments: missing required property &quot;config&quot;</pre>
+</div>
+<div class="call">
+<div class="call-head">#7 <code>deploy</code> · callId call_00_xWL2c7Y0oNnijBGtstCT1776 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;config&quot;: {&quot;kind&quot;: &quot;Deployment&quot;, &quot;apiVersion&quot;: &quot;apps/v1&quot;, &quot;metadata&quot;: {&quot;name&quot;: &quot;payments-service&quot;, &quot;namespace&quot;: &quot;payments&quot;, &quot;labels&quot;: {&quot;app&quot;: &quot;payments&quot;, &quot;tier&quot;: &quot;backend&quot;}}, &quot;spec&quot;: {&quot;replicas&quot;: 3, &quot;selector&quot;: {&quot;matchLabels&quot;: {&quot;app&quot;: &quot;payments&quot;}}, &quot;template&quot;: {&quot;metadata&quot;: {&quot;labels&quot;: {&quot;app&quot;: &quot;payments&quot;}}, &quot;spec&quot;: {&quot;containers&quot;: [{&quot;name&quot;: &quot;payments&quot;, &quot;image&quot;: &quot;payments:1.0.0&quot;, &quot;ports&quot;: [{&quot;containerPort&quot;: 8080}], &quot;env&quot;: [{&quot;name&quot;: &quot;ENV&quot;, &quot;value&quot;: &quot;production&quot;}, {&quot;name&quot;: &quot;LOG_LEVEL&quot;, &quot;value&quot;: &quot;info&quot;}, {&quot;name&quot;: &quot;DB_HOST&quot;, &quot;value&quot;: &quot;payments-db.internal&quot;}, {&quot;name&quot;: &quot;DB_PORT&quot;, &quot;value&quot;: &quot;5432&quot;}, {&quot;name&quot;: &quot;DB_NAME&quot;, &quot;value&quot;: &quot;payments&quot;}, {&quot;name&quot;: &quot;CACHE_HOST&quot;, &quot;value&quot;: &quot;redis.internal&quot;}, {&quot;name&quot;: &quot;CACHE_PORT&quot;, &quot;value&quot;: &quot;6379&quot;}, {&quot;name&quot;: &quot;MESSAGE_BROKER&quot;, &quot;value&quot;: &quot;kafka.internal:9092&quot;}, {&quot;name&quot;: &quot;MAX_RETRIES&quot;, &quot;value&quot;: &quot;5&quot;}, {&quot;name&quot;: &quot;TIMEOUT_MS&quot;, &quot;value&quot;: &quot;30000&quot;}], &quot;resources&quot;: {&quot;requests&quot;: {&quot;cpu&quot;: &quot;500m&quot;, &quot;memory&quot;: &quot;512Mi&quot;}, &quot;limits&quot;: {&quot;cpu&quot;: &quot;2000m&quot;, &quot;memory&quot;: &quot;2Gi&quot;}}, &quot;livenessProbe&quot;: {&quot;httpGet&quot;: {&quot;path&quot;: &quot;/healthz&quot;, &quot;port&quot;: 8080}, &quot;initialDelaySeconds&quot;: 10, &quot;periodSeconds&quot;: 30}, &quot;readinessProbe&quot;: {&quot;httpGet&quot;: {&quot;path&quot;: &quot;/ready&quot;, &quot;port&quot;: 8080}, &quot;initialDelaySeconds&quot;: 5, &quot;periodSeconds&quot;: 10}}}}}}}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: invalid arguments: &quot;arguments&quot; must be an object</pre>
+</div>
+<div class="call">
+<div class="call-head">#8 <code>deploy</code> · callId call_00_m2BuHNMJFj9x8tA3nQlZ2256 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;config&quot;: {&quot;kind&quot;: &quot;Deployment&quot;, &quot;apiVersion&quot;: &quot;apps/v1&quot;, &quot;metadata&quot;: {&quot;name&quot;: &quot;payments-service&quot;, &quot;namespace&quot;: &quot;payments&quot;, &quot;labels&quot;: {&quot;app&quot;: &quot;payments&quot;, &quot;tier&quot;: &quot;backend&quot;}}, &quot;spec&quot;: {&quot;replicas&quot;: 3, &quot;selector&quot;: {&quot;matchLabels&quot;: {&quot;app&quot;: &quot;payments&quot;}}, &quot;template&quot;: {&quot;metadata&quot;: {&quot;labels&quot;: {&quot;app&quot;: &quot;payments&quot;}}, &quot;spec&quot;: {&quot;containers&quot;: [{&quot;name&quot;: &quot;payments&quot;, &quot;image&quot;: &quot;payments:1.0.0&quot;, &quot;ports&quot;: [{&quot;containerPort&quot;: 8080}], &quot;env&quot;: [{&quot;name&quot;: &quot;ENV&quot;, &quot;value&quot;: &quot;production&quot;}, {&quot;name&quot;: &quot;LOG_LEVEL&quot;, &quot;value&quot;: &quot;info&quot;}, {&quot;name&quot;: &quot;DB_HOST&quot;, &quot;value&quot;: &quot;payments-db.internal&quot;}, {&quot;name&quot;: &quot;DB_PORT&quot;, &quot;value&quot;: &quot;5432&quot;}, {&quot;name&quot;: &quot;DB_NAME&quot;, &quot;value&quot;: &quot;payments&quot;}, {&quot;name&quot;: &quot;CACHE_HOST&quot;, &quot;value&quot;: &quot;redis.internal&quot;}, {&quot;name&quot;: &quot;CACHE_PORT&quot;, &quot;value&quot;: &quot;6379&quot;}, {&quot;name&quot;: &quot;MESSAGE_BROKER&quot;, &quot;value&quot;: &quot;kafka.internal:9092&quot;}, {&quot;name&quot;: &quot;MAX_RETRIES&quot;, &quot;value&quot;: &quot;5&quot;}, {&quot;name&quot;: &quot;TIMEOUT_MS&quot;, &quot;value&quot;: &quot;30000&quot;}], &quot;resources&quot;: {&quot;requests&quot;: {&quot;cpu&quot;: &quot;500m&quot;, &quot;memory&quot;: &quot;512Mi&quot;}, &quot;limits&quot;: {&quot;cpu&quot;: &quot;2000m&quot;, &quot;memory&quot;: &quot;2Gi&quot;}}, &quot;livenessProbe&quot;: {&quot;httpGet&quot;: {&quot;path&quot;: &quot;/healthz&quot;, &quot;port&quot;: 8080}, &quot;initialDelaySeconds&quot;: 10, &quot;periodSeconds&quot;: 30}, &quot;readinessProbe&quot;: {&quot;httpGet&quot;: {&quot;path&quot;: &quot;/ready&quot;, &quot;port&quot;: 8080}, &quot;initialDelaySeconds&quot;: 5, &quot;periodSeconds&quot;: 10}}}}}}}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: invalid arguments: &quot;arguments&quot; must be an object</pre>
+</div>
+<div class="call">
+<div class="call-head">#9 <code>deploy</code> · callId call_00_TLAmDaYjmX0iNfp8eOrn6525 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;arguments&quot;: &quot;{\&quot;config\&quot;: {\&quot;kind\&quot;: \&quot;Deployment\&quot;, \&quot;apiVersion\&quot;: \&quot;apps/v1\&quot;, \&quot;metadata\&quot;: {\&quot;name\&quot;: \&quot;payments-service\&quot;, \&quot;namespace\&quot;: \&quot;payments\&quot;, \&quot;labels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;, \&quot;tier\&quot;: \&quot;backend\&quot;}}, \&quot;spec\&quot;: {\&quot;replicas\&quot;: 3, \&quot;selector\&quot;: {\&quot;matchLabels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;}}, \&quot;template\&quot;: {\&quot;metadata\&quot;: {\&quot;labels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;}}, \&quot;spec\&quot;: {\&quot;containers\&quot;: [{\&quot;name\&quot;: \&quot;payments\&quot;, \&quot;image\&quot;: \&quot;payments:1.0.0\&quot;, \&quot;ports\&quot;: [{\&quot;containerPort\&quot;: 8080}], \&quot;env\&quot;: [{\&quot;name\&quot;: \&quot;ENV\&quot;, \&quot;value\&quot;: \&quot;production\&quot;}, {\&quot;name\&quot;: \&quot;LOG_LEVEL\&quot;, \&quot;value\&quot;: \&quot;info\&quot;}, {\&quot;name\&quot;: \&quot;DB_HOST\&quot;, \&quot;value\&quot;: \&quot;payments-db.internal\&quot;}, {\&quot;name\&quot;: \&quot;DB_PORT\&quot;, \&quot;value\&quot;: \&quot;5432\&quot;}, {\&quot;name\&quot;: \&quot;DB_NAME\&quot;, \&quot;value\&quot;: \&quot;payments\&quot;}, {\&quot;name\&quot;: \&quot;CACHE_HOST\&quot;, \&quot;value\&quot;: \&quot;redis.internal\&quot;}, {\&quot;name\&quot;: \&quot;CACHE_PORT\&quot;, \&quot;value\&quot;: \&quot;6379\&quot;}, {\&quot;name\&quot;: \&quot;MESSAGE_BROKER\&quot;, \&quot;value\&quot;: \&quot;kafka.internal:9092\&quot;}, {\&quot;name\&quot;: \&quot;MAX_RETRIES\&quot;, \&quot;value\&quot;: \&quot;5\&quot;}, {\&quot;name\&quot;: \&quot;TIMEOUT_MS\&quot;, \&quot;value\&quot;: \&quot;30000\&quot;}], \&quot;resources\&quot;: {\&quot;requests\&quot;: {\&quot;cpu\&quot;: \&quot;500m\&quot;, \&quot;memory\&quot;: \&quot;512Mi\&quot;}, \&quot;limits\&quot;: {\&quot;cpu\&quot;: \&quot;2000m\&quot;, \&quot;memory\&quot;: \&quot;2Gi\&quot;}}, \&quot;livenessProbe\&quot;: {\&quot;httpGet\&quot;: {\&quot;path\&quot;: \&quot;/healthz\&quot;, \&quot;port\&quot;: 8080}, \&quot;initialDelaySeconds\&quot;: 10, \&quot;periodSeconds\&quot;: 30}, \&quot;readinessProbe\&quot;: {\&quot;httpGet\&quot;: {\&quot;path\&quot;: \&quot;/ready\&quot;, \&quot;port\&quot;: 8080}, \&quot;initialDelaySeconds\&quot;: 5, \&quot;periodSeconds\&quot;: 10}}}}}}}&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: invalid arguments: missing required property &quot;config&quot;</pre>
+</div>
+<div class="call">
+<div class="call-head">#10 <code>deploy</code> · callId call_00_ttR3iV5peJGSr1djAV1R2760 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;config&quot;: &quot;{\&quot;kind\&quot;: \&quot;Deployment\&quot;, \&quot;apiVersion\&quot;: \&quot;apps/v1\&quot;, \&quot;metadata\&quot;: {\&quot;name\&quot;: \&quot;payments-service\&quot;, \&quot;namespace\&quot;: \&quot;payments\&quot;, \&quot;labels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;, \&quot;tier\&quot;: \&quot;backend\&quot;}}, \&quot;spec\&quot;: {\&quot;replicas\&quot;: 3, \&quot;selector\&quot;: {\&quot;matchLabels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;}}, \&quot;template\&quot;: {\&quot;metadata\&quot;: {\&quot;labels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;}}, \&quot;spec\&quot;: {\&quot;containers\&quot;: [{\&quot;name\&quot;: \&quot;payments\&quot;, \&quot;image\&quot;: \&quot;payments:1.0.0\&quot;, \&quot;ports\&quot;: [{\&quot;containerPort\&quot;: 8080}], \&quot;env\&quot;: [{\&quot;name\&quot;: \&quot;ENV\&quot;, \&quot;value\&quot;: \&quot;production\&quot;}, {\&quot;name\&quot;: \&quot;LOG_LEVEL\&quot;, \&quot;value\&quot;: \&quot;info\&quot;}, {\&quot;name\&quot;: \&quot;DB_HOST\&quot;, \&quot;value\&quot;: \&quot;payments-db.internal\&quot;}, {\&quot;name\&quot;: \&quot;DB_PORT\&quot;, \&quot;value\&quot;: \&quot;5432\&quot;}, {\&quot;name\&quot;: \&quot;DB_NAME\&quot;, \&quot;value\&quot;: \&quot;payments\&quot;}, {\&quot;name\&quot;: \&quot;CACHE_HOST\&quot;, \&quot;value\&quot;: \&quot;redis.internal\&quot;}, {\&quot;name\&quot;: \&quot;CACHE_PORT\&quot;, \&quot;value\&quot;: \&quot;6379\&quot;}, {\&quot;name\&quot;: \&quot;MESSAGE_BROKER\&quot;, \&quot;value\&quot;: \&quot;kafka.internal:9092\&quot;}, {\&quot;name\&quot;: \&quot;MAX_RETRIES\&quot;, \&quot;value\&quot;: \&quot;5\&quot;}, {\&quot;name\&quot;: \&quot;TIMEOUT_MS\&quot;, \&quot;value\&quot;: \&quot;30000\&quot;}], \&quot;resources\&quot;: {\&quot;requests\&quot;: {\&quot;cpu\&quot;: \&quot;500m\&quot;, \&quot;memory\&quot;: \&quot;512Mi\&quot;}, \&quot;limits\&quot;: {\&quot;cpu\&quot;: \&quot;2000m\&quot;, \&quot;memory\&quot;: \&quot;2Gi\&quot;}}, \&quot;livenessProbe\&quot;: {\&quot;httpGet\&quot;: {\&quot;path\&quot;: \&quot;/healthz\&quot;, \&quot;port\&quot;: 8080}, \&quot;initialDelaySeconds\&quot;: 10, \&quot;periodSeconds\&quot;: 30}, \&quot;readinessProbe\&quot;: {\&quot;httpGet\&quot;: {\&quot;path\&quot;: \&quot;/ready\&quot;, \&quot;port\&quot;: 8080}, \&quot;initialDelaySeconds\&quot;: 5, \&quot;periodSeconds\&quot;: 10}}}}}}}&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: invalid arguments: &quot;config&quot; must be an object</pre>
+</div>
+<div class="call">
+<div class="call-head">#11 <code>deploy</code> · callId call_00_EVGtEZF5zup2QWRzAWRy2309 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;config&quot;: {&quot;kind&quot;: &quot;Deployment&quot;, &quot;apiVersion&quot;: &quot;apps/v1&quot;, &quot;metadata&quot;: {&quot;name&quot;: &quot;payments-service&quot;, &quot;namespace&quot;: &quot;payments&quot;, &quot;labels&quot;: {&quot;app&quot;: &quot;payments&quot;, &quot;tier&quot;: &quot;backend&quot;}}, &quot;spec&quot;: {&quot;replicas&quot;: 3, &quot;selector&quot;: {&quot;matchLabels&quot;: {&quot;app&quot;: &quot;payments&quot;}}, &quot;template&quot;: {&quot;metadata&quot;: {&quot;labels&quot;: {&quot;app&quot;: &quot;payments&quot;}}, &quot;spec&quot;: {&quot;containers&quot;: [{&quot;name&quot;: &quot;payments&quot;, &quot;image&quot;: &quot;payments:1.0.0&quot;, &quot;ports&quot;: [{&quot;containerPort&quot;: 8080}], &quot;env&quot;: [{&quot;name&quot;: &quot;ENV&quot;, &quot;value&quot;: &quot;production&quot;}, {&quot;name&quot;: &quot;LOG_LEVEL&quot;, &quot;value&quot;: &quot;info&quot;}, {&quot;name&quot;: &quot;DB_HOST&quot;, &quot;value&quot;: &quot;payments-db.internal&quot;}, {&quot;name&quot;: &quot;DB_PORT&quot;, &quot;value&quot;: &quot;5432&quot;}, {&quot;name&quot;: &quot;DB_NAME&quot;, &quot;value&quot;: &quot;payments&quot;}, {&quot;name&quot;: &quot;CACHE_HOST&quot;, &quot;value&quot;: &quot;redis.internal&quot;}, {&quot;name&quot;: &quot;CACHE_PORT&quot;, &quot;value&quot;: &quot;6379&quot;}, {&quot;name&quot;: &quot;MESSAGE_BROKER&quot;, &quot;value&quot;: &quot;kafka.internal:9092&quot;}, {&quot;name&quot;: &quot;MAX_RETRIES&quot;, &quot;value&quot;: &quot;5&quot;}, {&quot;name&quot;: &quot;TIMEOUT_MS&quot;, &quot;value&quot;: &quot;30000&quot;}], &quot;resources&quot;: {&quot;requests&quot;: {&quot;cpu&quot;: &quot;500m&quot;, &quot;memory&quot;: &quot;512Mi&quot;}, &quot;limits&quot;: {&quot;cpu&quot;: &quot;2000m&quot;, &quot;memory&quot;: &quot;2Gi&quot;}}, &quot;livenessProbe&quot;: {&quot;httpGet&quot;: {&quot;path&quot;: &quot;/healthz&quot;, &quot;port&quot;: 8080}, &quot;initialDelaySeconds&quot;: 10, &quot;periodSeconds&quot;: 30}, &quot;readinessProbe&quot;: {&quot;httpGet&quot;: {&quot;path&quot;: &quot;/ready&quot;, &quot;port&quot;: 8080}, &quot;initialDelaySeconds&quot;: 5, &quot;periodSeconds&quot;: 10}}}}}}}}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: invalid arguments: &quot;arguments&quot; must be an object</pre>
+</div>
+<div class="call">
+<div class="call-head">#12 <code>deploy</code> · callId call_00_ihcuOAG6OVsQjw7wd7XY5747 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;config&quot;: {&quot;kind&quot;: &quot;Deployment&quot;, &quot;apiVersion&quot;: &quot;apps/v1&quot;, &quot;metadata&quot;: {&quot;name&quot;: &quot;payments-service&quot;, &quot;namespace&quot;: &quot;payments&quot;, &quot;labels&quot;: {&quot;app&quot;: &quot;payments&quot;, &quot;tier&quot;: &quot;backend&quot;}}, &quot;spec&quot;: {&quot;replicas&quot;: 3, &quot;selector&quot;: {&quot;matchLabels&quot;: {&quot;app&quot;: &quot;payments&quot;}}, &quot;template&quot;: {&quot;metadata&quot;: {&quot;labels&quot;: {&quot;app&quot;: &quot;payments&quot;}}, &quot;spec&quot;: {&quot;containers&quot;: [{&quot;name&quot;: &quot;payments&quot;, &quot;image&quot;: &quot;payments:1.0.0&quot;, &quot;ports&quot;: [{&quot;containerPort&quot;: 8080}], &quot;env&quot;: [{&quot;name&quot;: &quot;ENV&quot;, &quot;value&quot;: &quot;production&quot;}, {&quot;name&quot;: &quot;LOG_LEVEL&quot;, &quot;value&quot;: &quot;info&quot;}, {&quot;name&quot;: &quot;DB_HOST&quot;, &quot;value&quot;: &quot;payments-db.internal&quot;}, {&quot;name&quot;: &quot;DB_PORT&quot;, &quot;value&quot;: &quot;5432&quot;}, {&quot;name&quot;: &quot;DB_NAME&quot;, &quot;value&quot;: &quot;payments&quot;}, {&quot;name&quot;: &quot;CACHE_HOST&quot;, &quot;value&quot;: &quot;redis.internal&quot;}, {&quot;name&quot;: &quot;CACHE_PORT&quot;, &quot;value&quot;: &quot;6379&quot;}, {&quot;name&quot;: &quot;MESSAGE_BROKER&quot;, &quot;value&quot;: &quot;kafka.internal:9092&quot;}, {&quot;name&quot;: &quot;MAX_RETRIES&quot;, &quot;value&quot;: &quot;5&quot;}, {&quot;name&quot;: &quot;TIMEOUT_MS&quot;, &quot;value&quot;: &quot;30000&quot;}], &quot;resources&quot;: {&quot;requests&quot;: {&quot;cpu&quot;: &quot;500m&quot;, &quot;memory&quot;: &quot;512Mi&quot;}, &quot;limits&quot;: {&quot;cpu&quot;: &quot;2000m&quot;, &quot;memory&quot;: &quot;2Gi&quot;}}, &quot;livenessProbe&quot;: {&quot;httpGet&quot;: {&quot;path&quot;: &quot;/healthz&quot;, &quot;port&quot;: 8080}, &quot;initialDelaySeconds&quot;: 10, &quot;periodSeconds&quot;: 30}, &quot;readinessProbe&quot;: {&quot;httpGet&quot;: {&quot;path&quot;: &quot;/ready&quot;, &quot;port&quot;: 8080}, &quot;initialDelaySeconds&quot;: 5, &quot;periodSeconds&quot;: 10}}}}}}}}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: invalid arguments: &quot;arguments&quot; must be an object</pre>
+</div>
+<div class="call">
+<div class="call-head">#13 <code>deploy</code> · callId call_00_VOP1hDCfg2N8WnUVHwC17833 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;config&quot;: {&quot;kind&quot;: &quot;Deployment&quot;, &quot;apiVersion&quot;: &quot;apps/v1&quot;, &quot;metadata&quot;: {&quot;name&quot;: &quot;payments-service&quot;, &quot;namespace&quot;: &quot;payments&quot;, &quot;labels&quot;: {&quot;app&quot;: &quot;payments&quot;, &quot;tier&quot;: &quot;backend&quot;}}, &quot;spec&quot;: {&quot;replicas&quot;: 3, &quot;selector&quot;: {&quot;matchLabels&quot;: {&quot;app&quot;: &quot;payments&quot;}}, &quot;template&quot;: {&quot;metadata&quot;: {&quot;labels&quot;: {&quot;app&quot;: &quot;payments&quot;}}, &quot;spec&quot;: {&quot;containers&quot;: [{&quot;name&quot;: &quot;payments&quot;, &quot;image&quot;: &quot;payments:1.0.0&quot;, &quot;ports&quot;: [{&quot;containerPort&quot;: 8080}], &quot;env&quot;: [{&quot;name&quot;: &quot;ENV&quot;, &quot;value&quot;: &quot;production&quot;}, {&quot;name&quot;: &quot;LOG_LEVEL&quot;, &quot;value&quot;: &quot;info&quot;}, {&quot;name&quot;: &quot;DB_HOST&quot;, &quot;value&quot;: &quot;payments-db.internal&quot;}, {&quot;name&quot;: &quot;DB_PORT&quot;, &quot;value&quot;: &quot;5432&quot;}, {&quot;name&quot;: &quot;DB_NAME&quot;, &quot;value&quot;: &quot;payments&quot;}, {&quot;name&quot;: &quot;CACHE_HOST&quot;, &quot;value&quot;: &quot;redis.internal&quot;}, {&quot;name&quot;: &quot;CACHE_PORT&quot;, &quot;value&quot;: &quot;6379&quot;}, {&quot;name&quot;: &quot;MESSAGE_BROKER&quot;, &quot;value&quot;: &quot;kafka.internal:9092&quot;}, {&quot;name&quot;: &quot;MAX_RETRIES&quot;, &quot;value&quot;: &quot;5&quot;}, {&quot;name&quot;: &quot;TIMEOUT_MS&quot;, &quot;value&quot;: &quot;30000&quot;}], &quot;resources&quot;: {&quot;requests&quot;: {&quot;cpu&quot;: &quot;500m&quot;, &quot;memory&quot;: &quot;512Mi&quot;}, &quot;limits&quot;: {&quot;cpu&quot;: &quot;2000m&quot;, &quot;memory&quot;: &quot;2Gi&quot;}}, &quot;livenessProbe&quot;: {&quot;httpGet&quot;: {&quot;path&quot;: &quot;/healthz&quot;, &quot;port&quot;: 8080}, &quot;initialDelaySeconds&quot;: 10, &quot;periodSeconds&quot;: 30}, &quot;readinessProbe&quot;: {&quot;httpGet&quot;: {&quot;path&quot;: &quot;/ready&quot;, &quot;port&quot;: 8080}, &quot;initialDelaySeconds&quot;: 5, &quot;periodSeconds&quot;: 10}}}}}}}}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: invalid arguments: &quot;arguments&quot; must be an object</pre>
+</div>
+<div class="call">
+<div class="call-head">#14 <code>deploy</code> · callId call_00_lkGihs8ZUCuw3FoNFauk9251 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;config&quot;: {&quot;kind&quot;: &quot;Deployment&quot;, &quot;apiVersion&quot;: &quot;apps/v1&quot;, &quot;metadata&quot;: {&quot;name&quot;: &quot;payments-service&quot;, &quot;namespace&quot;: &quot;payments&quot;, &quot;labels&quot;: {&quot;app&quot;: &quot;payments&quot;, &quot;tier&quot;: &quot;backend&quot;}}, &quot;spec&quot;: {&quot;replicas&quot;: 3, &quot;selector&quot;: {&quot;matchLabels&quot;: {&quot;app&quot;: &quot;payments&quot;}}, &quot;template&quot;: {&quot;metadata&quot;: {&quot;labels&quot;: {&quot;app&quot;: &quot;payments&quot;}}, &quot;spec&quot;: {&quot;containers&quot;: [{&quot;name&quot;: &quot;payments&quot;, &quot;image&quot;: &quot;payments:1.0.0&quot;, &quot;ports&quot;: [{&quot;containerPort&quot;: 8080}], &quot;env&quot;: [{&quot;name&quot;: &quot;ENV&quot;, &quot;value&quot;: &quot;production&quot;}, {&quot;name&quot;: &quot;LOG_LEVEL&quot;, &quot;value&quot;: &quot;info&quot;}, {&quot;name&quot;: &quot;DB_HOST&quot;, &quot;value&quot;: &quot;payments-db.internal&quot;}, {&quot;name&quot;: &quot;DB_PORT&quot;, &quot;value&quot;: &quot;5432&quot;}, {&quot;name&quot;: &quot;DB_NAME&quot;, &quot;value&quot;: &quot;payments&quot;}, {&quot;name&quot;: &quot;CACHE_HOST&quot;, &quot;value&quot;: &quot;redis.internal&quot;}, {&quot;name&quot;: &quot;CACHE_PORT&quot;, &quot;value&quot;: &quot;6379&quot;}, {&quot;name&quot;: &quot;MESSAGE_BROKER&quot;, &quot;value&quot;: &quot;kafka.internal:9092&quot;}, {&quot;name&quot;: &quot;MAX_RETRIES&quot;, &quot;value&quot;: &quot;5&quot;}, {&quot;name&quot;: &quot;TIMEOUT_MS&quot;, &quot;value&quot;: &quot;30000&quot;}], &quot;resources&quot;: {&quot;requests&quot;: {&quot;cpu&quot;: &quot;500m&quot;, &quot;memory&quot;: &quot;512Mi&quot;}, &quot;limits&quot;: {&quot;cpu&quot;: &quot;2000m&quot;, &quot;memory&quot;: &quot;2Gi&quot;}}, &quot;livenessProbe&quot;: {&quot;httpGet&quot;: {&quot;path&quot;: &quot;/healthz&quot;, &quot;port&quot;: 8080}, &quot;initialDelaySeconds&quot;: 10, &quot;periodSeconds&quot;: 30}, &quot;readinessProbe&quot;: {&quot;httpGet&quot;: {&quot;path&quot;: &quot;/ready&quot;, &quot;port&quot;: 8080}, &quot;initialDelaySeconds&quot;: 5, &quot;periodSeconds&quot;: 10}}}}}}}}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: invalid arguments: &quot;arguments&quot; must be an object</pre>
+</div>
+<div class="call">
+<div class="call-head">#15 <code>deploy</code> · callId call_00_amGFmY8YzZ5bQBG1dHDS9206 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;arguments&quot;: &quot;{\&quot;config\&quot;: {\&quot;kind\&quot;: \&quot;Deployment\&quot;, \&quot;apiVersion\&quot;: \&quot;apps/v1\&quot;, \&quot;metadata\&quot;: {\&quot;name\&quot;: \&quot;payments-service\&quot;, \&quot;namespace\&quot;: \&quot;payments\&quot;, \&quot;labels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;, \&quot;tier\&quot;: \&quot;backend\&quot;}}, \&quot;spec\&quot;: {\&quot;replicas\&quot;: 3, \&quot;selector\&quot;: {\&quot;matchLabels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;}}, \&quot;template\&quot;: {\&quot;metadata\&quot;: {\&quot;labels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;}}, \&quot;spec\&quot;: {\&quot;containers\&quot;: [{\&quot;name\&quot;: \&quot;payments\&quot;, \&quot;image\&quot;: \&quot;payments:1.0.0\&quot;, \&quot;ports\&quot;: [{\&quot;containerPort\&quot;: 8080}], \&quot;env\&quot;: [{\&quot;name\&quot;: \&quot;ENV\&quot;, \&quot;value\&quot;: \&quot;production\&quot;}, {\&quot;name\&quot;: \&quot;LOG_LEVEL\&quot;, \&quot;value\&quot;: \&quot;info\&quot;}, {\&quot;name\&quot;: \&quot;DB_HOST\&quot;, \&quot;value\&quot;: \&quot;payments-db.internal\&quot;}, {\&quot;name\&quot;: \&quot;DB_PORT\&quot;, \&quot;value\&quot;: \&quot;5432\&quot;}, {\&quot;name\&quot;: \&quot;DB_NAME\&quot;, \&quot;value\&quot;: \&quot;payments\&quot;}, {\&quot;name\&quot;: \&quot;CACHE_HOST\&quot;, \&quot;value\&quot;: \&quot;redis.internal\&quot;}, {\&quot;name\&quot;: \&quot;CACHE_PORT\&quot;, \&quot;value\&quot;: \&quot;6379\&quot;}, {\&quot;name\&quot;: \&quot;MESSAGE_BROKER\&quot;, \&quot;value\&quot;: \&quot;kafka.internal:9092\&quot;}, {\&quot;name\&quot;: \&quot;MAX_RETRIES\&quot;, \&quot;value\&quot;: \&quot;5\&quot;}, {\&quot;name\&quot;: \&quot;TIMEOUT_MS\&quot;, \&quot;value\&quot;: \&quot;30000\&quot;}], \&quot;resources\&quot;: {\&quot;requests\&quot;: {\&quot;cpu\&quot;: \&quot;500m\&quot;, \&quot;memory\&quot;: \&quot;512Mi\&quot;}, \&quot;limits\&quot;: {\&quot;cpu\&quot;: \&quot;2000m\&quot;, \&quot;memory\&quot;: \&quot;2Gi\&quot;}}, \&quot;livenessProbe\&quot;: {\&quot;httpGet\&quot;: {\&quot;path\&quot;: \&quot;/healthz\&quot;, \&quot;port\&quot;: 8080}, \&quot;initialDelaySeconds\&quot;: 10, \&quot;periodSeconds\&quot;: 30}, \&quot;readinessProbe\&quot;: {\&quot;httpGet\&quot;: {\&quot;path\&quot;: \&quot;/ready\&quot;, \&quot;port\&quot;: 8080}, \&quot;initialDelaySeconds\&quot;: 5, \&quot;periodSeconds\&quot;: 10}}}}}}}}&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: invalid arguments: missing required property &quot;config&quot;</pre>
+</div>
+<div class="call">
+<div class="call-head">#16 <code>deploy</code> · callId call_00_EswROuDHatLZ3NP82mOt6338 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;arguments&quot;: &quot;{\&quot;config\&quot;: {\&quot;kind\&quot;: \&quot;Deployment\&quot;, \&quot;apiVersion\&quot;: \&quot;apps/v1\&quot;, \&quot;metadata\&quot;: {\&quot;name\&quot;: \&quot;payments-service\&quot;, \&quot;namespace\&quot;: \&quot;payments\&quot;, \&quot;labels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;, \&quot;tier\&quot;: \&quot;backend\&quot;}}, \&quot;spec\&quot;: {\&quot;replicas\&quot;: 3, \&quot;selector\&quot;: {\&quot;matchLabels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;}}, \&quot;template\&quot;: {\&quot;metadata\&quot;: {\&quot;labels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;}}, \&quot;spec\&quot;: {\&quot;containers\&quot;: [{\&quot;name\&quot;: \&quot;payments\&quot;, \&quot;image\&quot;: \&quot;payments:1.0.0\&quot;, \&quot;ports\&quot;: [{\&quot;containerPort\&quot;: 8080}], \&quot;env\&quot;: [{\&quot;name\&quot;: \&quot;ENV\&quot;, \&quot;value\&quot;: \&quot;production\&quot;}, {\&quot;name\&quot;: \&quot;LOG_LEVEL\&quot;, \&quot;value\&quot;: \&quot;info\&quot;}, {\&quot;name\&quot;: \&quot;DB_HOST\&quot;, \&quot;value\&quot;: \&quot;payments-db.internal\&quot;}, {\&quot;name\&quot;: \&quot;DB_PORT\&quot;, \&quot;value\&quot;: \&quot;5432\&quot;}, {\&quot;name\&quot;: \&quot;DB_NAME\&quot;, \&quot;value\&quot;: \&quot;payments\&quot;}, {\&quot;name\&quot;: \&quot;CACHE_HOST\&quot;, \&quot;value\&quot;: \&quot;redis.internal\&quot;}, {\&quot;name\&quot;: \&quot;CACHE_PORT\&quot;, \&quot;value\&quot;: \&quot;6379\&quot;}, {\&quot;name\&quot;: \&quot;MESSAGE_BROKER\&quot;, \&quot;value\&quot;: \&quot;kafka.internal:9092\&quot;}, {\&quot;name\&quot;: \&quot;MAX_RETRIES\&quot;, \&quot;value\&quot;: \&quot;5\&quot;}, {\&quot;name\&quot;: \&quot;TIMEOUT_MS\&quot;, \&quot;value\&quot;: \&quot;30000\&quot;}], \&quot;resources\&quot;: {\&quot;requests\&quot;: {\&quot;cpu\&quot;: \&quot;500m\&quot;, \&quot;memory\&quot;: \&quot;512Mi\&quot;}, \&quot;limits\&quot;: {\&quot;cpu\&quot;: \&quot;2000m\&quot;, \&quot;memory\&quot;: \&quot;2Gi\&quot;}}, \&quot;livenessProbe\&quot;: {\&quot;httpGet\&quot;: {\&quot;path\&quot;: \&quot;/healthz\&quot;, \&quot;port\&quot;: 8080}, \&quot;initialDelaySeconds\&quot;: 10, \&quot;periodSeconds\&quot;: 30}, \&quot;readinessProbe\&quot;: {\&quot;httpGet\&quot;: {\&quot;path\&quot;: \&quot;/ready\&quot;, \&quot;port\&quot;: 8080}, \&quot;initialDelaySeconds\&quot;: 5, \&quot;periodSeconds\&quot;: 10}}}}}}}}&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: invalid arguments: missing required property &quot;config&quot;</pre>
+</div>
+<div class="call">
+<div class="call-head">#17 <code>deploy</code> · callId call_00_oDZVexlTY8PmqLMsfCV23321 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;arguments&quot;: &quot;{\&quot;config\&quot;: {\&quot;kind\&quot;: \&quot;Deployment\&quot;, \&quot;apiVersion\&quot;: \&quot;apps/v1\&quot;, \&quot;metadata\&quot;: {\&quot;name\&quot;: \&quot;payments-service\&quot;, \&quot;namespace\&quot;: \&quot;payments\&quot;, \&quot;labels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;, \&quot;tier\&quot;: \&quot;backend\&quot;}}, \&quot;spec\&quot;: {\&quot;replicas\&quot;: 3, \&quot;selector\&quot;: {\&quot;matchLabels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;}}, \&quot;template\&quot;: {\&quot;metadata\&quot;: {\&quot;labels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;}}, \&quot;spec\&quot;: {\&quot;containers\&quot;: [{\&quot;name\&quot;: \&quot;payments\&quot;, \&quot;image\&quot;: \&quot;payments:1.0.0\&quot;, \&quot;ports\&quot;: [{\&quot;containerPort\&quot;: 8080}], \&quot;env\&quot;: [{\&quot;name\&quot;: \&quot;ENV\&quot;, \&quot;value\&quot;: \&quot;production\&quot;}, {\&quot;name\&quot;: \&quot;LOG_LEVEL\&quot;, \&quot;value\&quot;: \&quot;info\&quot;}, {\&quot;name\&quot;: \&quot;DB_HOST\&quot;, \&quot;value\&quot;: \&quot;payments-db.internal\&quot;}, {\&quot;name\&quot;: \&quot;DB_PORT\&quot;, \&quot;value\&quot;: \&quot;5432\&quot;}, {\&quot;name\&quot;: \&quot;DB_NAME\&quot;, \&quot;value\&quot;: \&quot;payments\&quot;}, {\&quot;name\&quot;: \&quot;CACHE_HOST\&quot;, \&quot;value\&quot;: \&quot;redis.internal\&quot;}, {\&quot;name\&quot;: \&quot;CACHE_PORT\&quot;, \&quot;value\&quot;: \&quot;6379\&quot;}, {\&quot;name\&quot;: \&quot;MESSAGE_BROKER\&quot;, \&quot;value\&quot;: \&quot;kafka.internal:9092\&quot;}, {\&quot;name\&quot;: \&quot;MAX_RETRIES\&quot;, \&quot;value\&quot;: \&quot;5\&quot;}, {\&quot;name\&quot;: \&quot;TIMEOUT_MS\&quot;, \&quot;value\&quot;: \&quot;30000\&quot;}], \&quot;resources\&quot;: {\&quot;requests\&quot;: {\&quot;cpu\&quot;: \&quot;500m\&quot;, \&quot;memory\&quot;: \&quot;512Mi\&quot;}, \&quot;limits\&quot;: {\&quot;cpu\&quot;: \&quot;2000m\&quot;, \&quot;memory\&quot;: \&quot;2Gi\&quot;}}, \&quot;livenessProbe\&quot;: {\&quot;httpGet\&quot;: {\&quot;path\&quot;: \&quot;/healthz\&quot;, \&quot;port\&quot;: 8080}, \&quot;initialDelaySeconds\&quot;: 10, \&quot;periodSeconds\&quot;: 30}, \&quot;readinessProbe\&quot;: {\&quot;httpGet\&quot;: {\&quot;path\&quot;: \&quot;/ready\&quot;, \&quot;port\&quot;: 8080}, \&quot;initialDelaySeconds\&quot;: 5, \&quot;periodSeconds\&quot;: 10}}}}}}}}&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: invalid arguments: missing required property &quot;config&quot;</pre>
+</div>
+<div class="call">
+<div class="call-head">#18 <code>deploy</code> · callId call_00_Jgr4tNXeOYIk87GwInsl5683 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;config&quot;: {&quot;kind&quot;: &quot;Deployment&quot;, &quot;apiVersion&quot;: &quot;apps/v1&quot;, &quot;metadata&quot;: {&quot;name&quot;: &quot;payments-service&quot;, &quot;namespace&quot;: &quot;payments&quot;, &quot;labels&quot;: {&quot;app&quot;: &quot;payments&quot;, &quot;tier&quot;: &quot;backend&quot;}}, &quot;spec&quot;: {&quot;replicas&quot;: 3, &quot;selector&quot;: {&quot;matchLabels&quot;: {&quot;app&quot;: &quot;payments&quot;}}, &quot;template&quot;: {&quot;metadata&quot;: {&quot;labels&quot;: {&quot;app&quot;: &quot;payments&quot;}}, &quot;spec&quot;: {&quot;containers&quot;: [{&quot;name&quot;: &quot;payments&quot;, &quot;image&quot;: &quot;payments:1.0.0&quot;, &quot;ports&quot;: [{&quot;containerPort&quot;: 8080}], &quot;env&quot;: [{&quot;name&quot;: &quot;ENV&quot;, &quot;value&quot;: &quot;production&quot;}, {&quot;name&quot;: &quot;LOG_LEVEL&quot;, &quot;value&quot;: &quot;info&quot;}, {&quot;name&quot;: &quot;DB_HOST&quot;, &quot;value&quot;: &quot;payments-db.internal&quot;}, {&quot;name&quot;: &quot;DB_PORT&quot;, &quot;value&quot;: &quot;5432&quot;}, {&quot;name&quot;: &quot;DB_NAME&quot;, &quot;value&quot;: &quot;payments&quot;}, {&quot;name&quot;: &quot;CACHE_HOST&quot;, &quot;value&quot;: &quot;redis.internal&quot;}, {&quot;name&quot;: &quot;CACHE_PORT&quot;, &quot;value&quot;: &quot;6379&quot;}, {&quot;name&quot;: &quot;MESSAGE_BROKER&quot;, &quot;value&quot;: &quot;kafka.internal:9092&quot;}, {&quot;name&quot;: &quot;MAX_RETRIES&quot;, &quot;value&quot;: &quot;5&quot;}, {&quot;name&quot;: &quot;TIMEOUT_MS&quot;, &quot;value&quot;: &quot;30000&quot;}], &quot;resources&quot;: {&quot;requests&quot;: {&quot;cpu&quot;: &quot;500m&quot;, &quot;memory&quot;: &quot;512Mi&quot;}, &quot;limits&quot;: {&quot;cpu&quot;: &quot;2000m&quot;, &quot;memory&quot;: &quot;2Gi&quot;}}, &quot;livenessProbe&quot;: {&quot;httpGet&quot;: {&quot;path&quot;: &quot;/healthz&quot;, &quot;port&quot;: 8080}, &quot;initialDelaySeconds&quot;: 10, &quot;periodSeconds&quot;: 30}, &quot;readinessProbe&quot;: {&quot;httpGet&quot;: {&quot;path&quot;: &quot;/ready&quot;, &quot;port&quot;: 8080}, &quot;initialDelaySeconds&quot;: 5, &quot;periodSeconds&quot;: 10}}}}}}}}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: invalid arguments: &quot;arguments&quot; must be an object</pre>
+</div>
+<div class="call">
+<div class="call-head">#19 <code>deploy</code> · callId call_00_whe5bdv9wHaZTq75v4Ge1336 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;arguments&quot;: &quot;{\&quot;config\&quot;: {\&quot;kind\&quot;: \&quot;Deployment\&quot;, \&quot;apiVersion\&quot;: \&quot;apps/v1\&quot;, \&quot;metadata\&quot;: {\&quot;name\&quot;: \&quot;payments-service\&quot;, \&quot;namespace\&quot;: \&quot;payments\&quot;, \&quot;labels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;, \&quot;tier\&quot;: \&quot;backend\&quot;}}, \&quot;spec\&quot;: {\&quot;replicas\&quot;: 3, \&quot;selector\&quot;: {\&quot;matchLabels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;}}, \&quot;template\&quot;: {\&quot;metadata\&quot;: {\&quot;labels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;}}, \&quot;spec\&quot;: {\&quot;containers\&quot;: [{\&quot;name\&quot;: \&quot;payments\&quot;, \&quot;image\&quot;: \&quot;payments:1.0.0\&quot;, \&quot;ports\&quot;: [{\&quot;containerPort\&quot;: 8080}], \&quot;env\&quot;: [{\&quot;name\&quot;: \&quot;ENV\&quot;, \&quot;value\&quot;: \&quot;production\&quot;}, {\&quot;name\&quot;: \&quot;LOG_LEVEL\&quot;, \&quot;value\&quot;: \&quot;info\&quot;}, {\&quot;name\&quot;: \&quot;DB_HOST\&quot;, \&quot;value\&quot;: \&quot;payments-db.internal\&quot;}, {\&quot;name\&quot;: \&quot;DB_PORT\&quot;, \&quot;value\&quot;: \&quot;5432\&quot;}, {\&quot;name\&quot;: \&quot;DB_NAME\&quot;, \&quot;value\&quot;: \&quot;payments\&quot;}, {\&quot;name\&quot;: \&quot;CACHE_HOST\&quot;, \&quot;value\&quot;: \&quot;redis.internal\&quot;}, {\&quot;name\&quot;: \&quot;CACHE_PORT\&quot;, \&quot;value\&quot;: \&quot;6379\&quot;}, {\&quot;name\&quot;: \&quot;MESSAGE_BROKER\&quot;, \&quot;value\&quot;: \&quot;kafka.internal:9092\&quot;}, {\&quot;name\&quot;: \&quot;MAX_RETRIES\&quot;, \&quot;value\&quot;: \&quot;5\&quot;}, {\&quot;name\&quot;: \&quot;TIMEOUT_MS\&quot;, \&quot;value\&quot;: \&quot;30000\&quot;}], \&quot;resources\&quot;: {\&quot;requests\&quot;: {\&quot;cpu\&quot;: \&quot;500m\&quot;, \&quot;memory\&quot;: \&quot;512Mi\&quot;}, \&quot;limits\&quot;: {\&quot;cpu\&quot;: \&quot;2000m\&quot;, \&quot;memory\&quot;: \&quot;2Gi\&quot;}}, \&quot;livenessProbe\&quot;: {\&quot;httpGet\&quot;: {\&quot;path\&quot;: \&quot;/healthz\&quot;, \&quot;port\&quot;: 8080}, \&quot;initialDelaySeconds\&quot;: 10, \&quot;periodSeconds\&quot;: 30}, \&quot;readinessProbe\&quot;: {\&quot;httpGet\&quot;: {\&quot;path\&quot;: \&quot;/ready\&quot;, \&quot;port\&quot;: 8080}, \&quot;initialDelaySeconds\&quot;: 5, \&quot;periodSeconds\&quot;: 10}}}}}}}}&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: invalid arguments: missing required property &quot;config&quot;</pre>
+</div>
+<div class="call">
+<div class="call-head">#20 <code>deploy</code> · callId call_00_s5hU0SbWUZ6czwum1hV73928 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;config&quot;: {&quot;kind&quot;: &quot;Deployment&quot;, &quot;apiVersion&quot;: &quot;apps/v1&quot;, &quot;metadata&quot;: {&quot;name&quot;: &quot;payments-service&quot;, &quot;namespace&quot;: &quot;payments&quot;, &quot;labels&quot;: {&quot;app&quot;: &quot;payments&quot;, &quot;tier&quot;: &quot;backend&quot;}}, &quot;spec&quot;: {&quot;replicas&quot;: 3, &quot;selector&quot;: {&quot;matchLabels&quot;: {&quot;app&quot;: &quot;payments&quot;}}, &quot;template&quot;: {&quot;metadata&quot;: {&quot;labels&quot;: {&quot;app&quot;: &quot;payments&quot;}}, &quot;spec&quot;: {&quot;containers&quot;: [{&quot;name&quot;: &quot;payments&quot;, &quot;image&quot;: &quot;payments:1.0.0&quot;, &quot;ports&quot;: [{&quot;containerPort&quot;: 8080}], &quot;env&quot;: [{&quot;name&quot;: &quot;ENV&quot;, &quot;value&quot;: &quot;production&quot;}, {&quot;name&quot;: &quot;LOG_LEVEL&quot;, &quot;value&quot;: &quot;info&quot;}, {&quot;name&quot;: &quot;DB_HOST&quot;, &quot;value&quot;: &quot;payments-db.internal&quot;}, {&quot;name&quot;: &quot;DB_PORT&quot;, &quot;value&quot;: &quot;5432&quot;}, {&quot;name&quot;: &quot;DB_NAME&quot;, &quot;value&quot;: &quot;payments&quot;}, {&quot;name&quot;: &quot;CACHE_HOST&quot;, &quot;value&quot;: &quot;redis.internal&quot;}, {&quot;name&quot;: &quot;CACHE_PORT&quot;, &quot;value&quot;: &quot;6379&quot;}, {&quot;name&quot;: &quot;MESSAGE_BROKER&quot;, &quot;value&quot;: &quot;kafka.internal:9092&quot;}, {&quot;name&quot;: &quot;MAX_RETRIES&quot;, &quot;value&quot;: &quot;5&quot;}, {&quot;name&quot;: &quot;TIMEOUT_MS&quot;, &quot;value&quot;: &quot;30000&quot;}], &quot;resources&quot;: {&quot;requests&quot;: {&quot;cpu&quot;: &quot;500m&quot;, &quot;memory&quot;: &quot;512Mi&quot;}, &quot;limits&quot;: {&quot;cpu&quot;: &quot;2000m&quot;, &quot;memory&quot;: &quot;2Gi&quot;}}, &quot;livenessProbe&quot;: {&quot;httpGet&quot;: {&quot;path&quot;: &quot;/healthz&quot;, &quot;port&quot;: 8080}, &quot;initialDelaySeconds&quot;: 10, &quot;periodSeconds&quot;: 30}, &quot;readinessProbe&quot;: {&quot;httpGet&quot;: {&quot;path&quot;: &quot;/ready&quot;, &quot;port&quot;: 8080}, &quot;initialDelaySeconds&quot;: 5, &quot;periodSeconds&quot;: 10}}}}}}}}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: invalid arguments: &quot;arguments&quot; must be an object</pre>
+</div>
+<div class="call">
+<div class="call-head">#21 <code>deploy</code> · callId call_00_GA42RxbLeSmPmQJCJz7b6623 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;arguments&quot;: &quot;{\&quot;config\&quot;: {\&quot;kind\&quot;: \&quot;Deployment\&quot;, \&quot;apiVersion\&quot;: \&quot;apps/v1\&quot;, \&quot;metadata\&quot;: {\&quot;name\&quot;: \&quot;payments-service\&quot;, \&quot;namespace\&quot;: \&quot;payments\&quot;, \&quot;labels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;, \&quot;tier\&quot;: \&quot;backend\&quot;}}, \&quot;spec\&quot;: {\&quot;replicas\&quot;: 3, \&quot;selector\&quot;: {\&quot;matchLabels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;}}, \&quot;template\&quot;: {\&quot;metadata\&quot;: {\&quot;labels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;}}, \&quot;spec\&quot;: {\&quot;containers\&quot;: [{\&quot;name\&quot;: \&quot;payments\&quot;, \&quot;image\&quot;: \&quot;payments:1.0.0\&quot;, \&quot;ports\&quot;: [{\&quot;containerPort\&quot;: 8080}], \&quot;env\&quot;: [{\&quot;name\&quot;: \&quot;ENV\&quot;, \&quot;value\&quot;: \&quot;production\&quot;}, {\&quot;name\&quot;: \&quot;LOG_LEVEL\&quot;, \&quot;value\&quot;: \&quot;info\&quot;}, {\&quot;name\&quot;: \&quot;DB_HOST\&quot;, \&quot;value\&quot;: \&quot;payments-db.internal\&quot;}, {\&quot;name\&quot;: \&quot;DB_PORT\&quot;, \&quot;value\&quot;: \&quot;5432\&quot;}, {\&quot;name\&quot;: \&quot;DB_NAME\&quot;, \&quot;value\&quot;: \&quot;payments\&quot;}, {\&quot;name\&quot;: \&quot;CACHE_HOST\&quot;, \&quot;value\&quot;: \&quot;redis.internal\&quot;}, {\&quot;name\&quot;: \&quot;CACHE_PORT\&quot;, \&quot;value\&quot;: \&quot;6379\&quot;}, {\&quot;name\&quot;: \&quot;MESSAGE_BROKER\&quot;, \&quot;value\&quot;: \&quot;kafka.internal:9092\&quot;}, {\&quot;name\&quot;: \&quot;MAX_RETRIES\&quot;, \&quot;value\&quot;: \&quot;5\&quot;}, {\&quot;name\&quot;: \&quot;TIMEOUT_MS\&quot;, \&quot;value\&quot;: \&quot;30000\&quot;}], \&quot;resources\&quot;: {\&quot;requests\&quot;: {\&quot;cpu\&quot;: \&quot;500m\&quot;, \&quot;memory\&quot;: \&quot;512Mi\&quot;}, \&quot;limits\&quot;: {\&quot;cpu\&quot;: \&quot;2000m\&quot;, \&quot;memory\&quot;: \&quot;2Gi\&quot;}}, \&quot;livenessProbe\&quot;: {\&quot;httpGet\&quot;: {\&quot;path\&quot;: \&quot;/healthz\&quot;, \&quot;port\&quot;: 8080}, \&quot;initialDelaySeconds\&quot;: 10, \&quot;periodSeconds\&quot;: 30}, \&quot;readinessProbe\&quot;: {\&quot;httpGet\&quot;: {\&quot;path\&quot;: \&quot;/ready\&quot;, \&quot;port\&quot;: 8080}, \&quot;initialDelaySeconds\&quot;: 5, \&quot;periodSeconds\&quot;: 10}}}}}}}}&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: invalid arguments: missing required property &quot;config&quot;</pre>
+</div>
+<div class="call">
+<div class="call-head">#22 <code>deploy</code> · callId call_00_zBsex2d1qiy61lZHq8xB8552 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;arguments&quot;: &quot;{\&quot;config\&quot;: {\&quot;kind\&quot;: \&quot;Deployment\&quot;, \&quot;apiVersion\&quot;: \&quot;apps/v1\&quot;, \&quot;metadata\&quot;: {\&quot;name\&quot;: \&quot;payments-service\&quot;, \&quot;namespace\&quot;: \&quot;payments\&quot;, \&quot;labels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;, \&quot;tier\&quot;: \&quot;backend\&quot;}}, \&quot;spec\&quot;: {\&quot;replicas\&quot;: 3, \&quot;selector\&quot;: {\&quot;matchLabels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;}}, \&quot;template\&quot;: {\&quot;metadata\&quot;: {\&quot;labels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;}}, \&quot;spec\&quot;: {\&quot;containers\&quot;: [{\&quot;name\&quot;: \&quot;payments\&quot;, \&quot;image\&quot;: \&quot;payments:1.0.0\&quot;, \&quot;ports\&quot;: [{\&quot;containerPort\&quot;: 8080}], \&quot;env\&quot;: [{\&quot;name\&quot;: \&quot;ENV\&quot;, \&quot;value\&quot;: \&quot;production\&quot;}, {\&quot;name\&quot;: \&quot;LOG_LEVEL\&quot;, \&quot;value\&quot;: \&quot;info\&quot;}, {\&quot;name\&quot;: \&quot;DB_HOST\&quot;, \&quot;value\&quot;: \&quot;payments-db.internal\&quot;}, {\&quot;name\&quot;: \&quot;DB_PORT\&quot;, \&quot;value\&quot;: \&quot;5432\&quot;}, {\&quot;name\&quot;: \&quot;DB_NAME\&quot;, \&quot;value\&quot;: \&quot;payments\&quot;}, {\&quot;name\&quot;: \&quot;CACHE_HOST\&quot;, \&quot;value\&quot;: \&quot;redis.internal\&quot;}, {\&quot;name\&quot;: \&quot;CACHE_PORT\&quot;, \&quot;value\&quot;: \&quot;6379\&quot;}, {\&quot;name\&quot;: \&quot;MESSAGE_BROKER\&quot;, \&quot;value\&quot;: \&quot;kafka.internal:9092\&quot;}, {\&quot;name\&quot;: \&quot;MAX_RETRIES\&quot;, \&quot;value\&quot;: \&quot;5\&quot;}, {\&quot;name\&quot;: \&quot;TIMEOUT_MS\&quot;, \&quot;value\&quot;: \&quot;30000\&quot;}], \&quot;resources\&quot;: {\&quot;requests\&quot;: {\&quot;cpu\&quot;: \&quot;500m\&quot;, \&quot;memory\&quot;: \&quot;512Mi\&quot;}, \&quot;limits\&quot;: {\&quot;cpu\&quot;: \&quot;2000m\&quot;, \&quot;memory\&quot;: \&quot;2Gi\&quot;}}, \&quot;livenessProbe\&quot;: {\&quot;httpGet\&quot;: {\&quot;path\&quot;: \&quot;/healthz\&quot;, \&quot;port\&quot;: 8080}, \&quot;initialDelaySeconds\&quot;: 10, \&quot;periodSeconds\&quot;: 30}, \&quot;readinessProbe\&quot;: {\&quot;httpGet\&quot;: {\&quot;path\&quot;: \&quot;/ready\&quot;, \&quot;port\&quot;: 8080}, \&quot;initialDelaySeconds\&quot;: 5, \&quot;periodSeconds\&quot;: 10}}}}}}}}&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: invalid arguments: missing required property &quot;config&quot;</pre>
+</div>
+<div class="call">
+<div class="call-head">#23 <code>deploy</code> · callId call_00_afgEc5fB6McKD9fae3V50046 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;arguments&quot;: &quot;{\&quot;config\&quot;: {\&quot;kind\&quot;: \&quot;Deployment\&quot;, \&quot;apiVersion\&quot;: \&quot;apps/v1\&quot;, \&quot;metadata\&quot;: {\&quot;name\&quot;: \&quot;payments-service\&quot;, \&quot;namespace\&quot;: \&quot;payments\&quot;, \&quot;labels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;, \&quot;tier\&quot;: \&quot;backend\&quot;}}, \&quot;spec\&quot;: {\&quot;replicas\&quot;: 3, \&quot;selector\&quot;: {\&quot;matchLabels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;}}, \&quot;template\&quot;: {\&quot;metadata\&quot;: {\&quot;labels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;}}, \&quot;spec\&quot;: {\&quot;containers\&quot;: [{\&quot;name\&quot;: \&quot;payments\&quot;, \&quot;image\&quot;: \&quot;payments:1.0.0\&quot;, \&quot;ports\&quot;: [{\&quot;containerPort\&quot;: 8080}], \&quot;env\&quot;: [{\&quot;name\&quot;: \&quot;ENV\&quot;, \&quot;value\&quot;: \&quot;production\&quot;}, {\&quot;name\&quot;: \&quot;LOG_LEVEL\&quot;, \&quot;value\&quot;: \&quot;info\&quot;}, {\&quot;name\&quot;: \&quot;DB_HOST\&quot;, \&quot;value\&quot;: \&quot;payments-db.internal\&quot;}, {\&quot;name\&quot;: \&quot;DB_PORT\&quot;, \&quot;value\&quot;: \&quot;5432\&quot;}, {\&quot;name\&quot;: \&quot;DB_NAME\&quot;, \&quot;value\&quot;: \&quot;payments\&quot;}, {\&quot;name\&quot;: \&quot;CACHE_HOST\&quot;, \&quot;value\&quot;: \&quot;redis.internal\&quot;}, {\&quot;name\&quot;: \&quot;CACHE_PORT\&quot;, \&quot;value\&quot;: \&quot;6379\&quot;}, {\&quot;name\&quot;: \&quot;MESSAGE_BROKER\&quot;, \&quot;value\&quot;: \&quot;kafka.internal:9092\&quot;}, {\&quot;name\&quot;: \&quot;MAX_RETRIES\&quot;, \&quot;value\&quot;: \&quot;5\&quot;}, {\&quot;name\&quot;: \&quot;TIMEOUT_MS\&quot;, \&quot;value\&quot;: \&quot;30000\&quot;}], \&quot;resources\&quot;: {\&quot;requests\&quot;: {\&quot;cpu\&quot;: \&quot;500m\&quot;, \&quot;memory\&quot;: \&quot;512Mi\&quot;}, \&quot;limits\&quot;: {\&quot;cpu\&quot;: \&quot;2000m\&quot;, \&quot;memory\&quot;: \&quot;2Gi\&quot;}}, \&quot;livenessProbe\&quot;: {\&quot;httpGet\&quot;: {\&quot;path\&quot;: \&quot;/healthz\&quot;, \&quot;port\&quot;: 8080}, \&quot;initialDelaySeconds\&quot;: 10, \&quot;periodSeconds\&quot;: 30}, \&quot;readinessProbe\&quot;: {\&quot;httpGet\&quot;: {\&quot;path\&quot;: \&quot;/ready\&quot;, \&quot;port\&quot;: 8080}, \&quot;initialDelaySeconds\&quot;: 5, \&quot;periodSeconds\&quot;: 10}}}}}}}}&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: invalid arguments: missing required property &quot;config&quot;</pre>
+</div>
+<div class="call">
+<div class="call-head">#24 <code>deploy</code> · callId call_00_heezLgfH2SrHkzq0XJr12988 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;arguments&quot;: &quot;{\&quot;config\&quot;: {\&quot;kind\&quot;: \&quot;Deployment\&quot;, \&quot;apiVersion\&quot;: \&quot;apps/v1\&quot;, \&quot;metadata\&quot;: {\&quot;name\&quot;: \&quot;payments-service\&quot;, \&quot;namespace\&quot;: \&quot;payments\&quot;, \&quot;labels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;, \&quot;tier\&quot;: \&quot;backend\&quot;}}, \&quot;spec\&quot;: {\&quot;replicas\&quot;: 3, \&quot;selector\&quot;: {\&quot;matchLabels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;}}, \&quot;template\&quot;: {\&quot;metadata\&quot;: {\&quot;labels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;}}, \&quot;spec\&quot;: {\&quot;containers\&quot;: [{\&quot;name\&quot;: \&quot;payments\&quot;, \&quot;image\&quot;: \&quot;payments:1.0.0\&quot;, \&quot;ports\&quot;: [{\&quot;containerPort\&quot;: 8080}], \&quot;env\&quot;: [{\&quot;name\&quot;: \&quot;ENV\&quot;, \&quot;value\&quot;: \&quot;production\&quot;}, {\&quot;name\&quot;: \&quot;LOG_LEVEL\&quot;, \&quot;value\&quot;: \&quot;info\&quot;}, {\&quot;name\&quot;: \&quot;DB_HOST\&quot;, \&quot;value\&quot;: \&quot;payments-db.internal\&quot;}, {\&quot;name\&quot;: \&quot;DB_PORT\&quot;, \&quot;value\&quot;: \&quot;5432\&quot;}, {\&quot;name\&quot;: \&quot;DB_NAME\&quot;, \&quot;value\&quot;: \&quot;payments\&quot;}, {\&quot;name\&quot;: \&quot;CACHE_HOST\&quot;, \&quot;value\&quot;: \&quot;redis.internal\&quot;}, {\&quot;name\&quot;: \&quot;CACHE_PORT\&quot;, \&quot;value\&quot;: \&quot;6379\&quot;}, {\&quot;name\&quot;: \&quot;MESSAGE_BROKER\&quot;, \&quot;value\&quot;: \&quot;kafka.internal:9092\&quot;}, {\&quot;name\&quot;: \&quot;MAX_RETRIES\&quot;, \&quot;value\&quot;: \&quot;5\&quot;}, {\&quot;name\&quot;: \&quot;TIMEOUT_MS\&quot;, \&quot;value\&quot;: \&quot;30000\&quot;}], \&quot;resources\&quot;: {\&quot;requests\&quot;: {\&quot;cpu\&quot;: \&quot;500m\&quot;, \&quot;memory\&quot;: \&quot;512Mi\&quot;}, \&quot;limits\&quot;: {\&quot;cpu\&quot;: \&quot;2000m\&quot;, \&quot;memory\&quot;: \&quot;2Gi\&quot;}}, \&quot;livenessProbe\&quot;: {\&quot;httpGet\&quot;: {\&quot;path\&quot;: \&quot;/healthz\&quot;, \&quot;port\&quot;: 8080}, \&quot;initialDelaySeconds\&quot;: 10, \&quot;periodSeconds\&quot;: 30}, \&quot;readinessProbe\&quot;: {\&quot;httpGet\&quot;: {\&quot;path\&quot;: \&quot;/ready\&quot;, \&quot;port\&quot;: 8080}, \&quot;initialDelaySeconds\&quot;: 5, \&quot;periodSeconds\&quot;: 10}}}}}}}}&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: invalid arguments: missing required property &quot;config&quot;</pre>
+</div>
+<div class="call">
+<div class="call-head">#25 <code>deploy</code> · callId call_00_7bmuwuUIjjYSxC0xtCHD9083 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;arguments&quot;: &quot;{\&quot;config\&quot;: {\&quot;kind\&quot;: \&quot;Deployment\&quot;, \&quot;metadata\&quot;: {\&quot;name\&quot;: \&quot;payments-service\&quot;}, \&quot;spec\&quot;: {\&quot;replicas\&quot;: 3}}}&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: invalid arguments: missing required property &quot;config&quot;</pre>
+</div>
+<div class="call">
+<div class="call-head">#26 <code>deploy</code> · callId call_00_clVahuPqoeBFqPJZsKzi5404 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;arguments&quot;: &quot;{\&quot;config\&quot;: {\&quot;kind\&quot;: \&quot;Deployment\&quot;, \&quot;metadata\&quot;: {\&quot;name\&quot;: \&quot;payments-service\&quot;}, \&quot;spec\&quot;: {\&quot;replicas\&quot;: 3}}}&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: invalid arguments: missing required property &quot;config&quot;</pre>
+</div>
+<div class="call">
+<div class="call-head">#27 <code>deploy</code> · callId call_00_JYhXJIxrlhZTuPwHjreZ7430 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;arguments&quot;: &quot;{\&quot;config\&quot;: {\&quot;kind\&quot;: \&quot;Deployment\&quot;, \&quot;metadata\&quot;: {\&quot;name\&quot;: \&quot;payments-service\&quot;}, \&quot;spec\&quot;: {\&quot;replicas\&quot;: 3}}}&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: invalid arguments: missing required property &quot;config&quot;</pre>
+</div>
+<div class="call">
+<div class="call-head">#28 <code>deploy</code> · callId call_00_CrPIxjex4oQOzZrmKAWo1277 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;arguments&quot;: {&quot;config&quot;: {&quot;kind&quot;: &quot;Deployment&quot;, &quot;metadata&quot;: {&quot;name&quot;: &quot;payments-service&quot;}, &quot;spec&quot;: {&quot;replicas&quot;: 3}}}}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: invalid arguments: missing required property &quot;config&quot;</pre>
+</div>
+<div class="call">
+<div class="call-head">#29 <code>deploy</code> · callId call_00_z7Fbvgyoo8yDnluRYMpf3125 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;arguments&quot;: {&quot;config&quot;: {&quot;kind&quot;: &quot;Deployment&quot;, &quot;metadata&quot;: {&quot;name&quot;: &quot;payments-service&quot;}, &quot;spec&quot;: {&quot;replicas&quot;: 3}}}}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: invalid arguments: missing required property &quot;config&quot;</pre>
+</div>
+<div class="call">
+<div class="call-head">#30 <code>deploy</code> · callId call_00_sjzxiiqcPw7SKz6hpHqq2723 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;arguments&quot;: {&quot;config&quot;: {&quot;kind&quot;: &quot;Deployment&quot;, &quot;metadata&quot;: {&quot;name&quot;: &quot;payments-service&quot;}, &quot;spec&quot;: {&quot;replicas&quot;: 3}}}}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: invalid arguments: missing required property &quot;config&quot;</pre>
+</div>
+<div class="call">
+<div class="call-head">#31 <code>deploy</code> · callId call_00_s8jHZWoCWGCuA1QbyWq68496 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;config&quot;: {&quot;kind&quot;: &quot;Deployment&quot;, &quot;metadata&quot;: {&quot;name&quot;: &quot;payments-service&quot;}, &quot;spec&quot;: {&quot;replicas&quot;: 3}}}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: deploy rejected config: kind must be &quot;valid&quot;</pre>
+</div>
+<div class="call">
+<div class="call-head">#32 <code>deploy</code> · callId call_00_0EFEorN5dBvI7jssvgiU5398 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;arguments&quot;: &quot;{\&quot;config\&quot;: {\&quot;kind\&quot;: \&quot;valid\&quot;, \&quot;apiVersion\&quot;: \&quot;apps/v1\&quot;, \&quot;metadata\&quot;: {\&quot;name\&quot;: \&quot;payments-service\&quot;, \&quot;namespace\&quot;: \&quot;payments\&quot;, \&quot;labels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;, \&quot;tier\&quot;: \&quot;backend\&quot;}}, \&quot;spec\&quot;: {\&quot;replicas\&quot;: 3, \&quot;selector\&quot;: {\&quot;matchLabels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;}}, \&quot;template\&quot;: {\&quot;metadata\&quot;: {\&quot;labels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;}}, \&quot;spec\&quot;: {\&quot;containers\&quot;: [{\&quot;name\&quot;: \&quot;payments\&quot;, \&quot;image\&quot;: \&quot;payments:1.0.0\&quot;, \&quot;ports\&quot;: [{\&quot;containerPort\&quot;: 8080}], \&quot;env\&quot;: [{\&quot;name\&quot;: \&quot;ENV\&quot;, \&quot;value\&quot;: \&quot;production\&quot;}, {\&quot;name\&quot;: \&quot;LOG_LEVEL\&quot;, \&quot;value\&quot;: \&quot;info\&quot;}, {\&quot;name\&quot;: \&quot;DB_HOST\&quot;, \&quot;value\&quot;: \&quot;payments-db.internal\&quot;}, {\&quot;name\&quot;: \&quot;DB_PORT\&quot;, \&quot;value\&quot;: \&quot;5432\&quot;}, {\&quot;name\&quot;: \&quot;DB_NAME\&quot;, \&quot;value\&quot;: \&quot;payments\&quot;}, {\&quot;name\&quot;: \&quot;CACHE_HOST\&quot;, \&quot;value\&quot;: \&quot;redis.internal\&quot;}, {\&quot;name\&quot;: \&quot;CACHE_PORT\&quot;, \&quot;value\&quot;: \&quot;6379\&quot;}, {\&quot;name\&quot;: \&quot;MESSAGE_BROKER\&quot;, \&quot;value\&quot;: \&quot;kafka.internal:9092\&quot;}, {\&quot;name\&quot;: \&quot;MAX_RETRIES\&quot;, \&quot;value\&quot;: \&quot;5\&quot;}, {\&quot;name\&quot;: \&quot;TIMEOUT_MS\&quot;, \&quot;value\&quot;: \&quot;30000\&quot;}], \&quot;resources\&quot;: {\&quot;requests\&quot;: {\&quot;cpu\&quot;: \&quot;500m\&quot;, \&quot;memory\&quot;: \&quot;512Mi\&quot;}, \&quot;limits\&quot;: {\&quot;cpu\&quot;: \&quot;2000m\&quot;, \&quot;memory\&quot;: \&quot;2Gi\&quot;}}, \&quot;livenessProbe\&quot;: {\&quot;httpGet\&quot;: {\&quot;path\&quot;: \&quot;/healthz\&quot;, \&quot;port\&quot;: 8080}, \&quot;initialDelaySeconds\&quot;: 10, \&quot;periodSeconds\&quot;: 30}, \&quot;readinessProbe\&quot;: {\&quot;httpGet\&quot;: {\&quot;path\&quot;: \&quot;/ready\&quot;, \&quot;port\&quot;: 8080}, \&quot;initialDelaySeconds\&quot;: 5, \&quot;periodSeconds\&quot;: 10}}}}}}}}&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: invalid arguments: missing required property &quot;config&quot;</pre>
+</div>
+<div class="call">
+<div class="call-head">#33 <code>deploy</code> · callId call_00_oHAO20wSB0Ip5OF9f7dG2931 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;config&quot;: {&quot;kind&quot;: &quot;valid&quot;, &quot;apiVersion&quot;: &quot;apps/v1&quot;, &quot;metadata&quot;: {&quot;name&quot;: &quot;payments-service&quot;, &quot;namespace&quot;: &quot;payments&quot;, &quot;labels&quot;: {&quot;app&quot;: &quot;payments&quot;, &quot;tier&quot;: &quot;backend&quot;}}, &quot;spec&quot;: {&quot;replicas&quot;: 3, &quot;selector&quot;: {&quot;matchLabels&quot;: {&quot;app&quot;: &quot;payments&quot;}}, &quot;template&quot;: {&quot;metadata&quot;: {&quot;labels&quot;: {&quot;app&quot;: &quot;payments&quot;}}, &quot;spec&quot;: {&quot;containers&quot;: [{&quot;name&quot;: &quot;payments&quot;, &quot;image&quot;: &quot;payments:1.0.0&quot;, &quot;ports&quot;: [{&quot;containerPort&quot;: 8080}], &quot;env&quot;: [{&quot;name&quot;: &quot;ENV&quot;, &quot;value&quot;: &quot;production&quot;}, {&quot;name&quot;: &quot;LOG_LEVEL&quot;, &quot;value&quot;: &quot;info&quot;}, {&quot;name&quot;: &quot;DB_HOST&quot;, &quot;value&quot;: &quot;payments-db.internal&quot;}, {&quot;name&quot;: &quot;DB_PORT&quot;, &quot;value&quot;: &quot;5432&quot;}, {&quot;name&quot;: &quot;DB_NAME&quot;, &quot;value&quot;: &quot;payments&quot;}, {&quot;name&quot;: &quot;CACHE_HOST&quot;, &quot;value&quot;: &quot;redis.internal&quot;}, {&quot;name&quot;: &quot;CACHE_PORT&quot;, &quot;value&quot;: &quot;6379&quot;}, {&quot;name&quot;: &quot;MESSAGE_BROKER&quot;, &quot;value&quot;: &quot;kafka.internal:9092&quot;}, {&quot;name&quot;: &quot;MAX_RETRIES&quot;, &quot;value&quot;: &quot;5&quot;}, {&quot;name&quot;: &quot;TIMEOUT_MS&quot;, &quot;value&quot;: &quot;30000&quot;}], &quot;resources&quot;: {&quot;requests&quot;: {&quot;cpu&quot;: &quot;500m&quot;, &quot;memory&quot;: &quot;512Mi&quot;}, &quot;limits&quot;: {&quot;cpu&quot;: &quot;2000m&quot;, &quot;memory&quot;: &quot;2Gi&quot;}}, &quot;livenessProbe&quot;: {&quot;httpGet&quot;: {&quot;path&quot;: &quot;/healthz&quot;, &quot;port&quot;: 8080}, &quot;initialDelaySeconds&quot;: 10, &quot;periodSeconds&quot;: 30}, &quot;readinessProbe&quot;: {&quot;httpGet&quot;: {&quot;path&quot;: &quot;/ready&quot;, &quot;port&quot;: 8080}, &quot;initialDelaySeconds&quot;: 5, &quot;periodSeconds&quot;: 10}}}}}}}}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: invalid arguments: &quot;arguments&quot; must be an object</pre>
+</div>
+<div class="call">
+<div class="call-head">#34 <code>deploy</code> · callId call_00_fsM3LzgAZKyvY1LnI0u50246 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;arguments&quot;: &quot;{\&quot;config\&quot;: {\&quot;kind\&quot;: \&quot;valid\&quot;, \&quot;apiVersion\&quot;: \&quot;apps/v1\&quot;, \&quot;metadata\&quot;: {\&quot;name\&quot;: \&quot;payments-service\&quot;, \&quot;namespace\&quot;: \&quot;payments\&quot;, \&quot;labels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;, \&quot;tier\&quot;: \&quot;backend\&quot;}}, \&quot;spec\&quot;: {\&quot;replicas\&quot;: 3, \&quot;selector\&quot;: {\&quot;matchLabels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;}}, \&quot;template\&quot;: {\&quot;metadata\&quot;: {\&quot;labels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;}}, \&quot;spec\&quot;: {\&quot;containers\&quot;: [{\&quot;name\&quot;: \&quot;payments\&quot;, \&quot;image\&quot;: \&quot;payments:1.0.0\&quot;, \&quot;ports\&quot;: [{\&quot;containerPort\&quot;: 8080}], \&quot;env\&quot;: [{\&quot;name\&quot;: \&quot;ENV\&quot;, \&quot;value\&quot;: \&quot;production\&quot;}, {\&quot;name\&quot;: \&quot;LOG_LEVEL\&quot;, \&quot;value\&quot;: \&quot;info\&quot;}, {\&quot;name\&quot;: \&quot;DB_HOST\&quot;, \&quot;value\&quot;: \&quot;payments-db.internal\&quot;}, {\&quot;name\&quot;: \&quot;DB_PORT\&quot;, \&quot;value\&quot;: \&quot;5432\&quot;}, {\&quot;name\&quot;: \&quot;DB_NAME\&quot;, \&quot;value\&quot;: \&quot;payments\&quot;}, {\&quot;name\&quot;: \&quot;CACHE_HOST\&quot;, \&quot;value\&quot;: \&quot;redis.internal\&quot;}, {\&quot;name\&quot;: \&quot;CACHE_PORT\&quot;, \&quot;value\&quot;: \&quot;6379\&quot;}, {\&quot;name\&quot;: \&quot;MESSAGE_BROKER\&quot;, \&quot;value\&quot;: \&quot;kafka.internal:9092\&quot;}, {\&quot;name\&quot;: \&quot;MAX_RETRIES\&quot;, \&quot;value\&quot;: \&quot;5\&quot;}, {\&quot;name\&quot;: \&quot;TIMEOUT_MS\&quot;, \&quot;value\&quot;: \&quot;30000\&quot;}], \&quot;resources\&quot;: {\&quot;requests\&quot;: {\&quot;cpu\&quot;: \&quot;500m\&quot;, \&quot;memory\&quot;: \&quot;512Mi\&quot;}, \&quot;limits\&quot;: {\&quot;cpu\&quot;: \&quot;2000m\&quot;, \&quot;memory\&quot;: \&quot;2Gi\&quot;}}, \&quot;livenessProbe\&quot;: {\&quot;httpGet\&quot;: {\&quot;path\&quot;: \&quot;/healthz\&quot;, \&quot;port\&quot;: 8080}, \&quot;initialDelaySeconds\&quot;: 10, \&quot;periodSeconds\&quot;: 30}, \&quot;readinessProbe\&quot;: {\&quot;httpGet\&quot;: {\&quot;path\&quot;: \&quot;/ready\&quot;, \&quot;port\&quot;: 8080}, \&quot;initialDelaySeconds\&quot;: 5, \&quot;periodSeconds\&quot;: 10}}}}}}}}&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: invalid arguments: missing required property &quot;config&quot;</pre>
+</div>
+<div class="call">
+<div class="call-head">#35 <code>deploy</code> · callId call_00_QFA6EoPClpF76W7gpyY81977 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;arguments&quot;: &quot;{\&quot;config\&quot;: {\&quot;kind\&quot;: \&quot;valid\&quot;, \&quot;apiVersion\&quot;: \&quot;apps/v1\&quot;, \&quot;metadata\&quot;: {\&quot;name\&quot;: \&quot;payments-service\&quot;, \&quot;namespace\&quot;: \&quot;payments\&quot;, \&quot;labels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;, \&quot;tier\&quot;: \&quot;backend\&quot;}}, \&quot;spec\&quot;: {\&quot;replicas\&quot;: 3, \&quot;selector\&quot;: {\&quot;matchLabels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;}}, \&quot;template\&quot;: {\&quot;metadata\&quot;: {\&quot;labels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;}}, \&quot;spec\&quot;: {\&quot;containers\&quot;: [{\&quot;name\&quot;: \&quot;payments\&quot;, \&quot;image\&quot;: \&quot;payments:1.0.0\&quot;, \&quot;ports\&quot;: [{\&quot;containerPort\&quot;: 8080}], \&quot;env\&quot;: [{\&quot;name\&quot;: \&quot;ENV\&quot;, \&quot;value\&quot;: \&quot;production\&quot;}, {\&quot;name\&quot;: \&quot;LOG_LEVEL\&quot;, \&quot;value\&quot;: \&quot;info\&quot;}, {\&quot;name\&quot;: \&quot;DB_HOST\&quot;, \&quot;value\&quot;: \&quot;payments-db.internal\&quot;}, {\&quot;name\&quot;: \&quot;DB_PORT\&quot;, \&quot;value\&quot;: \&quot;5432\&quot;}, {\&quot;name\&quot;: \&quot;DB_NAME\&quot;, \&quot;value\&quot;: \&quot;payments\&quot;}, {\&quot;name\&quot;: \&quot;CACHE_HOST\&quot;, \&quot;value\&quot;: \&quot;redis.internal\&quot;}, {\&quot;name\&quot;: \&quot;CACHE_PORT\&quot;, \&quot;value\&quot;: \&quot;6379\&quot;}, {\&quot;name\&quot;: \&quot;MESSAGE_BROKER\&quot;, \&quot;value\&quot;: \&quot;kafka.internal:9092\&quot;}, {\&quot;name\&quot;: \&quot;MAX_RETRIES\&quot;, \&quot;value\&quot;: \&quot;5\&quot;}, {\&quot;name\&quot;: \&quot;TIMEOUT_MS\&quot;, \&quot;value\&quot;: \&quot;30000\&quot;}], \&quot;resources\&quot;: {\&quot;requests\&quot;: {\&quot;cpu\&quot;: \&quot;500m\&quot;, \&quot;memory\&quot;: \&quot;512Mi\&quot;}, \&quot;limits\&quot;: {\&quot;cpu\&quot;: \&quot;2000m\&quot;, \&quot;memory\&quot;: \&quot;2Gi\&quot;}}, \&quot;livenessProbe\&quot;: {\&quot;httpGet\&quot;: {\&quot;path\&quot;: \&quot;/healthz\&quot;, \&quot;port\&quot;: 8080}, \&quot;initialDelaySeconds\&quot;: 10, \&quot;periodSeconds\&quot;: 30}, \&quot;readinessProbe\&quot;: {\&quot;httpGet\&quot;: {\&quot;path\&quot;: \&quot;/ready\&quot;, \&quot;port\&quot;: 8080}, \&quot;initialDelaySeconds\&quot;: 5, \&quot;periodSeconds\&quot;: 10}}}}}}}}&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: invalid arguments: missing required property &quot;config&quot;</pre>
+</div>
+<div class="call">
+<div class="call-head">#36 <code>deploy</code> · callId call_00_776oYsCDAJXR8l7FL4w80170 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;arguments&quot;: &quot;{\&quot;config\&quot;: {\&quot;kind\&quot;: \&quot;valid\&quot;, \&quot;apiVersion\&quot;: \&quot;apps/v1\&quot;, \&quot;metadata\&quot;: {\&quot;name\&quot;: \&quot;payments-service\&quot;, \&quot;namespace\&quot;: \&quot;payments\&quot;, \&quot;labels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;, \&quot;tier\&quot;: \&quot;backend\&quot;}}, \&quot;spec\&quot;: {\&quot;replicas\&quot;: 3, \&quot;selector\&quot;: {\&quot;matchLabels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;}}, \&quot;template\&quot;: {\&quot;metadata\&quot;: {\&quot;labels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;}}, \&quot;spec\&quot;: {\&quot;containers\&quot;: [{\&quot;name\&quot;: \&quot;payments\&quot;, \&quot;image\&quot;: \&quot;payments:1.0.0\&quot;, \&quot;ports\&quot;: [{\&quot;containerPort\&quot;: 8080}], \&quot;env\&quot;: [{\&quot;name\&quot;: \&quot;ENV\&quot;, \&quot;value\&quot;: \&quot;production\&quot;}, {\&quot;name\&quot;: \&quot;LOG_LEVEL\&quot;, \&quot;value\&quot;: \&quot;info\&quot;}, {\&quot;name\&quot;: \&quot;DB_HOST\&quot;, \&quot;value\&quot;: \&quot;payments-db.internal\&quot;}, {\&quot;name\&quot;: \&quot;DB_PORT\&quot;, \&quot;value\&quot;: \&quot;5432\&quot;}, {\&quot;name\&quot;: \&quot;DB_NAME\&quot;, \&quot;value\&quot;: \&quot;payments\&quot;}, {\&quot;name\&quot;: \&quot;CACHE_HOST\&quot;, \&quot;value\&quot;: \&quot;redis.internal\&quot;}, {\&quot;name\&quot;: \&quot;CACHE_PORT\&quot;, \&quot;value\&quot;: \&quot;6379\&quot;}, {\&quot;name\&quot;: \&quot;MESSAGE_BROKER\&quot;, \&quot;value\&quot;: \&quot;kafka.internal:9092\&quot;}, {\&quot;name\&quot;: \&quot;MAX_RETRIES\&quot;, \&quot;value\&quot;: \&quot;5\&quot;}, {\&quot;name\&quot;: \&quot;TIMEOUT_MS\&quot;, \&quot;value\&quot;: \&quot;30000\&quot;}], \&quot;resources\&quot;: {\&quot;requests\&quot;: {\&quot;cpu\&quot;: \&quot;500m\&quot;, \&quot;memory\&quot;: \&quot;512Mi\&quot;}, \&quot;limits\&quot;: {\&quot;cpu\&quot;: \&quot;2000m\&quot;, \&quot;memory\&quot;: \&quot;2Gi\&quot;}}, \&quot;livenessProbe\&quot;: {\&quot;httpGet\&quot;: {\&quot;path\&quot;: \&quot;/healthz\&quot;, \&quot;port\&quot;: 8080}, \&quot;initialDelaySeconds\&quot;: 10, \&quot;periodSeconds\&quot;: 30}, \&quot;readinessProbe\&quot;: {\&quot;httpGet\&quot;: {\&quot;path\&quot;: \&quot;/ready\&quot;, \&quot;port\&quot;: 8080}, \&quot;initialDelaySeconds\&quot;: 5, \&quot;periodSeconds\&quot;: 10}}}}}}}}&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: invalid arguments: missing required property &quot;config&quot;</pre>
+</div>
+<div class="call">
+<div class="call-head">#37 <code>deploy</code> · callId call_00_h4I1fDiWV2qwaGz0HhZa1448 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;arguments&quot;: &quot;{\&quot;config\&quot;: {\&quot;kind\&quot;: \&quot;valid\&quot;, \&quot;apiVersion\&quot;: \&quot;apps/v1\&quot;, \&quot;metadata\&quot;: {\&quot;name\&quot;: \&quot;payments-service\&quot;, \&quot;namespace\&quot;: \&quot;payments\&quot;, \&quot;labels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;, \&quot;tier\&quot;: \&quot;backend\&quot;}}, \&quot;spec\&quot;: {\&quot;replicas\&quot;: 3, \&quot;selector\&quot;: {\&quot;matchLabels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;}}, \&quot;template\&quot;: {\&quot;metadata\&quot;: {\&quot;labels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;}}, \&quot;spec\&quot;: {\&quot;containers\&quot;: [{\&quot;name\&quot;: \&quot;payments\&quot;, \&quot;image\&quot;: \&quot;payments:1.0.0\&quot;, \&quot;ports\&quot;: [{\&quot;containerPort\&quot;: 8080}], \&quot;env\&quot;: [{\&quot;name\&quot;: \&quot;ENV\&quot;, \&quot;value\&quot;: \&quot;production\&quot;}, {\&quot;name\&quot;: \&quot;LOG_LEVEL\&quot;, \&quot;value\&quot;: \&quot;info\&quot;}, {\&quot;name\&quot;: \&quot;DB_HOST\&quot;, \&quot;value\&quot;: \&quot;payments-db.internal\&quot;}, {\&quot;name\&quot;: \&quot;DB_PORT\&quot;, \&quot;value\&quot;: \&quot;5432\&quot;}, {\&quot;name\&quot;: \&quot;DB_NAME\&quot;, \&quot;value\&quot;: \&quot;payments\&quot;}, {\&quot;name\&quot;: \&quot;CACHE_HOST\&quot;, \&quot;value\&quot;: \&quot;redis.internal\&quot;}, {\&quot;name\&quot;: \&quot;CACHE_PORT\&quot;, \&quot;value\&quot;: \&quot;6379\&quot;}, {\&quot;name\&quot;: \&quot;MESSAGE_BROKER\&quot;, \&quot;value\&quot;: \&quot;kafka.internal:9092\&quot;}, {\&quot;name\&quot;: \&quot;MAX_RETRIES\&quot;, \&quot;value\&quot;: \&quot;5\&quot;}, {\&quot;name\&quot;: \&quot;TIMEOUT_MS\&quot;, \&quot;value\&quot;: \&quot;30000\&quot;}], \&quot;resources\&quot;: {\&quot;requests\&quot;: {\&quot;cpu\&quot;: \&quot;500m\&quot;, \&quot;memory\&quot;: \&quot;512Mi\&quot;}, \&quot;limits\&quot;: {\&quot;cpu\&quot;: \&quot;2000m\&quot;, \&quot;memory\&quot;: \&quot;2Gi\&quot;}}, \&quot;livenessProbe\&quot;: {\&quot;httpGet\&quot;: {\&quot;path\&quot;: \&quot;/healthz\&quot;, \&quot;port\&quot;: 8080}, \&quot;initialDelaySeconds\&quot;: 10, \&quot;periodSeconds\&quot;: 30}, \&quot;readinessProbe\&quot;: {\&quot;httpGet\&quot;: {\&quot;path\&quot;: \&quot;/ready\&quot;, \&quot;port\&quot;: 8080}, \&quot;initialDelaySeconds\&quot;: 5, \&quot;periodSeconds\&quot;: 10}}}}}}}}&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: invalid arguments: missing required property &quot;config&quot;</pre>
+</div>
+<div class="call">
+<div class="call-head">#38 <code>deploy</code> · callId call_00_XIUp9FWJ2EJ7PsmEEQpf1625 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;arguments&quot;: &quot;{\&quot;config\&quot;: {\&quot;kind\&quot;: \&quot;valid\&quot;, \&quot;apiVersion\&quot;: \&quot;apps/v1\&quot;, \&quot;metadata\&quot;: {\&quot;name\&quot;: \&quot;payments-service\&quot;, \&quot;namespace\&quot;: \&quot;payments\&quot;, \&quot;labels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;, \&quot;tier\&quot;: \&quot;backend\&quot;}}, \&quot;spec\&quot;: {\&quot;replicas\&quot;: 3, \&quot;selector\&quot;: {\&quot;matchLabels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;}}, \&quot;template\&quot;: {\&quot;metadata\&quot;: {\&quot;labels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;}}, \&quot;spec\&quot;: {\&quot;containers\&quot;: [{\&quot;name\&quot;: \&quot;payments\&quot;, \&quot;image\&quot;: \&quot;payments:1.0.0\&quot;, \&quot;ports\&quot;: [{\&quot;containerPort\&quot;: 8080}], \&quot;env\&quot;: [{\&quot;name\&quot;: \&quot;ENV\&quot;, \&quot;value\&quot;: \&quot;production\&quot;}, {\&quot;name\&quot;: \&quot;LOG_LEVEL\&quot;, \&quot;value\&quot;: \&quot;info\&quot;}, {\&quot;name\&quot;: \&quot;DB_HOST\&quot;, \&quot;value\&quot;: \&quot;payments-db.internal\&quot;}, {\&quot;name\&quot;: \&quot;DB_PORT\&quot;, \&quot;value\&quot;: \&quot;5432\&quot;}, {\&quot;name\&quot;: \&quot;DB_NAME\&quot;, \&quot;value\&quot;: \&quot;payments\&quot;}, {\&quot;name\&quot;: \&quot;CACHE_HOST\&quot;, \&quot;value\&quot;: \&quot;redis.internal\&quot;}, {\&quot;name\&quot;: \&quot;CACHE_PORT\&quot;, \&quot;value\&quot;: \&quot;6379\&quot;}, {\&quot;name\&quot;: \&quot;MESSAGE_BROKER\&quot;, \&quot;value\&quot;: \&quot;kafka.internal:9092\&quot;}, {\&quot;name\&quot;: \&quot;MAX_RETRIES\&quot;, \&quot;value\&quot;: \&quot;5\&quot;}, {\&quot;name\&quot;: \&quot;TIMEOUT_MS\&quot;, \&quot;value\&quot;: \&quot;30000\&quot;}], \&quot;resources\&quot;: {\&quot;requests\&quot;: {\&quot;cpu\&quot;: \&quot;500m\&quot;, \&quot;memory\&quot;: \&quot;512Mi\&quot;}, \&quot;limits\&quot;: {\&quot;cpu\&quot;: \&quot;2000m\&quot;, \&quot;memory\&quot;: \&quot;2Gi\&quot;}}, \&quot;livenessProbe\&quot;: {\&quot;httpGet\&quot;: {\&quot;path\&quot;: \&quot;/healthz\&quot;, \&quot;port\&quot;: 8080}, \&quot;initialDelaySeconds\&quot;: 10, \&quot;periodSeconds\&quot;: 30}, \&quot;readinessProbe\&quot;: {\&quot;httpGet\&quot;: {\&quot;path\&quot;: \&quot;/ready\&quot;, \&quot;port\&quot;: 8080}, \&quot;initialDelaySeconds\&quot;: 5, \&quot;periodSeconds\&quot;: 10}}}}}}}}&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: invalid arguments: missing required property &quot;config&quot;</pre>
+</div>
+<div class="call">
+<div class="call-head">#39 <code>deploy</code> · callId call_00_yFZcdbRoTeCsbVoYIru49831 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;arguments&quot;: &quot;{\&quot;config\&quot;: {\&quot;kind\&quot;: \&quot;valid\&quot;, \&quot;apiVersion\&quot;: \&quot;apps/v1\&quot;, \&quot;metadata\&quot;: {\&quot;name\&quot;: \&quot;payments-service\&quot;, \&quot;namespace\&quot;: \&quot;payments\&quot;, \&quot;labels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;, \&quot;tier\&quot;: \&quot;backend\&quot;}}, \&quot;spec\&quot;: {\&quot;replicas\&quot;: 3, \&quot;selector\&quot;: {\&quot;matchLabels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;}}, \&quot;template\&quot;: {\&quot;metadata\&quot;: {\&quot;labels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;}}, \&quot;spec\&quot;: {\&quot;containers\&quot;: [{\&quot;name\&quot;: \&quot;payments\&quot;, \&quot;image\&quot;: \&quot;payments:1.0.0\&quot;, \&quot;ports\&quot;: [{\&quot;containerPort\&quot;: 8080}], \&quot;env\&quot;: [{\&quot;name\&quot;: \&quot;ENV\&quot;, \&quot;value\&quot;: \&quot;production\&quot;}, {\&quot;name\&quot;: \&quot;LOG_LEVEL\&quot;, \&quot;value\&quot;: \&quot;info\&quot;}, {\&quot;name\&quot;: \&quot;DB_HOST\&quot;, \&quot;value\&quot;: \&quot;payments-db.internal\&quot;}, {\&quot;name\&quot;: \&quot;DB_PORT\&quot;, \&quot;value\&quot;: \&quot;5432\&quot;}, {\&quot;name\&quot;: \&quot;DB_NAME\&quot;, \&quot;value\&quot;: \&quot;payments\&quot;}, {\&quot;name\&quot;: \&quot;CACHE_HOST\&quot;, \&quot;value\&quot;: \&quot;redis.internal\&quot;}, {\&quot;name\&quot;: \&quot;CACHE_PORT\&quot;, \&quot;value\&quot;: \&quot;6379\&quot;}, {\&quot;name\&quot;: \&quot;MESSAGE_BROKER\&quot;, \&quot;value\&quot;: \&quot;kafka.internal:9092\&quot;}, {\&quot;name\&quot;: \&quot;MAX_RETRIES\&quot;, \&quot;value\&quot;: \&quot;5\&quot;}, {\&quot;name\&quot;: \&quot;TIMEOUT_MS\&quot;, \&quot;value\&quot;: \&quot;30000\&quot;}], \&quot;resources\&quot;: {\&quot;requests\&quot;: {\&quot;cpu\&quot;: \&quot;500m\&quot;, \&quot;memory\&quot;: \&quot;512Mi\&quot;}, \&quot;limits\&quot;: {\&quot;cpu\&quot;: \&quot;2000m\&quot;, \&quot;memory\&quot;: \&quot;2Gi\&quot;}}, \&quot;livenessProbe\&quot;: {\&quot;httpGet\&quot;: {\&quot;path\&quot;: \&quot;/healthz\&quot;, \&quot;port\&quot;: 8080}, \&quot;initialDelaySeconds\&quot;: 10, \&quot;periodSeconds\&quot;: 30}, \&quot;readinessProbe\&quot;: {\&quot;httpGet\&quot;: {\&quot;path\&quot;: \&quot;/ready\&quot;, \&quot;port\&quot;: 8080}, \&quot;initialDelaySeconds\&quot;: 5, \&quot;periodSeconds\&quot;: 10}}}}}}}}&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: invalid arguments: missing required property &quot;config&quot;</pre>
+</div>
+<div class="call">
+<div class="call-head">#40 <code>deploy</code> · callId call_00_KvlUzqVCTPR8AQK2FzV12871 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;arguments&quot;: &quot;{\&quot;config\&quot;: {\&quot;kind\&quot;: \&quot;valid\&quot;, \&quot;apiVersion\&quot;: \&quot;apps/v1\&quot;, \&quot;metadata\&quot;: {\&quot;name\&quot;: \&quot;payments-service\&quot;, \&quot;namespace\&quot;: \&quot;payments\&quot;, \&quot;labels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;, \&quot;tier\&quot;: \&quot;backend\&quot;}}, \&quot;spec\&quot;: {\&quot;replicas\&quot;: 3, \&quot;selector\&quot;: {\&quot;matchLabels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;}}, \&quot;template\&quot;: {\&quot;metadata\&quot;: {\&quot;labels\&quot;: {\&quot;app\&quot;: \&quot;payments\&quot;}}, \&quot;spec\&quot;: {\&quot;containers\&quot;: [{\&quot;name\&quot;: \&quot;payments\&quot;, \&quot;image\&quot;: \&quot;payments:1.0.0\&quot;, \&quot;ports\&quot;: [{\&quot;containerPort\&quot;: 8080}], \&quot;env\&quot;: [{\&quot;name\&quot;: \&quot;ENV\&quot;, \&quot;value\&quot;: \&quot;production\&quot;}, {\&quot;name\&quot;: \&quot;LOG_LEVEL\&quot;, \&quot;value\&quot;: \&quot;info\&quot;}, {\&quot;name\&quot;: \&quot;DB_HOST\&quot;, \&quot;value\&quot;: \&quot;payments-db.internal\&quot;}, {\&quot;name\&quot;: \&quot;DB_PORT\&quot;, \&quot;value\&quot;: \&quot;5432\&quot;}, {\&quot;name\&quot;: \&quot;DB_NAME\&quot;, \&quot;value\&quot;: \&quot;payments\&quot;}, {\&quot;name\&quot;: \&quot;CACHE_HOST\&quot;, \&quot;value\&quot;: \&quot;redis.internal\&quot;}, {\&quot;name\&quot;: \&quot;CACHE_PORT\&quot;, \&quot;value\&quot;: \&quot;6379\&quot;}, {\&quot;name\&quot;: \&quot;MESSAGE_BROKER\&quot;, \&quot;value\&quot;: \&quot;kafka.internal:9092\&quot;}, {\&quot;name\&quot;: \&quot;MAX_RETRIES\&quot;, \&quot;value\&quot;: \&quot;5\&quot;}, {\&quot;name\&quot;: \&quot;TIMEOUT_MS\&quot;, \&quot;value\&quot;: \&quot;30000\&quot;}], \&quot;resources\&quot;: {\&quot;requests\&quot;: {\&quot;cpu\&quot;: \&quot;500m\&quot;, \&quot;memory\&quot;: \&quot;512Mi\&quot;}, \&quot;limits\&quot;: {\&quot;cpu\&quot;: \&quot;2000m\&quot;, \&quot;memory\&quot;: \&quot;2Gi\&quot;}}, \&quot;livenessProbe\&quot;: {\&quot;httpGet\&quot;: {\&quot;path\&quot;: \&quot;/healthz\&quot;, \&quot;port\&quot;: 8080}, \&quot;initialDelaySeconds\&quot;: 10, \&quot;periodSeconds\&quot;: 30}, \&quot;readinessProbe\&quot;: {\&quot;httpGet\&quot;: {\&quot;path\&quot;: \&quot;/ready\&quot;, \&quot;port\&quot;: 8080}, \&quot;initialDelaySeconds\&quot;: 5, \&quot;periodSeconds\&quot;: 10}}}}}}}}&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: invalid arguments: missing required property &quot;config&quot;</pre>
+</div>
+<div class="call">
+<div class="call-head">#41 <code>deploy</code> · callId call_00_CcfX3xwD8IW1eDg6kWWV9211</div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;config&quot;: {&quot;kind&quot;: &quot;valid&quot;, &quot;metadata&quot;: {&quot;name&quot;: &quot;payments-service&quot;}, &quot;spec&quot;: {&quot;replicas&quot;: 3}}}</pre>
+<div class="call-label">结果：</div>
+<pre>deployed true</pre>
+</div></details>
+</td>
+</tr>
+<tr>
+<td>OFF</td>
+<td class="num">3</td>
+<td class="num">255</td>
+<td class="num">440</td>
+<td>—</td>
+<td>✅</td>
+<td>✅</td>
+<td class="num">0</td>
+<td>deploy, deploy, deploy</td>
+<td>
+<details><summary>完整调用详情（点击展开）</summary><div class="call">
+<div class="call-head">#1 <code>deploy</code> · callId break_2 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;config&quot;: {&quot;kind&quot;: &quot;valid&quot;, &quot;label&quot;: &quot;payments&quot;, &quot;replicas&quot;: 3, &quot;template&quot;: &quot;kind: Deployment\n&quot;</pre>
+<div class="call-label">结果：</div>
+<pre>tool call arguments are not valid JSON: unexpected end of input</pre>
+</div>
+<div class="call">
+<div class="call-head">#2 <code>deploy</code> · callId call_00_v9BNJoz3xQg7kmCR1Rx26933 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;config&quot;: {&quot;kind&quot;: &quot;Deployment&quot;, &quot;apiVersion&quot;: &quot;apps/v1&quot;, &quot;metadata&quot;: {&quot;name&quot;: &quot;payments&quot;, &quot;labels&quot;: {&quot;app&quot;: &quot;payments&quot;}}, &quot;spec&quot;: {&quot;replicas&quot;: 3, &quot;selector&quot;: {&quot;matchLabels&quot;: {&quot;app&quot;: &quot;payments&quot;}}, &quot;template&quot;: {&quot;metadata&quot;: {&quot;labels&quot;: {&quot;app&quot;: &quot;payments&quot;}}, &quot;spec&quot;: {&quot;containers&quot;: [{&quot;name&quot;: &quot;payments&quot;, &quot;image&quot;: &quot;payments:latest&quot;, &quot;ports&quot;: [{&quot;containerPort&quot;: 8080}]}]}}}}}}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: invalid arguments: &quot;arguments&quot; must be an object</pre>
+</div>
+<div class="call">
+<div class="call-head">#3 <code>deploy</code> · callId call_00_Xu6DWqILtPdMn0ogPpoi9171 · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;config&quot;: {&quot;kind&quot;: &quot;Deployment&quot;, &quot;apiVersion&quot;: &quot;apps/v1&quot;, &quot;metadata&quot;: {&quot;name&quot;: &quot;payments&quot;, &quot;labels&quot;: {&quot;app&quot;: &quot;payments&quot;}}, &quot;spec&quot;: {&quot;replicas&quot;: 3, &quot;selector&quot;: {&quot;matchLabels&quot;: {&quot;app&quot;: &quot;payments&quot;}}, &quot;template&quot;: {&quot;metadata&quot;: {&quot;labels&quot;: {&quot;app&quot;: &quot;payments&quot;}}, &quot;spec&quot;: {&quot;containers&quot;: [{&quot;name&quot;: &quot;payments&quot;, &quot;image&quot;: &quot;payments:latest&quot;, &quot;ports&quot;: [{&quot;containerPort&quot;: 8080}]}]}}}}}</pre>
+<div class="call-label">结果：</div>
+<pre>Error: deploy rejected config: kind must be &quot;valid&quot;</pre>
+</div>
+<div class="call">
+<div class="call-head">#4 <code>deploy</code> · callId call_00_zJiNKq2JqBU0dqrjnwMS4822</div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;config&quot;: {&quot;kind&quot;: &quot;valid&quot;, &quot;apiVersion&quot;: &quot;apps/v1&quot;, &quot;metadata&quot;: {&quot;name&quot;: &quot;payments&quot;, &quot;labels&quot;: {&quot;app&quot;: &quot;payments&quot;}}, &quot;spec&quot;: {&quot;replicas&quot;: 3, &quot;selector&quot;: {&quot;matchLabels&quot;: {&quot;app&quot;: &quot;payments&quot;}}, &quot;template&quot;: {&quot;metadata&quot;: {&quot;labels&quot;: {&quot;app&quot;: &quot;payments&quot;}}, &quot;spec&quot;: {&quot;containers&quot;: [{&quot;name&quot;: &quot;payments&quot;, &quot;image&quot;: &quot;payments:latest&quot;, &quot;ports&quot;: [{&quot;containerPort&quot;: 8080}]}]}}}}}</pre>
+<div class="call-label">结果：</div>
+<pre>deployed true</pre>
+</div></details>
+</td>
+</tr>
+</tbody></table>
+<h3>ptc-program-error — 每次运行明细</h3>
+<table class="runs"><thead><tr>
+<th>臂</th><th>重复</th><th>重试步输出 token</th><th>断点后输入 token</th>
+<th>采用</th><th>重试成功</th><th>收敛</th><th>通知条数</th><th>工具调用</th><th>详情</th>
+</tr></thead><tbody>
+<tr>
+<td>ON</td>
+<td class="num">1</td>
+<td class="num">500</td>
+<td class="num">195</td>
+<td>✅ 采用</td>
+<td>✅</td>
+<td>✅</td>
+<td class="num">0</td>
+<td>run_code</td>
+<td>
+<details><summary>完整调用详情（点击展开）</summary><div class="call">
+<div class="call-head">#1 <code>run_code</code> · callId break_rc · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;code&quot;:&quot;// RETRY-TARGET\nreturn await tools.boom({ value: \&quot;v1-marker\&quot; })&quot;,&quot;description&quot;:&quot;run the failing program&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>code run failed (exception): boom failed on v1-marker</pre>
+</div>
+<div class="call">
+<div class="call-head">#2 <code>run_code</code> · callId call_00_7u98eUxKpyvweVU3XRB02635</div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;code&quot;: &quot;const prev = JSON.parse(\n  (await tools.read({ file_path: \&quot;/var/folders/wy/4zgpdmbn777_2ngd2bfv60mc0000gn/T/.dsh/tool-checkpoints/ptc-program-error-prefix/by-id/break_rc.json\&quot; }))\n    .lines.map(line =&gt; line.text).join(\&quot;\\n\&quot;)\n);\nconst AsyncFunction = (async () =&gt; {}).constructor;\nreturn await new AsyncFunction(\&quot;tools\&quot;, \&quot;console\&quot;,\n  \&quot;'use strict';\\n\&quot; + prev.code.replace('value: \&quot;v1-marker\&quot;', 'value: \&quot;fixed-marker\&quot;'))(tools, console);&quot;, &quot;description&quot;: &quot;replay checkpoint with fixed marker value&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>{
+  &quot;ok&quot;: true
+}</pre>
+</div></details>
+</td>
+</tr>
+<tr>
+<td>ON</td>
+<td class="num">2</td>
+<td class="num">485</td>
+<td class="num">180</td>
+<td>—</td>
+<td>✅</td>
+<td>✅</td>
+<td class="num">0</td>
+<td>run_code</td>
+<td>
+<details><summary>完整调用详情（点击展开）</summary><div class="call">
+<div class="call-head">#1 <code>run_code</code> · callId break_rc · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;code&quot;:&quot;// RETRY-TARGET\nreturn await tools.boom({ value: \&quot;v1-marker\&quot; })&quot;,&quot;description&quot;:&quot;run the failing program&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>code run failed (exception): boom failed on v1-marker</pre>
+</div>
+<div class="call">
+<div class="call-head">#2 <code>run_code</code> · callId call_00_ZERao4gCws2zK6tXTaYt7614</div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;code&quot;: &quot;// RETRY-TARGET\ntry {\n  return await tools.boom({ value: \&quot;v1-marker\&quot; });\n} catch (err) {\n  return err instanceof Error ? err.message : String(err);\n}&quot;, &quot;description&quot;: &quot;run the failing program&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>boom failed on v1-marker</pre>
+</div></details>
+</td>
+</tr>
+<tr>
+<td>ON</td>
+<td class="num">3</td>
+<td class="num">653</td>
+<td class="num">220</td>
+<td>✅ 采用</td>
+<td>✅</td>
+<td>✅</td>
+<td class="num">0</td>
+<td>run_code</td>
+<td>
+<details><summary>完整调用详情（点击展开）</summary><div class="call">
+<div class="call-head">#1 <code>run_code</code> · callId break_rc · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;code&quot;:&quot;// RETRY-TARGET\nreturn await tools.boom({ value: \&quot;v1-marker\&quot; })&quot;,&quot;description&quot;:&quot;run the failing program&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>code run failed (exception): boom failed on v1-marker</pre>
+</div>
+<div class="call">
+<div class="call-head">#2 <code>run_code</code> · callId call_00_Ym5ALbDq6Miifl5o6gPJ0862</div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;code&quot;: &quot;const prev = JSON.parse(\n  (await tools.read({ file_path: \&quot;/var/folders/wy/4zgpdmbn777_2ngd2bfv60mc0000gn/T/.dsh/tool-checkpoints/ptc-program-error-prefix/by-id/break_rc.json\&quot; }))\n    .lines.map(line =&gt; line.text).join(\&quot;\\n\&quot;)\n);\nconst AsyncFunction = (async () =&gt; {}).constructor;\nconst result = await new AsyncFunction(\&quot;tools\&quot;, \&quot;console\&quot;,\n  \&quot;'use strict';\\n\&quot; + prev.code.replace('\&quot;v1-marker\&quot;', '\&quot;v2-marker\&quot;'))(tools, console);\nreturn result;&quot;, &quot;description&quot;: &quot;retry checkpoint with fixed marker value&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>{
+  &quot;ok&quot;: true
+}</pre>
+</div></details>
+</td>
+</tr>
+<tr>
+<td>OFF</td>
+<td class="num">1</td>
+<td class="num">180</td>
+<td class="num">169</td>
+<td>—</td>
+<td>✅</td>
+<td>✅</td>
+<td class="num">0</td>
+<td>run_code</td>
+<td>
+<details><summary>完整调用详情（点击展开）</summary><div class="call">
+<div class="call-head">#1 <code>run_code</code> · callId break_rc · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;code&quot;:&quot;// RETRY-TARGET\nreturn await tools.boom({ value: \&quot;v1-marker\&quot; })&quot;,&quot;description&quot;:&quot;run the failing program&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>code run failed (exception): boom failed on v1-marker</pre>
+</div>
+<div class="call">
+<div class="call-head">#2 <code>run_code</code> · callId call_00_AYSvGLHF9jyXTQTOzKiz0571</div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;code&quot;: &quot;return await tools.boom({ value: \&quot;ok\&quot; })&quot;, &quot;description&quot;: &quot;retry boom with a non-marker value&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>{
+  &quot;ok&quot;: true
+}</pre>
+</div></details>
+</td>
+</tr>
+<tr>
+<td>OFF</td>
+<td class="num">2</td>
+<td class="num">170</td>
+<td class="num">159</td>
+<td>—</td>
+<td>✅</td>
+<td>✅</td>
+<td class="num">0</td>
+<td>run_code</td>
+<td>
+<details><summary>完整调用详情（点击展开）</summary><div class="call">
+<div class="call-head">#1 <code>run_code</code> · callId break_rc · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;code&quot;:&quot;// RETRY-TARGET\nreturn await tools.boom({ value: \&quot;v1-marker\&quot; })&quot;,&quot;description&quot;:&quot;run the failing program&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>code run failed (exception): boom failed on v1-marker</pre>
+</div>
+<div class="call">
+<div class="call-head">#2 <code>run_code</code> · callId call_00_NbEM1J1cjyWzn87cfN9A5673</div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;code&quot;: &quot;return await tools.boom({ value: \&quot;v2-marker\&quot; })&quot;, &quot;description&quot;: &quot;run fixed program with non-marker value&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>{
+  &quot;ok&quot;: true
+}</pre>
+</div></details>
+</td>
+</tr>
+<tr>
+<td>OFF</td>
+<td class="num">3</td>
+<td class="num">258</td>
+<td class="num">247</td>
+<td>—</td>
+<td>✅</td>
+<td>✅</td>
+<td class="num">0</td>
+<td>run_code</td>
+<td>
+<details><summary>完整调用详情（点击展开）</summary><div class="call">
+<div class="call-head">#1 <code>run_code</code> · callId break_rc · <span class="err">失败</span></div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;code&quot;:&quot;// RETRY-TARGET\nreturn await tools.boom({ value: \&quot;v1-marker\&quot; })&quot;,&quot;description&quot;:&quot;run the failing program&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>code run failed (exception): boom failed on v1-marker</pre>
+</div>
+<div class="call">
+<div class="call-head">#2 <code>run_code</code> · callId call_00_7H5zvrTZLemiVPdFqGJ89889</div>
+<div class="call-label">参数（原始字符串）：</div>
+<pre>{&quot;code&quot;: &quot;return await tools.boom({ value: \&quot;v2-marker\&quot; })&quot;, &quot;description&quot;: &quot;run corrected boom program&quot;}</pre>
+<div class="call-label">结果：</div>
+<pre>{
+  &quot;ok&quot;: true
+}</pre>
+</div></details>
+</td>
+</tr>
+</tbody></table>
+<footer>
+方法说明：每场景 × 臂（ON=挂载插件 / OFF=基线）× 3 次独立运行；断点快照为持久化的失败工具调用前缀（恢复式续跑），
+指标取自断点后的权威会话日志：重试步输出 token = 断点后第一条 assistant/message 的 usage.outputTokens（含推理 token）；内容 token = 输出 token − reasoningTokens（不含推理，衡量模型实际产出的编辑/重生成文本）；
+采用 = native 出现 editPreviousToolCalling 调用 / PTC 后续 run_code 参数引用 checkpoint 路径；重试成功 = native 断点工具以合法输入重跑（行为级）/ PTC 按 plan §6 判据「断点后的 run_code 调用无 error」。
+原始逐条记录见 .artifacts/eval/results.jsonl。本报告由 pnpm eval:report 生成并持久化于仓库 reports/。
+</footer>
+</body>
+</html>

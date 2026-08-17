@@ -93,6 +93,8 @@ export interface EvalRunSummary {
   sessionId: string
   /** First post-break assistant step output tokens (the retry cost). */
   retryStepOutputTokens: number
+  /** Reasoning tokens inside that step (content = output minus reasoning). */
+  retryStepReasoningTokens: number
   /** Post-break model input tokens (the retry request's context cost). */
   postBreakInputTokens: number
   /** The breakpoint tool re-ran and its newest result is not an error. */
@@ -271,7 +273,7 @@ export async function runEvalScenario(options: EvalRunOptions): Promise<EvalRunS
         name?: string
         content?: { type?: string; text?: string }[]
         source?: { plugin?: string }
-        usage?: { inputTokens?: number; outputTokens?: number }
+        usage?: { inputTokens?: number; outputTokens?: number; reasoningTokens?: number }
         message?: { content?: { toolCallId?: string; content?: { type?: string; text?: string }[]; isError?: boolean }[] }
         reason?: { kind?: string }
       }
@@ -289,8 +291,10 @@ export async function runEvalScenario(options: EvalRunOptions): Promise<EvalRunS
         .filter(block => block.type === 'text')
         .map(block => block.text ?? '')
         .join('\n'))
-    const retryStepOutputTokens = postBreak
-      .find(event => event.type === 'assistant/message')?.data.usage?.outputTokens ?? 0
+    const firstAssistant = postBreak
+      .find(event => event.type === 'assistant/message')
+    const retryStepOutputTokens = firstAssistant?.data.usage?.outputTokens ?? 0
+    const retryStepReasoningTokens = firstAssistant?.data.usage?.reasoningTokens ?? 0
     const postBreakInputTokens = postBreak
       .filter(event => event.type === 'assistant/message')
       .reduce((sum, event) => sum + (event.data.usage?.inputTokens ?? 0), 0)
@@ -321,6 +325,7 @@ export async function runEvalScenario(options: EvalRunOptions): Promise<EvalRunS
       mode: fixture.mode,
       sessionId,
       retryStepOutputTokens,
+      retryStepReasoningTokens,
       postBreakInputTokens,
       retrySuccess,
       adopted,
