@@ -293,27 +293,31 @@ function statCard(label: string, value: string, hint: string, tone: 'positive' |
   ].join('\n')
 }
 
-/** One A/B comparison card: ON | ratio | OFF side by side, headline ratio. */
-function abCard(row: ScenarioRow): string {
+/** One A/B comparison table: metrics as rows, ON stacked above OFF, a Δ
+ * difference column spanning each pair. */
+function abTable(row: ScenarioRow): string {
   const headlineTone = row.contentSavingsPercent >= 10 ? 'positive' : row.contentSavingsPercent <= -10 ? 'negative' : 'neutral'
   const verdict = row.contentSavingsPercent >= 10 ? '特性优势' : row.contentSavingsPercent <= -10 ? '特性劣势' : '中性'
-  const maxContent = Math.max(row.onContentTokens, row.offContentTokens, 1)
-  const metricRows: [string, string, string, string, ('positive' | 'negative' | 'neutral') | undefined][] = [
-    ['断点后步数', String(row.onSteps), String(row.offSteps), row.stepsRatio === 0 ? '—' : `${row.stepsRatio}×`, row.stepsRatio <= 1 ? 'positive' : 'negative'],
-    ['第一步输出（含推理）', String(row.onTokens), String(row.offTokens), `${row.savingsPercent}%`, row.savingsPercent >= 0 ? 'positive' : 'negative'],
-    ['内容 token（第一步）', String(row.onContentTokens), String(row.offContentTokens), `${row.contentSavingsPercent}%`, headlineTone],
-    ['全程输出（含推理）', String(row.onTotalOutput), String(row.offTotalOutput), `${row.totalSavingsPercent}%`, row.totalSavingsPercent >= 0 ? 'positive' : 'negative'],
-    ['断点后输入 token', String(row.onInput), String(row.offInput), '—', undefined],
-    ['重试成功率', percent(row.onRetryRate), percent(row.offRetryRate), `${row.onRetryPp > 0 ? '+' : ''}${row.onRetryPp}pp`, row.onRetryPp >= 0 ? 'positive' : 'negative'],
-    ['通知条数（中位）', String(row.notices), '—', row.notices === 0 ? '0（无额外失败）' : `${row.notices} 次迭代失败`, undefined],
+  const metrics: { name: string; on: string; off: string; delta: string; tone?: 'positive' | 'negative' | 'neutral' }[] = [
+    { name: '断点后步数', on: String(row.onSteps), off: String(row.offSteps), delta: row.stepsRatio === 0 ? '—' : `${row.stepsRatio}×`, tone: row.stepsRatio <= 1 ? 'positive' : 'negative' },
+    { name: '第一步输出 token（含推理）', on: String(row.onTokens), off: String(row.offTokens), delta: `${row.savingsPercent}%`, tone: row.savingsPercent >= 0 ? 'positive' : 'negative' },
+    { name: '内容 token（第一步）', on: String(row.onContentTokens), off: String(row.offContentTokens), delta: `${row.contentSavingsPercent}%`, tone: headlineTone },
+    { name: '全程输出 token（含推理）', on: String(row.onTotalOutput), off: String(row.offTotalOutput), delta: `${row.totalSavingsPercent}%`, tone: row.totalSavingsPercent >= 0 ? 'positive' : 'negative' },
+    { name: '断点后输入 token', on: String(row.onInput), off: String(row.offInput), delta: '—' },
+    { name: '重试成功率', on: percent(row.onRetryRate), off: percent(row.offRetryRate), delta: `${row.onRetryPp > 0 ? '+' : ''}${row.onRetryPp}pp`, tone: row.onRetryPp >= 0 ? 'positive' : 'negative' },
+    { name: '通知条数（中位）', on: String(row.notices), off: '—', delta: row.notices === 0 ? '0（无额外失败）' : `${row.notices} 次迭代失败` },
   ]
-  const rowsHtml = metricRows.map(([label, on, off, ratio, tone]) => [
-    '<div class="grid grid-cols-[1fr_auto_1fr] items-center gap-2 border-t py-2 text-sm">',
-    `<div class="tabular-nums text-right font-medium">${on}</div>`,
-    `<div class="w-24 text-center">${tone === undefined ? `<span class="text-xs text-muted-foreground">${ratio}</span>` : savingsCell(ratio, tone ?? 'neutral')}</div>`,
-    `<div class="tabular-nums text-muted-foreground">${off}</div>`,
-    `<div class="col-span-3 text-center text-[11px] uppercase tracking-wide text-muted-foreground">${label}</div>`,
-    '</div>',
+  const body = metrics.map((metric) => [
+    '<tr class="border-t">',
+    `<td rowspan="2" class="p-3 align-middle text-sm text-muted-foreground">${metric.name}</td>`,
+    `<td class="p-2 text-right align-middle"><span class="inline-flex items-center rounded-md border border-border bg-muted px-2 py-0.5 text-[11px] font-medium">ON</span></td>`,
+    `<td class="p-2 text-right align-middle tabular-nums font-medium">${metric.on}</td>`,
+    `<td rowspan="2" class="p-2 text-center align-middle">${metric.tone === undefined ? `<span class="text-xs text-muted-foreground">${metric.delta}</span>` : savingsCell(metric.delta, metric.tone)}</td>`,
+    '</tr>',
+    '<tr class="border-t">',
+    '<td class="p-2 text-right align-middle"><span class="inline-flex items-center rounded-md border border-border bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">OFF</span></td>',
+    `<td class="p-2 text-right align-middle tabular-nums text-muted-foreground">${metric.off}</td>`,
+    '</tr>',
   ].join('\n')).join('\n')
   return [
     '<div class="rounded-xl border bg-card text-card-foreground shadow-xs overflow-hidden">',
@@ -323,25 +327,16 @@ function abCard(row: ScenarioRow): string {
     '<span class="ml-auto flex items-center gap-2">',
     badge(`内容 token ${row.contentSavingsPercent >= 0 ? '省' : '多'} ${Math.abs(row.contentSavingsPercent)}%`, headlineTone),
     badge(verdict, headlineTone),
+    badge(`采用率 ${percent(row.adoptionRate)}`, row.adoptionRate >= 0.5 ? 'positive' : 'neutral'),
     '</span>',
     '</div>',
-    '<div class="space-y-0 px-4 pb-4">',
-    '<div class="flex items-center gap-2 pt-3 text-xs font-medium text-muted-foreground">',
-    '<span class="flex-1 text-right">ON（挂载插件）</span>',
-    '<span class="w-24 text-center">Δ 优化比</span>',
-    '<span class="flex-1">OFF（基线）</span>',
-    '</div>',
-    rowsHtml,
-    // Visual ratio bar: content tokens ON vs OFF.
-    '<div class="grid grid-cols-[1fr_auto_1fr] items-center gap-2 pt-3">',
-    '<div class="flex justify-end"><div class="flex h-2 w-full max-w-40 overflow-hidden rounded-full bg-muted"><div class="h-full bg-foreground/80" style="width:' + String(Math.round(row.onContentTokens / maxContent * 100)) + '%"></div></div></div>',
-    '<div class="w-24 text-center text-[11px] text-muted-foreground">内容 token</div>',
-    '<div class="flex"><div class="flex h-2 w-full max-w-40 overflow-hidden rounded-full bg-muted"><div class="h-full bg-muted-foreground/60" style="width:' + String(Math.round(row.offContentTokens / maxContent * 100)) + '%"></div></div></div>',
-    '</div>',
-    '<div class="flex flex-wrap items-center gap-2 pt-3">',
-    badge(`采用率 ${percent(row.adoptionRate)}`, row.adoptionRate >= 0.5 ? 'positive' : 'neutral'),
-    badge(`通知字节 ${row.noticeBytes}`, 'neutral'),
-    '</div>',
+    '<div class="overflow-x-auto">',
+    '<table class="w-full caption-bottom text-sm">',
+    '<thead class="bg-muted/50 [&_th]:h-10 [&_th]:px-3 [&_th]:text-left [&_th]:align-middle [&_th]:font-medium [&_th]:text-muted-foreground">',
+    '<tr><th class="w-56">指标</th><th class="w-16 text-right">臂</th><th class="text-right">值</th><th class="w-32 text-center">Δ 差异</th></tr>',
+    '</thead>',
+    `<tbody>${body}</tbody>`,
+    '</table>',
     '</div>',
     '</div>',
   ].join('\n')
@@ -515,8 +510,8 @@ function tabPanels(rows: ScenarioRow[]): string {
   const panels = (['native', 'code'] as const).map((mode) => {
     const group = rows.filter(row => row.mode === mode)
     if (group.length === 0) return ''
-    const cards = group.map(abCard).join('\n')
-    return `<div data-panel="${mode}" class="hidden space-y-6">${cards}</div>`
+    const tables = group.map(abTable).join('\n')
+    return `<div data-panel="${mode}" class="hidden space-y-6">${tables}</div>`
   })
   const tabs = (['native', 'code'] as const)
     .filter(mode => rows.some(row => row.mode === mode))
