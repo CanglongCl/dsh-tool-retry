@@ -83,6 +83,11 @@ interface SessionLine {
   }
 }
 
+/** Attribute-safe id fragment (html ids from scenario/arm/rep). */
+function sanitizeAttr(value: string): string {
+  return value.replace(/[^A-Za-z0-9_-]/gu, '-')
+}
+
 /** HTML-escape one user/data string. */
 function escapeHtml(value: string): string {
   return value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;')
@@ -536,27 +541,32 @@ function renderRunDetails(record: RunRecord): string {
 }
 
 /** Per-run DETAILS as a right-hand column next to its scenario's statistics
- * table (one standalone accordion card per run; ON runs first, then OFF). */
+ * table: one compact card per run; the card's button opens a modal dialog
+ * with the concrete tool calls, raw arguments, and results/errors. */
 function runDetailColumn(row: ScenarioRow): string {
   const ordered = [...row.runs.filter(run => run.arm === 'on'), ...row.runs.filter(run => run.arm === 'off')]
-  const cards = ordered.map((run) => [
-    '<details class="group rounded-lg border bg-card text-card-foreground">',
-    '<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">',
-    CHEVRON,
-    `<span>${run.arm === 'on' ? 'ON' : 'OFF'} r${run.repetition}</span>`,
-    statusBadge(run.summary.status ?? (run.summary.completed ? 'completed' : 'error')),
-    '</summary>',
-    `<div class="space-y-2 border-t px-3 py-3">`,
-    `<div class="text-xs text-muted-foreground">工具：${escapeHtml(run.summary.toolCalls.join(', ') || '—')}</div>`,
-    renderRunMeta(run),
-    renderRunDetails(run),
-    renderRunTrace(run),
-    '</div>',
-    '</details>',
-  ].join('\n')).join('\n')
+  const cards = ordered.map((run) => {
+    const modalId = `modal-${sanitizeAttr(`${row.scenario}-${run.arm}-r${run.repetition}`)}`
+    const content = [
+      `<div class="text-xs text-muted-foreground">工具：${escapeHtml(run.summary.toolCalls.join(', ') || '—')}</div>`,
+      renderRunMeta(run),
+      renderRunDetails(run),
+      renderRunTrace(run),
+    ].join('\n')
+    return [
+      `<div class="rounded-lg border bg-card text-card-foreground" data-run-label="${escapeHtml(row.scenario)} · ${run.arm === 'on' ? 'ON' : 'OFF'} r${run.repetition}">`,
+      '<div class="flex flex-wrap items-center gap-2 px-3 py-2.5">',
+      `<span class="text-sm font-medium">${run.arm === 'on' ? 'ON' : 'OFF'} r${run.repetition}</span>`,
+      statusBadge(run.summary.status ?? (run.summary.completed ? 'completed' : 'error')),
+      `<button data-open-modal="#${modalId}" class="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用详情</button>`,
+      '</div>',
+      `<template id="${modalId}">${content}</template>`,
+      '</div>',
+    ].join('\n')
+  }).join('\n')
   return [
     '<aside class="space-y-2 lg:max-h-[70rem] lg:overflow-y-auto lg:pr-1">',
-    '<h4 class="text-xs font-medium uppercase tracking-wide text-muted-foreground">运行详情</h4>',
+    '<h4 class="text-xs font-medium uppercase tracking-wide text-muted-foreground">运行详情（点击弹窗查看具体调用与错误）</h4>',
     cards,
     '</aside>',
   ].join('\n')
@@ -637,6 +647,28 @@ addEventListener('DOMContentLoaded', () => {
       }
     });
   }
+  // Call-detail modal: open from per-run buttons, close via ✕/backdrop/Esc.
+  const modal = document.getElementById('call-modal');
+  const modalTitle = document.getElementById('call-modal-title');
+  const modalBody = document.getElementById('call-modal-body');
+  const openModal = (button) => {
+    const template = document.querySelector(button.getAttribute('data-open-modal'));
+    if (!template) return;
+    const host = button.closest('[data-run-label]');
+    modalTitle.textContent = host ? host.getAttribute('data-run-label') : '调用详情';
+    modalBody.innerHTML = template.innerHTML;
+    modal.classList.remove('hidden');
+  };
+  const closeModal = () => modal.classList.add('hidden');
+  for (const button of document.querySelectorAll('[data-open-modal]')) {
+    button.addEventListener('click', () => openModal(button));
+  }
+  for (const closer of document.querySelectorAll('[data-modal-close]')) {
+    closer.addEventListener('click', closeModal);
+  }
+  addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !modal.classList.contains('hidden')) closeModal();
+  });
 });
 </script>
 <style id="tailwind"></style>
@@ -687,6 +719,18 @@ ${tabPanels(rows)}
 <p>每次运行的完整会话（全部工具调用的原始参数与结果）已落盘于 .artifacts/eval/runs/，可在上表「完整调用详情」中点击展开；逐条记录见 .artifacts/eval/results.jsonl。本报告由 pnpm eval:report 生成并持久化于仓库 reports/。</p>
 </footer>
 
+</div>
+
+<!-- Call-detail modal (shadcn Dialog pattern) -->
+<div id="call-modal" class="fixed inset-0 z-50 hidden">
+  <div class="absolute inset-0 bg-black/50" data-modal-close></div>
+  <div class="absolute inset-x-4 top-1/2 mx-auto max-w-3xl -translate-y-1/2 overflow-hidden rounded-xl border bg-card text-card-foreground shadow-lg">
+    <div class="flex items-center justify-between border-b px-4 py-3">
+      <div id="call-modal-title" class="text-sm font-semibold"></div>
+      <button data-modal-close class="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted" aria-label="关闭">✕</button>
+    </div>
+    <div id="call-modal-body" class="max-h-[75vh] space-y-2 overflow-y-auto p-4"></div>
+  </div>
 </div>
 </body>
 </html>

@@ -21,11 +21,33 @@ addEventListener('DOMContentLoaded', () => {
       }
     });
   }
+  // Call-detail modal: open from per-run buttons, close via ✕/backdrop/Esc.
+  const modal = document.getElementById('call-modal');
+  const modalTitle = document.getElementById('call-modal-title');
+  const modalBody = document.getElementById('call-modal-body');
+  const openModal = (button) => {
+    const template = document.querySelector(button.getAttribute('data-open-modal'));
+    if (!template) return;
+    const host = button.closest('[data-run-label]');
+    modalTitle.textContent = host ? host.getAttribute('data-run-label') : '调用详情';
+    modalBody.innerHTML = template.innerHTML;
+    modal.classList.remove('hidden');
+  };
+  const closeModal = () => modal.classList.add('hidden');
+  for (const button of document.querySelectorAll('[data-open-modal]')) {
+    button.addEventListener('click', () => openModal(button));
+  }
+  for (const closer of document.querySelectorAll('[data-modal-close]')) {
+    closer.addEventListener('click', closeModal);
+  }
+  addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !modal.classList.contains('hidden')) closeModal();
+  });
 });
 </script>
 <style id="tailwind">
 /*! tailwindcss v4.3.3 | MIT License | https://tailwindcss.com */
-@layer properties{@supports (((-webkit-hyphens:none)) and (not (margin-trim:inline))) or ((-moz-orient:inline) and (not (color:rgb(from red r g b)))){*,:before,:after,::backdrop{--tw-space-y-reverse:0;--tw-border-style:solid;--tw-font-weight:initial;--tw-tracking:initial;--tw-ordinal:initial;--tw-slashed-zero:initial;--tw-numeric-figure:initial;--tw-numeric-spacing:initial;--tw-numeric-fraction:initial;--tw-shadow:0 0 #0000;--tw-shadow-color:initial;--tw-shadow-alpha:100%;--tw-inset-shadow:0 0 #0000;--tw-inset-shadow-color:initial;--tw-inset-shadow-alpha:100%;--tw-ring-color:initial;--tw-ring-shadow:0 0 #0000;--tw-inset-ring-color:initial;--tw-inset-ring-shadow:0 0 #0000;--tw-ring-inset:initial;--tw-ring-offset-width:0px;--tw-ring-offset-color:#fff;--tw-ring-offset-shadow:0 0 #0000}}}@layer theme{:root,:host{--font-sans:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";--font-mono:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;--color-emerald-400:oklch(76.5% .177 163.223);--color-emerald-500:oklch(69.6% .17 162.48);--color-emerald-700:oklch(50.8% .118 165.612);--spacing:.25rem;--container-3xl:48rem;--container-6xl:72rem;--container-7xl:80rem;--text-xs:.75rem;--text-xs--line-height:calc(1 / .75);--text-sm:.875rem;--text-sm--line-height:calc(1.25 / .875);--text-base:1rem;--text-base--line-height:calc(1.5 / 1);--text-lg:1.125rem;--text-lg--line-height:calc(1.75 / 1.125);--text-2xl:1.5rem;--text-2xl--line-height:calc(2 / 1.5);--text-3xl:1.875rem;--text-3xl--line-height:calc(2.25 / 1.875);--font-weight-normal:400;--font-weight-medium:500;--font-weight-semibold:600;--tracking-tight:-.025em;--tracking-wide:.025em;--default-transition-duration:.15s;--default-transition-timing-function:cubic-bezier(.4, 0, .2, 1);--default-font-family:var(--font-sans);--default-mono-font-family:var(--font-mono)}}@layer base{*,:after,:before,::backdrop{box-sizing:border-box;border:0 solid;margin:0;padding:0}::file-selector-button{box-sizing:border-box;border:0 solid;margin:0;padding:0}html,:host{-webkit-text-size-adjust:100%;tab-size:4;line-height:1.5;font-family:var(--default-font-family,-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji");font-feature-settings:var(--default-font-feature-settings,normal);font-variation-settings:var(--default-font-variation-settings,normal);-webkit-tap-highlight-color:transparent}hr{height:0;color:inherit;border-top-width:1px}abbr:where([title]){-webkit-text-decoration:underline dotted;text-decoration:underline dotted}h1,h2,h3,h4,h5,h6{font-size:inherit;font-weight:inherit}a{color:inherit;-webkit-text-decoration:inherit;-webkit-text-decoration:inherit;-webkit-text-decoration:inherit;text-decoration:inherit}b,strong{font-weight:bolder}code,kbd,samp,pre{font-family:var(--default-mono-font-family,ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);font-feature-settings:var(--default-mono-font-feature-settings,normal);font-variation-settings:var(--default-mono-font-variation-settings,normal);font-size:1em}small{font-size:80%}sub,sup{vertical-align:baseline;font-size:75%;line-height:0;position:relative}sub{bottom:-.25em}sup{top:-.5em}table{text-indent:0;border-color:inherit;border-collapse:collapse}:-moz-focusring:where(:not(iframe)){outline:auto}progress{vertical-align:baseline}summary{display:list-item}ol,ul,menu{list-style:none}img,svg,video,canvas,audio,iframe,embed,object{vertical-align:middle;display:block}img,video{max-width:100%;height:auto}button,input,select,optgroup,textarea{font:inherit;font-feature-settings:inherit;font-variation-settings:inherit;letter-spacing:inherit;color:inherit;opacity:1;background-color:#0000;border-radius:0}::file-selector-button{font:inherit;font-feature-settings:inherit;font-variation-settings:inherit;letter-spacing:inherit;color:inherit;opacity:1;background-color:#0000;border-radius:0}:where(select:is([multiple],[size])) optgroup{font-weight:bolder}:where(select:is([multiple],[size])) optgroup option{padding-inline-start:20px}::file-selector-button{margin-inline-end:4px}::placeholder{opacity:1}@supports (not ((-webkit-appearance:-apple-pay-button))) or (contain-intrinsic-size:1px){::placeholder{color:currentColor}@supports (color:color-mix(in lab, red, red)){::placeholder{color:color-mix(in oklab, currentcolor 50%, transparent)}}}textarea{resize:vertical}::-webkit-search-decoration{-webkit-appearance:none}::-webkit-date-and-time-value{min-height:1lh;text-align:inherit}::-webkit-datetime-edit{display:inline-flex}::-webkit-datetime-edit-fields-wrapper{padding:0}::-webkit-datetime-edit{padding-block:0}::-webkit-datetime-edit-year-field{padding-block:0}::-webkit-datetime-edit-month-field{padding-block:0}::-webkit-datetime-edit-day-field{padding-block:0}::-webkit-datetime-edit-hour-field{padding-block:0}::-webkit-datetime-edit-minute-field{padding-block:0}::-webkit-datetime-edit-second-field{padding-block:0}::-webkit-datetime-edit-millisecond-field{padding-block:0}::-webkit-datetime-edit-meridiem-field{padding-block:0}::-webkit-calendar-picker-indicator{line-height:1}:-moz-ui-invalid{box-shadow:none}button,input:where([type=button],[type=reset],[type=submit]){appearance:button}::file-selector-button{appearance:button}::-webkit-inner-spin-button{height:auto}::-webkit-outer-spin-button{height:auto}[hidden]:where(:not([hidden=until-found])){display:none!important}*{border-color:var(--border);outline-color:var(--ring)}@supports (color:color-mix(in lab, red, red)){*{outline-color:color-mix(in oklab, var(--ring) 50%, transparent)}}body{background-color:var(--background);color:var(--foreground);-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}}@layer components;@layer utilities{.invisible{visibility:hidden}.visible{visibility:visible}.absolute{position:absolute}.fixed{position:fixed}.relative{position:relative}.static{position:static}.isolate{isolation:isolate}.col-span-3{grid-column:span 3/span 3}.mx-auto{margin-inline:auto}.ml-auto{margin-left:auto}.block{display:block}.contents{display:contents}.flex{display:flex}.grid{display:grid}.hidden{display:none}.inline{display:inline}.inline-flex{display:inline-flex}.table{display:table}.size-3{width:calc(var(--spacing) * 3);height:calc(var(--spacing) * 3)}.size-3\.5{width:calc(var(--spacing) * 3.5);height:calc(var(--spacing) * 3.5)}.h-2{height:calc(var(--spacing) * 2)}.h-full{height:100%}.max-h-72{max-height:calc(var(--spacing) * 72)}.max-h-96{max-height:calc(var(--spacing) * 96)}.min-h-screen{min-height:100vh}.w-1{width:var(--spacing)}.w-1\/3{width:33.3333%}.w-16{width:calc(var(--spacing) * 16)}.w-24{width:calc(var(--spacing) * 24)}.w-32{width:calc(var(--spacing) * 32)}.w-56{width:calc(var(--spacing) * 56)}.w-full{width:100%}.max-w-3xl{max-width:var(--container-3xl)}.max-w-6xl{max-width:var(--container-6xl)}.max-w-7xl{max-width:var(--container-7xl)}.max-w-40{max-width:calc(var(--spacing) * 40)}.max-w-64{max-width:calc(var(--spacing) * 64)}.flex-1{flex:1}.shrink-0{flex-shrink:0}.caption-bottom{caption-side:bottom}.cursor-pointer{cursor:pointer}.grid-cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}.flex-wrap{flex-wrap:wrap}.items-center{align-items:center}.items-start{align-items:flex-start}.justify-center{justify-content:center}.justify-end{justify-content:flex-end}.gap-2{gap:calc(var(--spacing) * 2)}.gap-3{gap:calc(var(--spacing) * 3)}.gap-4{gap:calc(var(--spacing) * 4)}:where(.space-y-0>:not(:last-child)){--tw-space-y-reverse:0;margin-block:0}:where(.space-y-0\.5>:not(:last-child)){--tw-space-y-reverse:0;margin-block-start:calc(calc(var(--spacing) * .5) * var(--tw-space-y-reverse));margin-block-end:calc(calc(var(--spacing) * .5) * calc(1 - var(--tw-space-y-reverse)))}:where(.space-y-1>:not(:last-child)){--tw-space-y-reverse:0;margin-block-start:calc(var(--spacing) * var(--tw-space-y-reverse));margin-block-end:calc(var(--spacing) * calc(1 - var(--tw-space-y-reverse)))}:where(.space-y-1\.5>:not(:last-child)){--tw-space-y-reverse:0;margin-block-start:calc(calc(var(--spacing) * 1.5) * var(--tw-space-y-reverse));margin-block-end:calc(calc(var(--spacing) * 1.5) * calc(1 - var(--tw-space-y-reverse)))}:where(.space-y-2>:not(:last-child)){--tw-space-y-reverse:0;margin-block-start:calc(calc(var(--spacing) * 2) * var(--tw-space-y-reverse));margin-block-end:calc(calc(var(--spacing) * 2) * calc(1 - var(--tw-space-y-reverse)))}:where(.space-y-3>:not(:last-child)){--tw-space-y-reverse:0;margin-block-start:calc(calc(var(--spacing) * 3) * var(--tw-space-y-reverse));margin-block-end:calc(calc(var(--spacing) * 3) * calc(1 - var(--tw-space-y-reverse)))}:where(.space-y-4>:not(:last-child)){--tw-space-y-reverse:0;margin-block-start:calc(calc(var(--spacing) * 4) * var(--tw-space-y-reverse));margin-block-end:calc(calc(var(--spacing) * 4) * calc(1 - var(--tw-space-y-reverse)))}:where(.space-y-6>:not(:last-child)){--tw-space-y-reverse:0;margin-block-start:calc(calc(var(--spacing) * 6) * var(--tw-space-y-reverse));margin-block-end:calc(calc(var(--spacing) * 6) * calc(1 - var(--tw-space-y-reverse)))}:where(.space-y-8>:not(:last-child)){--tw-space-y-reverse:0;margin-block-start:calc(calc(var(--spacing) * 8) * var(--tw-space-y-reverse));margin-block-end:calc(calc(var(--spacing) * 8) * calc(1 - var(--tw-space-y-reverse)))}.gap-x-8{column-gap:calc(var(--spacing) * 8)}.gap-y-4{row-gap:calc(var(--spacing) * 4)}.truncate{text-overflow:ellipsis;white-space:nowrap;overflow:hidden}.overflow-auto{overflow:auto}.overflow-hidden{overflow:hidden}.overflow-x-auto{overflow-x:auto}.rounded{border-radius:.25rem}.rounded-full{border-radius:3.40282e38px}.rounded-lg{border-radius:var(--radius)}.rounded-md{border-radius:calc(var(--radius) - 2px)}.rounded-xl{border-radius:calc(var(--radius) + 4px)}.border{border-style:var(--tw-border-style);border-width:1px}.border-t{border-top-style:var(--tw-border-style);border-top-width:1px}.border-b{border-bottom-style:var(--tw-border-style);border-bottom-width:1px}.border-b-2{border-bottom-style:var(--tw-border-style);border-bottom-width:2px}.border-border{border-color:var(--border)}.border-destructive,.border-destructive\/30{border-color:var(--destructive)}@supports (color:color-mix(in lab, red, red)){.border-destructive\/30{border-color:color-mix(in oklab, var(--destructive) 30%, transparent)}}.border-emerald-500{border-color:var(--color-emerald-500)}.border-emerald-500\/20{border-color:#00bb7f33}@supports (color:color-mix(in lab, red, red)){.border-emerald-500\/20{border-color:color-mix(in oklab, var(--color-emerald-500) 20%, transparent)}}.bg-background{background-color:var(--background)}.bg-card{background-color:var(--card)}.bg-destructive,.bg-destructive\/10{background-color:var(--destructive)}@supports (color:color-mix(in lab, red, red)){.bg-destructive\/10{background-color:color-mix(in oklab, var(--destructive) 10%, transparent)}}.bg-emerald-500{background-color:var(--color-emerald-500)}.bg-emerald-500\/10{background-color:#00bb7f1a}@supports (color:color-mix(in lab, red, red)){.bg-emerald-500\/10{background-color:color-mix(in oklab, var(--color-emerald-500) 10%, transparent)}}.bg-foreground{background-color:var(--foreground)}.bg-muted{background-color:var(--muted)}.bg-muted-foreground{background-color:var(--muted-foreground)}.bg-muted\/30{background-color:var(--muted)}@supports (color:color-mix(in lab, red, red)){.bg-muted\/30{background-color:color-mix(in oklab, var(--muted) 30%, transparent)}}.bg-muted\/40{background-color:var(--muted)}@supports (color:color-mix(in lab, red, red)){.bg-muted\/40{background-color:color-mix(in oklab, var(--muted) 40%, transparent)}}.bg-muted\/50{background-color:var(--muted)}@supports (color:color-mix(in lab, red, red)){.bg-muted\/50{background-color:color-mix(in oklab, var(--muted) 50%, transparent)}}.p-1{padding:var(--spacing)}.p-2{padding:calc(var(--spacing) * 2)}.p-3{padding:calc(var(--spacing) * 3)}.p-4{padding:calc(var(--spacing) * 4)}.p-5{padding:calc(var(--spacing) * 5)}.p-6{padding:calc(var(--spacing) * 6)}.px-1{padding-inline:var(--spacing)}.px-1\.5{padding-inline:calc(var(--spacing) * 1.5)}.px-2{padding-inline:calc(var(--spacing) * 2)}.px-2\.5{padding-inline:calc(var(--spacing) * 2.5)}.px-3{padding-inline:calc(var(--spacing) * 3)}.px-4{padding-inline:calc(var(--spacing) * 4)}.px-6{padding-inline:calc(var(--spacing) * 6)}.py-0{padding-block:0}.py-0\.5{padding-block:calc(var(--spacing) * .5)}.py-1{padding-block:var(--spacing)}.py-1\.5{padding-block:calc(var(--spacing) * 1.5)}.py-2{padding-block:calc(var(--spacing) * 2)}.py-2\.5{padding-block:calc(var(--spacing) * 2.5)}.py-3{padding-block:calc(var(--spacing) * 3)}.py-10{padding-block:calc(var(--spacing) * 10)}.pt-2{padding-top:calc(var(--spacing) * 2)}.pt-3{padding-top:calc(var(--spacing) * 3)}.pt-6{padding-top:calc(var(--spacing) * 6)}.pb-4{padding-bottom:calc(var(--spacing) * 4)}.pl-3{padding-left:calc(var(--spacing) * 3)}.text-center{text-align:center}.text-left{text-align:left}.text-right{text-align:right}.align-middle{vertical-align:middle}.align-top{vertical-align:top}.font-mono{font-family:var(--font-mono)}.font-sans{font-family:var(--font-sans)}.text-2xl{font-size:var(--text-2xl);line-height:var(--tw-leading,var(--text-2xl--line-height))}.text-3xl{font-size:var(--text-3xl);line-height:var(--tw-leading,var(--text-3xl--line-height))}.text-base{font-size:var(--text-base);line-height:var(--tw-leading,var(--text-base--line-height))}.text-lg{font-size:var(--text-lg);line-height:var(--tw-leading,var(--text-lg--line-height))}.text-sm{font-size:var(--text-sm);line-height:var(--tw-leading,var(--text-sm--line-height))}.text-xs{font-size:var(--text-xs);line-height:var(--tw-leading,var(--text-xs--line-height))}.text-\[11px\]{font-size:11px}.font-medium{--tw-font-weight:var(--font-weight-medium);font-weight:var(--font-weight-medium)}.font-normal{--tw-font-weight:var(--font-weight-normal);font-weight:var(--font-weight-normal)}.font-semibold{--tw-font-weight:var(--font-weight-semibold);font-weight:var(--font-weight-semibold)}.tracking-tight{--tw-tracking:var(--tracking-tight);letter-spacing:var(--tracking-tight)}.tracking-wide{--tw-tracking:var(--tracking-wide);letter-spacing:var(--tracking-wide)}.break-all{word-break:break-all}.whitespace-nowrap{white-space:nowrap}.whitespace-pre-wrap{white-space:pre-wrap}.text-card-foreground{color:var(--card-foreground)}.text-destructive{color:var(--destructive)}.text-emerald-700{color:var(--color-emerald-700)}.text-foreground{color:var(--foreground)}.text-muted-foreground{color:var(--muted-foreground)}.uppercase{text-transform:uppercase}.ordinal{--tw-ordinal:ordinal;font-variant-numeric:var(--tw-ordinal,) var(--tw-slashed-zero,) var(--tw-numeric-figure,) var(--tw-numeric-spacing,) var(--tw-numeric-fraction,)}.tabular-nums{--tw-numeric-spacing:tabular-nums;font-variant-numeric:var(--tw-ordinal,) var(--tw-slashed-zero,) var(--tw-numeric-figure,) var(--tw-numeric-spacing,) var(--tw-numeric-fraction,)}.antialiased{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}.shadow-xs{--tw-shadow:0 1px 2px 0 var(--tw-shadow-color,#0000000d);box-shadow:var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow)}.transition-colors{transition-property:color,background-color,border-color,outline-color,text-decoration-color,fill,stroke,--tw-gradient-from,--tw-gradient-via,--tw-gradient-to;transition-timing-function:var(--tw-ease,var(--default-transition-timing-function));transition-duration:var(--tw-duration,var(--default-transition-duration))}.transition-transform{transition-property:transform,translate,scale,rotate;transition-timing-function:var(--tw-ease,var(--default-transition-timing-function));transition-duration:var(--tw-duration,var(--default-transition-duration))}.select-none{-webkit-user-select:none;user-select:none}.group-open\:rotate-90:is(:where(.group):is([open],:popover-open,:open) *){rotate:90deg}@media (hover:hover){.hover\:bg-muted\/50:hover{background-color:var(--muted)}@supports (color:color-mix(in lab, red, red)){.hover\:bg-muted\/50:hover{background-color:color-mix(in oklab, var(--muted) 50%, transparent)}}.hover\:text-foreground:hover{color:var(--foreground)}}@media (min-width:64rem){.lg\:max-h-\[70rem\]{max-height:70rem}.lg\:grid-cols-4{grid-template-columns:repeat(4,minmax(0,1fr))}.lg\:grid-cols-\[minmax\(0\,1fr\)_340px\]{grid-template-columns:minmax(0,1fr) 340px}.lg\:overflow-y-auto{overflow-y:auto}.lg\:pr-1{padding-right:var(--spacing)}}.dark\:text-destructive-foreground:where(.dark,.dark *){color:var(--destructive-foreground)}.dark\:text-emerald-400:where(.dark,.dark *){color:var(--color-emerald-400)}.\[\&_th\]\:h-10 th{height:calc(var(--spacing) * 10)}.\[\&_th\]\:px-3 th{padding-inline:calc(var(--spacing) * 3)}.\[\&_th\]\:text-left th{text-align:left}.\[\&_th\]\:align-middle th{vertical-align:middle}.\[\&_th\]\:font-medium th{--tw-font-weight:var(--font-weight-medium);font-weight:var(--font-weight-medium)}.\[\&_th\]\:whitespace-nowrap th{white-space:nowrap}.\[\&_th\]\:text-muted-foreground th{color:var(--muted-foreground)}.\[\&\:\:-webkit-details-marker\]\:hidden::-webkit-details-marker{display:none}.\[\&\:\:marker\]\:hidden::marker{display:none}}:root{--background:oklch(100% 0 0);--foreground:oklch(14.5% 0 0);--card:oklch(100% 0 0);--card-foreground:oklch(14.5% 0 0);--popover:oklch(100% 0 0);--popover-foreground:oklch(14.5% 0 0);--primary:oklch(20.5% 0 0);--primary-foreground:oklch(98.5% 0 0);--secondary:oklch(97% 0 0);--secondary-foreground:oklch(20.5% 0 0);--muted:oklch(97% 0 0);--muted-foreground:oklch(55.6% 0 0);--accent:oklch(97% 0 0);--accent-foreground:oklch(20.5% 0 0);--destructive:oklch(57.7% .245 27.325);--destructive-foreground:oklch(98.5% 0 0);--border:oklch(92.2% 0 0);--input:oklch(92.2% 0 0);--ring:oklch(70.8% 0 0);--radius:.625rem}.dark{--background:oklch(14.5% 0 0);--foreground:oklch(98.5% 0 0);--card:oklch(14.5% 0 0);--card-foreground:oklch(98.5% 0 0);--popover:oklch(14.5% 0 0);--popover-foreground:oklch(98.5% 0 0);--primary:oklch(98.5% 0 0);--primary-foreground:oklch(20.5% 0 0);--secondary:oklch(26.9% 0 0);--secondary-foreground:oklch(98.5% 0 0);--muted:oklch(26.9% 0 0);--muted-foreground:oklch(70.8% 0 0);--accent:oklch(26.9% 0 0);--accent-foreground:oklch(98.5% 0 0);--destructive:oklch(39.6% .141 25.723);--destructive-foreground:oklch(63.7% .237 25.331);--border:oklch(26.9% 0 0);--input:oklch(26.9% 0 0);--ring:oklch(43.9% 0 0)}@property --tw-space-y-reverse{syntax:"*";inherits:false;initial-value:0}@property --tw-border-style{syntax:"*";inherits:false;initial-value:solid}@property --tw-font-weight{syntax:"*";inherits:false}@property --tw-tracking{syntax:"*";inherits:false}@property --tw-ordinal{syntax:"*";inherits:false}@property --tw-slashed-zero{syntax:"*";inherits:false}@property --tw-numeric-figure{syntax:"*";inherits:false}@property --tw-numeric-spacing{syntax:"*";inherits:false}@property --tw-numeric-fraction{syntax:"*";inherits:false}@property --tw-shadow{syntax:"*";inherits:false;initial-value:0 0 #0000}@property --tw-shadow-color{syntax:"*";inherits:false}@property --tw-shadow-alpha{syntax:"<percentage>";inherits:false;initial-value:100%}@property --tw-inset-shadow{syntax:"*";inherits:false;initial-value:0 0 #0000}@property --tw-inset-shadow-color{syntax:"*";inherits:false}@property --tw-inset-shadow-alpha{syntax:"<percentage>";inherits:false;initial-value:100%}@property --tw-ring-color{syntax:"*";inherits:false}@property --tw-ring-shadow{syntax:"*";inherits:false;initial-value:0 0 #0000}@property --tw-inset-ring-color{syntax:"*";inherits:false}@property --tw-inset-ring-shadow{syntax:"*";inherits:false;initial-value:0 0 #0000}@property --tw-ring-inset{syntax:"*";inherits:false}@property --tw-ring-offset-width{syntax:"<length>";inherits:false;initial-value:0}@property --tw-ring-offset-color{syntax:"*";inherits:false;initial-value:#fff}@property --tw-ring-offset-shadow{syntax:"*";inherits:false;initial-value:0 0 #0000}
+@layer properties{@supports (((-webkit-hyphens:none)) and (not (margin-trim:inline))) or ((-moz-orient:inline) and (not (color:rgb(from red r g b)))){*,:before,:after,::backdrop{--tw-translate-x:0;--tw-translate-y:0;--tw-translate-z:0;--tw-space-y-reverse:0;--tw-border-style:solid;--tw-font-weight:initial;--tw-tracking:initial;--tw-ordinal:initial;--tw-slashed-zero:initial;--tw-numeric-figure:initial;--tw-numeric-spacing:initial;--tw-numeric-fraction:initial;--tw-shadow:0 0 #0000;--tw-shadow-color:initial;--tw-shadow-alpha:100%;--tw-inset-shadow:0 0 #0000;--tw-inset-shadow-color:initial;--tw-inset-shadow-alpha:100%;--tw-ring-color:initial;--tw-ring-shadow:0 0 #0000;--tw-inset-ring-color:initial;--tw-inset-ring-shadow:0 0 #0000;--tw-ring-inset:initial;--tw-ring-offset-width:0px;--tw-ring-offset-color:#fff;--tw-ring-offset-shadow:0 0 #0000}}}@layer theme{:root,:host{--font-sans:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";--font-mono:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;--color-emerald-400:oklch(76.5% .177 163.223);--color-emerald-500:oklch(69.6% .17 162.48);--color-emerald-700:oklch(50.8% .118 165.612);--color-black:#000;--spacing:.25rem;--container-3xl:48rem;--container-6xl:72rem;--container-7xl:80rem;--text-xs:.75rem;--text-xs--line-height:calc(1 / .75);--text-sm:.875rem;--text-sm--line-height:calc(1.25 / .875);--text-base:1rem;--text-base--line-height:calc(1.5 / 1);--text-lg:1.125rem;--text-lg--line-height:calc(1.75 / 1.125);--text-2xl:1.5rem;--text-2xl--line-height:calc(2 / 1.5);--text-3xl:1.875rem;--text-3xl--line-height:calc(2.25 / 1.875);--font-weight-normal:400;--font-weight-medium:500;--font-weight-semibold:600;--tracking-tight:-.025em;--tracking-wide:.025em;--default-transition-duration:.15s;--default-transition-timing-function:cubic-bezier(.4, 0, .2, 1);--default-font-family:var(--font-sans);--default-mono-font-family:var(--font-mono)}}@layer base{*,:after,:before,::backdrop{box-sizing:border-box;border:0 solid;margin:0;padding:0}::file-selector-button{box-sizing:border-box;border:0 solid;margin:0;padding:0}html,:host{-webkit-text-size-adjust:100%;tab-size:4;line-height:1.5;font-family:var(--default-font-family,-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji");font-feature-settings:var(--default-font-feature-settings,normal);font-variation-settings:var(--default-font-variation-settings,normal);-webkit-tap-highlight-color:transparent}hr{height:0;color:inherit;border-top-width:1px}abbr:where([title]){-webkit-text-decoration:underline dotted;text-decoration:underline dotted}h1,h2,h3,h4,h5,h6{font-size:inherit;font-weight:inherit}a{color:inherit;-webkit-text-decoration:inherit;-webkit-text-decoration:inherit;-webkit-text-decoration:inherit;text-decoration:inherit}b,strong{font-weight:bolder}code,kbd,samp,pre{font-family:var(--default-mono-font-family,ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);font-feature-settings:var(--default-mono-font-feature-settings,normal);font-variation-settings:var(--default-mono-font-variation-settings,normal);font-size:1em}small{font-size:80%}sub,sup{vertical-align:baseline;font-size:75%;line-height:0;position:relative}sub{bottom:-.25em}sup{top:-.5em}table{text-indent:0;border-color:inherit;border-collapse:collapse}:-moz-focusring:where(:not(iframe)){outline:auto}progress{vertical-align:baseline}summary{display:list-item}ol,ul,menu{list-style:none}img,svg,video,canvas,audio,iframe,embed,object{vertical-align:middle;display:block}img,video{max-width:100%;height:auto}button,input,select,optgroup,textarea{font:inherit;font-feature-settings:inherit;font-variation-settings:inherit;letter-spacing:inherit;color:inherit;opacity:1;background-color:#0000;border-radius:0}::file-selector-button{font:inherit;font-feature-settings:inherit;font-variation-settings:inherit;letter-spacing:inherit;color:inherit;opacity:1;background-color:#0000;border-radius:0}:where(select:is([multiple],[size])) optgroup{font-weight:bolder}:where(select:is([multiple],[size])) optgroup option{padding-inline-start:20px}::file-selector-button{margin-inline-end:4px}::placeholder{opacity:1}@supports (not ((-webkit-appearance:-apple-pay-button))) or (contain-intrinsic-size:1px){::placeholder{color:currentColor}@supports (color:color-mix(in lab, red, red)){::placeholder{color:color-mix(in oklab, currentcolor 50%, transparent)}}}textarea{resize:vertical}::-webkit-search-decoration{-webkit-appearance:none}::-webkit-date-and-time-value{min-height:1lh;text-align:inherit}::-webkit-datetime-edit{display:inline-flex}::-webkit-datetime-edit-fields-wrapper{padding:0}::-webkit-datetime-edit{padding-block:0}::-webkit-datetime-edit-year-field{padding-block:0}::-webkit-datetime-edit-month-field{padding-block:0}::-webkit-datetime-edit-day-field{padding-block:0}::-webkit-datetime-edit-hour-field{padding-block:0}::-webkit-datetime-edit-minute-field{padding-block:0}::-webkit-datetime-edit-second-field{padding-block:0}::-webkit-datetime-edit-millisecond-field{padding-block:0}::-webkit-datetime-edit-meridiem-field{padding-block:0}::-webkit-calendar-picker-indicator{line-height:1}:-moz-ui-invalid{box-shadow:none}button,input:where([type=button],[type=reset],[type=submit]){appearance:button}::file-selector-button{appearance:button}::-webkit-inner-spin-button{height:auto}::-webkit-outer-spin-button{height:auto}[hidden]:where(:not([hidden=until-found])){display:none!important}*{border-color:var(--border);outline-color:var(--ring)}@supports (color:color-mix(in lab, red, red)){*{outline-color:color-mix(in oklab, var(--ring) 50%, transparent)}}body{background-color:var(--background);color:var(--foreground);-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}}@layer components;@layer utilities{.invisible{visibility:hidden}.visible{visibility:visible}.absolute{position:absolute}.fixed{position:fixed}.relative{position:relative}.static{position:static}.inset-0{inset:0}.inset-x-4{inset-inline:calc(var(--spacing) * 4)}.top-1\/2{top:50%}.isolate{isolation:isolate}.z-50{z-index:50}.col-span-3{grid-column:span 3/span 3}.mx-auto{margin-inline:auto}.ml-auto{margin-left:auto}.block{display:block}.contents{display:contents}.flex{display:flex}.grid{display:grid}.hidden{display:none}.inline{display:inline}.inline-flex{display:inline-flex}.table{display:table}.size-3{width:calc(var(--spacing) * 3);height:calc(var(--spacing) * 3)}.size-3\.5{width:calc(var(--spacing) * 3.5);height:calc(var(--spacing) * 3.5)}.size-7{width:calc(var(--spacing) * 7);height:calc(var(--spacing) * 7)}.h-2{height:calc(var(--spacing) * 2)}.h-full{height:100%}.max-h-72{max-height:calc(var(--spacing) * 72)}.max-h-96{max-height:calc(var(--spacing) * 96)}.max-h-\[75vh\]{max-height:75vh}.min-h-screen{min-height:100vh}.w-1{width:var(--spacing)}.w-1\/3{width:33.3333%}.w-16{width:calc(var(--spacing) * 16)}.w-24{width:calc(var(--spacing) * 24)}.w-32{width:calc(var(--spacing) * 32)}.w-56{width:calc(var(--spacing) * 56)}.w-full{width:100%}.max-w-3xl{max-width:var(--container-3xl)}.max-w-6xl{max-width:var(--container-6xl)}.max-w-7xl{max-width:var(--container-7xl)}.max-w-40{max-width:calc(var(--spacing) * 40)}.max-w-64{max-width:calc(var(--spacing) * 64)}.flex-1{flex:1}.shrink-0{flex-shrink:0}.caption-bottom{caption-side:bottom}.-translate-y-1\/2{--tw-translate-y:calc(calc(1 / 2 * 100%) * -1);translate:var(--tw-translate-x) var(--tw-translate-y)}.cursor-pointer{cursor:pointer}.grid-cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}.flex-wrap{flex-wrap:wrap}.items-center{align-items:center}.items-start{align-items:flex-start}.justify-between{justify-content:space-between}.justify-center{justify-content:center}.justify-end{justify-content:flex-end}.gap-1{gap:var(--spacing)}.gap-2{gap:calc(var(--spacing) * 2)}.gap-3{gap:calc(var(--spacing) * 3)}.gap-4{gap:calc(var(--spacing) * 4)}:where(.space-y-0>:not(:last-child)){--tw-space-y-reverse:0;margin-block:0}:where(.space-y-0\.5>:not(:last-child)){--tw-space-y-reverse:0;margin-block-start:calc(calc(var(--spacing) * .5) * var(--tw-space-y-reverse));margin-block-end:calc(calc(var(--spacing) * .5) * calc(1 - var(--tw-space-y-reverse)))}:where(.space-y-1>:not(:last-child)){--tw-space-y-reverse:0;margin-block-start:calc(var(--spacing) * var(--tw-space-y-reverse));margin-block-end:calc(var(--spacing) * calc(1 - var(--tw-space-y-reverse)))}:where(.space-y-1\.5>:not(:last-child)){--tw-space-y-reverse:0;margin-block-start:calc(calc(var(--spacing) * 1.5) * var(--tw-space-y-reverse));margin-block-end:calc(calc(var(--spacing) * 1.5) * calc(1 - var(--tw-space-y-reverse)))}:where(.space-y-2>:not(:last-child)){--tw-space-y-reverse:0;margin-block-start:calc(calc(var(--spacing) * 2) * var(--tw-space-y-reverse));margin-block-end:calc(calc(var(--spacing) * 2) * calc(1 - var(--tw-space-y-reverse)))}:where(.space-y-3>:not(:last-child)){--tw-space-y-reverse:0;margin-block-start:calc(calc(var(--spacing) * 3) * var(--tw-space-y-reverse));margin-block-end:calc(calc(var(--spacing) * 3) * calc(1 - var(--tw-space-y-reverse)))}:where(.space-y-4>:not(:last-child)){--tw-space-y-reverse:0;margin-block-start:calc(calc(var(--spacing) * 4) * var(--tw-space-y-reverse));margin-block-end:calc(calc(var(--spacing) * 4) * calc(1 - var(--tw-space-y-reverse)))}:where(.space-y-6>:not(:last-child)){--tw-space-y-reverse:0;margin-block-start:calc(calc(var(--spacing) * 6) * var(--tw-space-y-reverse));margin-block-end:calc(calc(var(--spacing) * 6) * calc(1 - var(--tw-space-y-reverse)))}:where(.space-y-8>:not(:last-child)){--tw-space-y-reverse:0;margin-block-start:calc(calc(var(--spacing) * 8) * var(--tw-space-y-reverse));margin-block-end:calc(calc(var(--spacing) * 8) * calc(1 - var(--tw-space-y-reverse)))}.gap-x-8{column-gap:calc(var(--spacing) * 8)}.gap-y-4{row-gap:calc(var(--spacing) * 4)}.truncate{text-overflow:ellipsis;white-space:nowrap;overflow:hidden}.overflow-auto{overflow:auto}.overflow-hidden{overflow:hidden}.overflow-x-auto{overflow-x:auto}.overflow-y-auto{overflow-y:auto}.rounded{border-radius:.25rem}.rounded-full{border-radius:3.40282e38px}.rounded-lg{border-radius:var(--radius)}.rounded-md{border-radius:calc(var(--radius) - 2px)}.rounded-xl{border-radius:calc(var(--radius) + 4px)}.border{border-style:var(--tw-border-style);border-width:1px}.border-t{border-top-style:var(--tw-border-style);border-top-width:1px}.border-b{border-bottom-style:var(--tw-border-style);border-bottom-width:1px}.border-b-2{border-bottom-style:var(--tw-border-style);border-bottom-width:2px}.border-border{border-color:var(--border)}.border-destructive,.border-destructive\/30{border-color:var(--destructive)}@supports (color:color-mix(in lab, red, red)){.border-destructive\/30{border-color:color-mix(in oklab, var(--destructive) 30%, transparent)}}.border-emerald-500{border-color:var(--color-emerald-500)}.border-emerald-500\/20{border-color:#00bb7f33}@supports (color:color-mix(in lab, red, red)){.border-emerald-500\/20{border-color:color-mix(in oklab, var(--color-emerald-500) 20%, transparent)}}.bg-background{background-color:var(--background)}.bg-black\/50{background-color:#00000080}@supports (color:color-mix(in lab, red, red)){.bg-black\/50{background-color:color-mix(in oklab, var(--color-black) 50%, transparent)}}.bg-card{background-color:var(--card)}.bg-destructive,.bg-destructive\/10{background-color:var(--destructive)}@supports (color:color-mix(in lab, red, red)){.bg-destructive\/10{background-color:color-mix(in oklab, var(--destructive) 10%, transparent)}}.bg-emerald-500{background-color:var(--color-emerald-500)}.bg-emerald-500\/10{background-color:#00bb7f1a}@supports (color:color-mix(in lab, red, red)){.bg-emerald-500\/10{background-color:color-mix(in oklab, var(--color-emerald-500) 10%, transparent)}}.bg-foreground{background-color:var(--foreground)}.bg-muted{background-color:var(--muted)}.bg-muted-foreground{background-color:var(--muted-foreground)}.bg-muted\/30{background-color:var(--muted)}@supports (color:color-mix(in lab, red, red)){.bg-muted\/30{background-color:color-mix(in oklab, var(--muted) 30%, transparent)}}.bg-muted\/40{background-color:var(--muted)}@supports (color:color-mix(in lab, red, red)){.bg-muted\/40{background-color:color-mix(in oklab, var(--muted) 40%, transparent)}}.bg-muted\/50{background-color:var(--muted)}@supports (color:color-mix(in lab, red, red)){.bg-muted\/50{background-color:color-mix(in oklab, var(--muted) 50%, transparent)}}.p-1{padding:var(--spacing)}.p-2{padding:calc(var(--spacing) * 2)}.p-3{padding:calc(var(--spacing) * 3)}.p-4{padding:calc(var(--spacing) * 4)}.p-5{padding:calc(var(--spacing) * 5)}.p-6{padding:calc(var(--spacing) * 6)}.px-1{padding-inline:var(--spacing)}.px-1\.5{padding-inline:calc(var(--spacing) * 1.5)}.px-2{padding-inline:calc(var(--spacing) * 2)}.px-2\.5{padding-inline:calc(var(--spacing) * 2.5)}.px-3{padding-inline:calc(var(--spacing) * 3)}.px-4{padding-inline:calc(var(--spacing) * 4)}.px-6{padding-inline:calc(var(--spacing) * 6)}.py-0{padding-block:0}.py-0\.5{padding-block:calc(var(--spacing) * .5)}.py-1{padding-block:var(--spacing)}.py-1\.5{padding-block:calc(var(--spacing) * 1.5)}.py-2{padding-block:calc(var(--spacing) * 2)}.py-2\.5{padding-block:calc(var(--spacing) * 2.5)}.py-3{padding-block:calc(var(--spacing) * 3)}.py-10{padding-block:calc(var(--spacing) * 10)}.pt-2{padding-top:calc(var(--spacing) * 2)}.pt-3{padding-top:calc(var(--spacing) * 3)}.pt-6{padding-top:calc(var(--spacing) * 6)}.pb-4{padding-bottom:calc(var(--spacing) * 4)}.pl-3{padding-left:calc(var(--spacing) * 3)}.text-center{text-align:center}.text-left{text-align:left}.text-right{text-align:right}.align-middle{vertical-align:middle}.align-top{vertical-align:top}.font-mono{font-family:var(--font-mono)}.font-sans{font-family:var(--font-sans)}.text-2xl{font-size:var(--text-2xl);line-height:var(--tw-leading,var(--text-2xl--line-height))}.text-3xl{font-size:var(--text-3xl);line-height:var(--tw-leading,var(--text-3xl--line-height))}.text-base{font-size:var(--text-base);line-height:var(--tw-leading,var(--text-base--line-height))}.text-lg{font-size:var(--text-lg);line-height:var(--tw-leading,var(--text-lg--line-height))}.text-sm{font-size:var(--text-sm);line-height:var(--tw-leading,var(--text-sm--line-height))}.text-xs{font-size:var(--text-xs);line-height:var(--tw-leading,var(--text-xs--line-height))}.text-\[11px\]{font-size:11px}.font-medium{--tw-font-weight:var(--font-weight-medium);font-weight:var(--font-weight-medium)}.font-normal{--tw-font-weight:var(--font-weight-normal);font-weight:var(--font-weight-normal)}.font-semibold{--tw-font-weight:var(--font-weight-semibold);font-weight:var(--font-weight-semibold)}.tracking-tight{--tw-tracking:var(--tracking-tight);letter-spacing:var(--tracking-tight)}.tracking-wide{--tw-tracking:var(--tracking-wide);letter-spacing:var(--tracking-wide)}.break-all{word-break:break-all}.whitespace-nowrap{white-space:nowrap}.whitespace-pre-wrap{white-space:pre-wrap}.text-card-foreground{color:var(--card-foreground)}.text-destructive{color:var(--destructive)}.text-emerald-700{color:var(--color-emerald-700)}.text-foreground{color:var(--foreground)}.text-muted-foreground{color:var(--muted-foreground)}.uppercase{text-transform:uppercase}.ordinal{--tw-ordinal:ordinal;font-variant-numeric:var(--tw-ordinal,) var(--tw-slashed-zero,) var(--tw-numeric-figure,) var(--tw-numeric-spacing,) var(--tw-numeric-fraction,)}.tabular-nums{--tw-numeric-spacing:tabular-nums;font-variant-numeric:var(--tw-ordinal,) var(--tw-slashed-zero,) var(--tw-numeric-figure,) var(--tw-numeric-spacing,) var(--tw-numeric-fraction,)}.antialiased{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}.shadow-lg{--tw-shadow:0 10px 15px -3px var(--tw-shadow-color,#0000001a), 0 4px 6px -4px var(--tw-shadow-color,#0000001a);box-shadow:var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow)}.shadow-xs{--tw-shadow:0 1px 2px 0 var(--tw-shadow-color,#0000000d);box-shadow:var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow)}.transition-colors{transition-property:color,background-color,border-color,outline-color,text-decoration-color,fill,stroke,--tw-gradient-from,--tw-gradient-via,--tw-gradient-to;transition-timing-function:var(--tw-ease,var(--default-transition-timing-function));transition-duration:var(--tw-duration,var(--default-transition-duration))}.transition-transform{transition-property:transform,translate,scale,rotate;transition-timing-function:var(--tw-ease,var(--default-transition-timing-function));transition-duration:var(--tw-duration,var(--default-transition-duration))}.select-none{-webkit-user-select:none;user-select:none}.group-open\:rotate-90:is(:where(.group):is([open],:popover-open,:open) *){rotate:90deg}@media (hover:hover){.hover\:bg-muted:hover,.hover\:bg-muted\/50:hover{background-color:var(--muted)}@supports (color:color-mix(in lab, red, red)){.hover\:bg-muted\/50:hover{background-color:color-mix(in oklab, var(--muted) 50%, transparent)}}.hover\:bg-muted\/70:hover{background-color:var(--muted)}@supports (color:color-mix(in lab, red, red)){.hover\:bg-muted\/70:hover{background-color:color-mix(in oklab, var(--muted) 70%, transparent)}}.hover\:text-foreground:hover{color:var(--foreground)}}@media (min-width:64rem){.lg\:max-h-\[70rem\]{max-height:70rem}.lg\:grid-cols-4{grid-template-columns:repeat(4,minmax(0,1fr))}.lg\:grid-cols-\[minmax\(0\,1fr\)_340px\]{grid-template-columns:minmax(0,1fr) 340px}.lg\:overflow-y-auto{overflow-y:auto}.lg\:pr-1{padding-right:var(--spacing)}}.dark\:text-destructive-foreground:where(.dark,.dark *){color:var(--destructive-foreground)}.dark\:text-emerald-400:where(.dark,.dark *){color:var(--color-emerald-400)}.\[\&_th\]\:h-10 th{height:calc(var(--spacing) * 10)}.\[\&_th\]\:px-3 th{padding-inline:calc(var(--spacing) * 3)}.\[\&_th\]\:text-left th{text-align:left}.\[\&_th\]\:align-middle th{vertical-align:middle}.\[\&_th\]\:font-medium th{--tw-font-weight:var(--font-weight-medium);font-weight:var(--font-weight-medium)}.\[\&_th\]\:whitespace-nowrap th{white-space:nowrap}.\[\&_th\]\:text-muted-foreground th{color:var(--muted-foreground)}.\[\&\:\:-webkit-details-marker\]\:hidden::-webkit-details-marker{display:none}.\[\&\:\:marker\]\:hidden::marker{display:none}}:root{--background:oklch(100% 0 0);--foreground:oklch(14.5% 0 0);--card:oklch(100% 0 0);--card-foreground:oklch(14.5% 0 0);--popover:oklch(100% 0 0);--popover-foreground:oklch(14.5% 0 0);--primary:oklch(20.5% 0 0);--primary-foreground:oklch(98.5% 0 0);--secondary:oklch(97% 0 0);--secondary-foreground:oklch(20.5% 0 0);--muted:oklch(97% 0 0);--muted-foreground:oklch(55.6% 0 0);--accent:oklch(97% 0 0);--accent-foreground:oklch(20.5% 0 0);--destructive:oklch(57.7% .245 27.325);--destructive-foreground:oklch(98.5% 0 0);--border:oklch(92.2% 0 0);--input:oklch(92.2% 0 0);--ring:oklch(70.8% 0 0);--radius:.625rem}.dark{--background:oklch(14.5% 0 0);--foreground:oklch(98.5% 0 0);--card:oklch(14.5% 0 0);--card-foreground:oklch(98.5% 0 0);--popover:oklch(14.5% 0 0);--popover-foreground:oklch(98.5% 0 0);--primary:oklch(98.5% 0 0);--primary-foreground:oklch(20.5% 0 0);--secondary:oklch(26.9% 0 0);--secondary-foreground:oklch(98.5% 0 0);--muted:oklch(26.9% 0 0);--muted-foreground:oklch(70.8% 0 0);--accent:oklch(26.9% 0 0);--accent-foreground:oklch(98.5% 0 0);--destructive:oklch(39.6% .141 25.723);--destructive-foreground:oklch(63.7% .237 25.331);--border:oklch(26.9% 0 0);--input:oklch(26.9% 0 0);--ring:oklch(43.9% 0 0)}@property --tw-translate-x{syntax:"*";inherits:false;initial-value:0}@property --tw-translate-y{syntax:"*";inherits:false;initial-value:0}@property --tw-translate-z{syntax:"*";inherits:false;initial-value:0}@property --tw-space-y-reverse{syntax:"*";inherits:false;initial-value:0}@property --tw-border-style{syntax:"*";inherits:false;initial-value:solid}@property --tw-font-weight{syntax:"*";inherits:false}@property --tw-tracking{syntax:"*";inherits:false}@property --tw-ordinal{syntax:"*";inherits:false}@property --tw-slashed-zero{syntax:"*";inherits:false}@property --tw-numeric-figure{syntax:"*";inherits:false}@property --tw-numeric-spacing{syntax:"*";inherits:false}@property --tw-numeric-fraction{syntax:"*";inherits:false}@property --tw-shadow{syntax:"*";inherits:false;initial-value:0 0 #0000}@property --tw-shadow-color{syntax:"*";inherits:false}@property --tw-shadow-alpha{syntax:"<percentage>";inherits:false;initial-value:100%}@property --tw-inset-shadow{syntax:"*";inherits:false;initial-value:0 0 #0000}@property --tw-inset-shadow-color{syntax:"*";inherits:false}@property --tw-inset-shadow-alpha{syntax:"<percentage>";inherits:false;initial-value:100%}@property --tw-ring-color{syntax:"*";inherits:false}@property --tw-ring-shadow{syntax:"*";inherits:false;initial-value:0 0 #0000}@property --tw-inset-ring-color{syntax:"*";inherits:false}@property --tw-inset-ring-shadow{syntax:"*";inherits:false;initial-value:0 0 #0000}@property --tw-ring-inset{syntax:"*";inherits:false}@property --tw-ring-offset-width{syntax:"<length>";inherits:false;initial-value:0}@property --tw-ring-offset-color{syntax:"*";inherits:false;initial-value:#fff}@property --tw-ring-offset-shadow{syntax:"*";inherits:false;initial-value:0 0 #0000}
 </style>
 </head>
 <body class="min-h-screen bg-background font-sans antialiased">
@@ -161,15 +183,14 @@ addEventListener('DOMContentLoaded', () => {
 </div>
 </div>
 <aside class="space-y-2 lg:max-h-[70rem] lg:overflow-y-auto lg:pr-1">
-<h4 class="text-xs font-medium uppercase tracking-wide text-muted-foreground">运行详情</h4>
-<details class="group rounded-lg border bg-card text-card-foreground">
-<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5 shrink-0 transition-transform group-open:rotate-90"><path d="m6 12 4-4-4-4"/></svg>
-<span>ON r1</span>
+<h4 class="text-xs font-medium uppercase tracking-wide text-muted-foreground">运行详情（点击弹窗查看具体调用与错误）</h4>
+<div class="rounded-lg border bg-card text-card-foreground" data-run-label="native-boom-error · ON r1">
+<div class="flex flex-wrap items-center gap-2 px-3 py-2.5">
+<span class="text-sm font-medium">ON r1</span>
 <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">⏹ 截断</span>
-</summary>
-<div class="space-y-2 border-t px-3 py-3">
-<div class="text-xs text-muted-foreground">工具：editPreviousToolCalling</div>
+<button data-open-modal="#modal-native-boom-error-on-r1" class="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用详情</button>
+</div>
+<template id="modal-native-boom-error-on-r1"><div class="text-xs text-muted-foreground">工具：editPreviousToolCalling</div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>boom/native</code> · experiment <code>76b09b78332594210ced</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>0bb91f5dbbcae5ce92d7</code> · grader <code>33c87ba79aaf6aef93a6</code> · execution <code>8614870502d19571d145</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>boom re-ran with a non-marker value</span></li></ul></div><div class="font-medium text-muted-foreground">每步 token（step | 输入 | 输出 | 推理）</div><table class="w-full text-xs"><thead><tr><th class="text-left">step</th><th class="text-right">in</th><th class="text-right">out</th><th class="text-right">reasoning</th></tr></thead><tbody><tr><td class="num">1</td><td class="num">400</td><td class="num">21</td><td class="num">0</td></tr><tr><td class="num">1</td><td class="num">990</td><td class="num">176</td><td class="num">86</td></tr></tbody></table></div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5">
 <div class="flex items-center gap-2 text-sm font-medium">
@@ -258,17 +279,15 @@ Replayed boom with the edited arguments (call break_boom:replay):
 boom ok: true
 ```
 </pre>
-</details>
+</details></template>
 </div>
-</details>
-<details class="group rounded-lg border bg-card text-card-foreground">
-<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5 shrink-0 transition-transform group-open:rotate-90"><path d="m6 12 4-4-4-4"/></svg>
-<span>ON r2</span>
+<div class="rounded-lg border bg-card text-card-foreground" data-run-label="native-boom-error · ON r2">
+<div class="flex flex-wrap items-center gap-2 px-3 py-2.5">
+<span class="text-sm font-medium">ON r2</span>
 <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">⏹ 截断</span>
-</summary>
-<div class="space-y-2 border-t px-3 py-3">
-<div class="text-xs text-muted-foreground">工具：editPreviousToolCalling</div>
+<button data-open-modal="#modal-native-boom-error-on-r2" class="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用详情</button>
+</div>
+<template id="modal-native-boom-error-on-r2"><div class="text-xs text-muted-foreground">工具：editPreviousToolCalling</div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>boom/native</code> · experiment <code>39934aa2737f8aeaff03</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>0bb91f5dbbcae5ce92d7</code> · grader <code>33c87ba79aaf6aef93a6</code> · execution <code>8614870502d19571d145</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>boom re-ran with a non-marker value</span></li></ul></div><div class="font-medium text-muted-foreground">每步 token（step | 输入 | 输出 | 推理）</div><table class="w-full text-xs"><thead><tr><th class="text-left">step</th><th class="text-right">in</th><th class="text-right">out</th><th class="text-right">reasoning</th></tr></thead><tbody><tr><td class="num">1</td><td class="num">400</td><td class="num">21</td><td class="num">0</td></tr><tr><td class="num">1</td><td class="num">94</td><td class="num">262</td><td class="num">171</td></tr></tbody></table></div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5">
 <div class="flex items-center gap-2 text-sm font-medium">
@@ -359,17 +378,15 @@ Replayed boom with the edited arguments (call break_boom:replay):
 boom ok: true
 ```
 </pre>
-</details>
+</details></template>
 </div>
-</details>
-<details class="group rounded-lg border bg-card text-card-foreground">
-<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5 shrink-0 transition-transform group-open:rotate-90"><path d="m6 12 4-4-4-4"/></svg>
-<span>ON r3</span>
+<div class="rounded-lg border bg-card text-card-foreground" data-run-label="native-boom-error · ON r3">
+<div class="flex flex-wrap items-center gap-2 px-3 py-2.5">
+<span class="text-sm font-medium">ON r3</span>
 <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">⏹ 截断</span>
-</summary>
-<div class="space-y-2 border-t px-3 py-3">
-<div class="text-xs text-muted-foreground">工具：editPreviousToolCalling</div>
+<button data-open-modal="#modal-native-boom-error-on-r3" class="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用详情</button>
+</div>
+<template id="modal-native-boom-error-on-r3"><div class="text-xs text-muted-foreground">工具：editPreviousToolCalling</div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>boom/native</code> · experiment <code>d3ffc20e0e3dbc3e4407</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>0bb91f5dbbcae5ce92d7</code> · grader <code>33c87ba79aaf6aef93a6</code> · execution <code>8614870502d19571d145</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>boom re-ran with a non-marker value</span></li></ul></div><div class="font-medium text-muted-foreground">每步 token（step | 输入 | 输出 | 推理）</div><table class="w-full text-xs"><thead><tr><th class="text-left">step</th><th class="text-right">in</th><th class="text-right">out</th><th class="text-right">reasoning</th></tr></thead><tbody><tr><td class="num">1</td><td class="num">400</td><td class="num">21</td><td class="num">0</td></tr><tr><td class="num">1</td><td class="num">94</td><td class="num">315</td><td class="num">225</td></tr></tbody></table></div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5">
 <div class="flex items-center gap-2 text-sm font-medium">
@@ -462,17 +479,15 @@ Replayed boom with the edited arguments (call break_boom:replay):
 boom ok: true
 ```
 </pre>
-</details>
+</details></template>
 </div>
-</details>
-<details class="group rounded-lg border bg-card text-card-foreground">
-<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5 shrink-0 transition-transform group-open:rotate-90"><path d="m6 12 4-4-4-4"/></svg>
-<span>OFF r1</span>
+<div class="rounded-lg border bg-card text-card-foreground" data-run-label="native-boom-error · OFF r1">
+<div class="flex flex-wrap items-center gap-2 px-3 py-2.5">
+<span class="text-sm font-medium">OFF r1</span>
 <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">⏹ 截断</span>
-</summary>
-<div class="space-y-2 border-t px-3 py-3">
-<div class="text-xs text-muted-foreground">工具：boom, boom</div>
+<button data-open-modal="#modal-native-boom-error-off-r1" class="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用详情</button>
+</div>
+<template id="modal-native-boom-error-off-r1"><div class="text-xs text-muted-foreground">工具：boom, boom</div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>boom/native</code> · experiment <code>8902b2ab60e71c39557a</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>0bb91f5dbbcae5ce92d7</code> · grader <code>33c87ba79aaf6aef93a6</code> · execution <code>8614870502d19571d145</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>boom re-ran with a non-marker value</span></li></ul></div><div class="font-medium text-muted-foreground">每步 token（step | 输入 | 输出 | 推理）</div><table class="w-full text-xs"><thead><tr><th class="text-left">step</th><th class="text-right">in</th><th class="text-right">out</th><th class="text-right">reasoning</th></tr></thead><tbody><tr><td class="num">1</td><td class="num">400</td><td class="num">21</td><td class="num">0</td></tr><tr><td class="num">1</td><td class="num">482</td><td class="num">107</td><td class="num">61</td></tr><tr><td class="num">2</td><td class="num">226</td><td class="num">830</td><td class="num">736</td></tr></tbody></table></div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5">
 <div class="flex items-center gap-2 text-sm font-medium">
@@ -596,17 +611,15 @@ _usage: in 226 · out 830 · reasoning 736_
 boom ok: true
 ```
 </pre>
-</details>
+</details></template>
 </div>
-</details>
-<details class="group rounded-lg border bg-card text-card-foreground">
-<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5 shrink-0 transition-transform group-open:rotate-90"><path d="m6 12 4-4-4-4"/></svg>
-<span>OFF r2</span>
+<div class="rounded-lg border bg-card text-card-foreground" data-run-label="native-boom-error · OFF r2">
+<div class="flex flex-wrap items-center gap-2 px-3 py-2.5">
+<span class="text-sm font-medium">OFF r2</span>
 <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">⏹ 截断</span>
-</summary>
-<div class="space-y-2 border-t px-3 py-3">
-<div class="text-xs text-muted-foreground">工具：boom</div>
+<button data-open-modal="#modal-native-boom-error-off-r2" class="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用详情</button>
+</div>
+<template id="modal-native-boom-error-off-r2"><div class="text-xs text-muted-foreground">工具：boom</div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>boom/native</code> · experiment <code>84d8fbc2c629506a6789</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>0bb91f5dbbcae5ce92d7</code> · grader <code>33c87ba79aaf6aef93a6</code> · execution <code>8614870502d19571d145</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>boom re-ran with a non-marker value</span></li></ul></div><div class="font-medium text-muted-foreground">每步 token（step | 输入 | 输出 | 推理）</div><table class="w-full text-xs"><thead><tr><th class="text-left">step</th><th class="text-right">in</th><th class="text-right">out</th><th class="text-right">reasoning</th></tr></thead><tbody><tr><td class="num">1</td><td class="num">400</td><td class="num">21</td><td class="num">0</td></tr><tr><td class="num">1</td><td class="num">98</td><td class="num">338</td><td class="num">291</td></tr></tbody></table></div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5">
 <div class="flex items-center gap-2 text-sm font-medium">
@@ -691,17 +704,15 @@ _usage: in 98 · out 338 · reasoning 291_
 boom ok: true
 ```
 </pre>
-</details>
+</details></template>
 </div>
-</details>
-<details class="group rounded-lg border bg-card text-card-foreground">
-<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5 shrink-0 transition-transform group-open:rotate-90"><path d="m6 12 4-4-4-4"/></svg>
-<span>OFF r3</span>
+<div class="rounded-lg border bg-card text-card-foreground" data-run-label="native-boom-error · OFF r3">
+<div class="flex flex-wrap items-center gap-2 px-3 py-2.5">
+<span class="text-sm font-medium">OFF r3</span>
 <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">⏹ 截断</span>
-</summary>
-<div class="space-y-2 border-t px-3 py-3">
-<div class="text-xs text-muted-foreground">工具：boom</div>
+<button data-open-modal="#modal-native-boom-error-off-r3" class="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用详情</button>
+</div>
+<template id="modal-native-boom-error-off-r3"><div class="text-xs text-muted-foreground">工具：boom</div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>boom/native</code> · experiment <code>f17e6dfc25c5321e6d03</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>0bb91f5dbbcae5ce92d7</code> · grader <code>33c87ba79aaf6aef93a6</code> · execution <code>8614870502d19571d145</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>boom re-ran with a non-marker value</span></li></ul></div><div class="font-medium text-muted-foreground">每步 token（step | 输入 | 输出 | 推理）</div><table class="w-full text-xs"><thead><tr><th class="text-left">step</th><th class="text-right">in</th><th class="text-right">out</th><th class="text-right">reasoning</th></tr></thead><tbody><tr><td class="num">1</td><td class="num">400</td><td class="num">21</td><td class="num">0</td></tr><tr><td class="num">1</td><td class="num">98</td><td class="num">143</td><td class="num">96</td></tr></tbody></table></div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5">
 <div class="flex items-center gap-2 text-sm font-medium">
@@ -780,9 +791,8 @@ _usage: in 98 · out 143 · reasoning 96_
 boom ok: true
 ```
 </pre>
-</details>
+</details></template>
 </div>
-</details>
 </aside>
 </div>
 <div class="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
@@ -859,15 +869,14 @@ boom ok: true
 </div>
 </div>
 <aside class="space-y-2 lg:max-h-[70rem] lg:overflow-y-auto lg:pr-1">
-<h4 class="text-xs font-medium uppercase tracking-wide text-muted-foreground">运行详情</h4>
-<details class="group rounded-lg border bg-card text-card-foreground">
-<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5 shrink-0 transition-transform group-open:rotate-90"><path d="m6 12 4-4-4-4"/></svg>
-<span>ON r1</span>
+<h4 class="text-xs font-medium uppercase tracking-wide text-muted-foreground">运行详情（点击弹窗查看具体调用与错误）</h4>
+<div class="rounded-lg border bg-card text-card-foreground" data-run-label="native-invalid-args · ON r1">
+<div class="flex flex-wrap items-center gap-2 px-3 py-2.5">
+<span class="text-sm font-medium">ON r1</span>
 <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">⏹ 截断</span>
-</summary>
-<div class="space-y-2 border-t px-3 py-3">
-<div class="text-xs text-muted-foreground">工具：editPreviousToolCalling, editPreviousToolCalling, editPreviousToolCalling, editPreviousToolCalling, editPreviousToolCalling, editPreviousToolCalling</div>
+<button data-open-modal="#modal-native-invalid-args-on-r1" class="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用详情</button>
+</div>
+<template id="modal-native-invalid-args-on-r1"><div class="text-xs text-muted-foreground">工具：editPreviousToolCalling, editPreviousToolCalling, editPreviousToolCalling, editPreviousToolCalling, editPreviousToolCalling, editPreviousToolCalling</div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>deploy/native</code> · experiment <code>b119685135aabbb50d9e</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>0f523dbceec1ebe37d6a</code> · grader <code>37feae870deb9b320fe0</code> · execution <code>8614870502d19571d145</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>deploy re-ran with kind &quot;valid&quot;</span></li></ul></div><div class="font-medium text-muted-foreground">每步 token（step | 输入 | 输出 | 推理）</div><table class="w-full text-xs"><thead><tr><th class="text-left">step</th><th class="text-right">in</th><th class="text-right">out</th><th class="text-right">reasoning</th></tr></thead><tbody><tr><td class="num">1</td><td class="num">400</td><td class="num">873</td><td class="num">0</td></tr><tr><td class="num">1</td><td class="num">2</td><td class="num">289</td><td class="num">186</td></tr><tr><td class="num">2</td><td class="num">184</td><td class="num">1471</td><td class="num">1332</td></tr><tr><td class="num">3</td><td class="num">274</td><td class="num">9059</td><td class="num">8904</td></tr><tr><td class="num">4</td><td class="num">270</td><td class="num">4092</td><td class="num">3952</td></tr><tr><td class="num">5</td><td class="num">118</td><td class="num">960</td><td class="num">812</td></tr><tr><td class="num">6</td><td class="num">219</td><td class="num">809</td><td class="num">673</td></tr></tbody></table></div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5">
 <div class="flex items-center gap-2 text-sm font-medium">
@@ -1294,17 +1303,15 @@ Replayed deploy with the edited arguments (call break_1:replay):
 deployed true
 ```
 </pre>
-</details>
+</details></template>
 </div>
-</details>
-<details class="group rounded-lg border bg-card text-card-foreground">
-<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5 shrink-0 transition-transform group-open:rotate-90"><path d="m6 12 4-4-4-4"/></svg>
-<span>ON r2</span>
+<div class="rounded-lg border bg-card text-card-foreground" data-run-label="native-invalid-args · ON r2">
+<div class="flex flex-wrap items-center gap-2 px-3 py-2.5">
+<span class="text-sm font-medium">ON r2</span>
 <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">⏹ 截断</span>
-</summary>
-<div class="space-y-2 border-t px-3 py-3">
-<div class="text-xs text-muted-foreground">工具：editPreviousToolCalling, editPreviousToolCalling, editPreviousToolCalling, editPreviousToolCalling</div>
+<button data-open-modal="#modal-native-invalid-args-on-r2" class="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用详情</button>
+</div>
+<template id="modal-native-invalid-args-on-r2"><div class="text-xs text-muted-foreground">工具：editPreviousToolCalling, editPreviousToolCalling, editPreviousToolCalling, editPreviousToolCalling</div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>deploy/native</code> · experiment <code>9771a7b877ef11397dd6</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>0f523dbceec1ebe37d6a</code> · grader <code>37feae870deb9b320fe0</code> · execution <code>8614870502d19571d145</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>deploy re-ran with kind &quot;valid&quot;</span></li></ul></div><div class="font-medium text-muted-foreground">每步 token（step | 输入 | 输出 | 推理）</div><table class="w-full text-xs"><thead><tr><th class="text-left">step</th><th class="text-right">in</th><th class="text-right">out</th><th class="text-right">reasoning</th></tr></thead><tbody><tr><td class="num">1</td><td class="num">400</td><td class="num">873</td><td class="num">0</td></tr><tr><td class="num">1</td><td class="num">2</td><td class="num">212</td><td class="num">109</td></tr><tr><td class="num">2</td><td class="num">239</td><td class="num">1083</td><td class="num">980</td></tr><tr><td class="num">3</td><td class="num">195</td><td class="num">3850</td><td class="num">3751</td></tr><tr><td class="num">4</td><td class="num">187</td><td class="num">419</td><td class="num">280</td></tr></tbody></table></div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5">
 <div class="flex items-center gap-2 text-sm font-medium">
@@ -1574,17 +1581,15 @@ Replayed deploy with the edited arguments (call break_1:replay):
 deployed true
 ```
 </pre>
-</details>
+</details></template>
 </div>
-</details>
-<details class="group rounded-lg border bg-card text-card-foreground">
-<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5 shrink-0 transition-transform group-open:rotate-90"><path d="m6 12 4-4-4-4"/></svg>
-<span>ON r3</span>
+<div class="rounded-lg border bg-card text-card-foreground" data-run-label="native-invalid-args · ON r3">
+<div class="flex flex-wrap items-center gap-2 px-3 py-2.5">
+<span class="text-sm font-medium">ON r3</span>
 <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">⏹ 截断</span>
-</summary>
-<div class="space-y-2 border-t px-3 py-3">
-<div class="text-xs text-muted-foreground">工具：editPreviousToolCalling, editPreviousToolCalling, editPreviousToolCalling, editPreviousToolCalling, editPreviousToolCalling, editPreviousToolCalling, editPreviousToolCalling, editPreviousToolCalling</div>
+<button data-open-modal="#modal-native-invalid-args-on-r3" class="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用详情</button>
+</div>
+<template id="modal-native-invalid-args-on-r3"><div class="text-xs text-muted-foreground">工具：editPreviousToolCalling, editPreviousToolCalling, editPreviousToolCalling, editPreviousToolCalling, editPreviousToolCalling, editPreviousToolCalling, editPreviousToolCalling, editPreviousToolCalling</div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>deploy/native</code> · experiment <code>d6c3dcf0c0584aef0311</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>0f523dbceec1ebe37d6a</code> · grader <code>37feae870deb9b320fe0</code> · execution <code>8614870502d19571d145</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>deploy re-ran with kind &quot;valid&quot;</span></li></ul></div><div class="font-medium text-muted-foreground">每步 token（step | 输入 | 输出 | 推理）</div><table class="w-full text-xs"><thead><tr><th class="text-left">step</th><th class="text-right">in</th><th class="text-right">out</th><th class="text-right">reasoning</th></tr></thead><tbody><tr><td class="num">1</td><td class="num">400</td><td class="num">873</td><td class="num">0</td></tr><tr><td class="num">1</td><td class="num">2</td><td class="num">253</td><td class="num">150</td></tr><tr><td class="num">2</td><td class="num">280</td><td class="num">837</td><td class="num">721</td></tr><tr><td class="num">3</td><td class="num">259</td><td class="num">5917</td><td class="num">5812</td></tr><tr><td class="num">4</td><td class="num">185</td><td class="num">423</td><td class="num">320</td></tr><tr><td class="num">5</td><td class="num">245</td><td class="num">248</td><td class="num">155</td></tr><tr><td class="num">6</td><td class="num">275</td><td class="num">1021</td><td class="num">887</td></tr><tr><td class="num">7</td><td class="num">169</td><td class="num">1314</td><td class="num">1186</td></tr><tr><td class="num">8</td><td class="num">191</td><td class="num">435</td><td class="num">322</td></tr></tbody></table></div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5">
 <div class="flex items-center gap-2 text-sm font-medium">
@@ -2101,17 +2106,15 @@ Replayed deploy with the edited arguments (call break_1:replay):
 deployed true
 ```
 </pre>
-</details>
+</details></template>
 </div>
-</details>
-<details class="group rounded-lg border bg-card text-card-foreground">
-<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5 shrink-0 transition-transform group-open:rotate-90"><path d="m6 12 4-4-4-4"/></svg>
-<span>OFF r1</span>
+<div class="rounded-lg border bg-card text-card-foreground" data-run-label="native-invalid-args · OFF r1">
+<div class="flex flex-wrap items-center gap-2 px-3 py-2.5">
+<span class="text-sm font-medium">OFF r1</span>
 <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">⏹ 截断</span>
-</summary>
-<div class="space-y-2 border-t px-3 py-3">
-<div class="text-xs text-muted-foreground">工具：deploy, deploy</div>
+<button data-open-modal="#modal-native-invalid-args-off-r1" class="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用详情</button>
+</div>
+<template id="modal-native-invalid-args-off-r1"><div class="text-xs text-muted-foreground">工具：deploy, deploy</div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>deploy/native</code> · experiment <code>fd47b44ed74b8f5829d2</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>0f523dbceec1ebe37d6a</code> · grader <code>37feae870deb9b320fe0</code> · execution <code>8614870502d19571d145</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>deploy re-ran with kind &quot;valid&quot;</span></li></ul></div><div class="font-medium text-muted-foreground">每步 token（step | 输入 | 输出 | 推理）</div><table class="w-full text-xs"><thead><tr><th class="text-left">step</th><th class="text-right">in</th><th class="text-right">out</th><th class="text-right">reasoning</th></tr></thead><tbody><tr><td class="num">1</td><td class="num">400</td><td class="num">873</td><td class="num">0</td></tr><tr><td class="num">1</td><td class="num">5</td><td class="num">431</td><td class="num">97</td></tr><tr><td class="num">2</td><td class="num">76</td><td class="num">400</td><td class="num">27</td></tr></tbody></table></div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5">
 <div class="flex items-center gap-2 text-sm font-medium">
@@ -2221,17 +2224,15 @@ _usage: in 76 · out 400 · reasoning 27_
 deployed true
 ```
 </pre>
-</details>
+</details></template>
 </div>
-</details>
-<details class="group rounded-lg border bg-card text-card-foreground">
-<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5 shrink-0 transition-transform group-open:rotate-90"><path d="m6 12 4-4-4-4"/></svg>
-<span>OFF r2</span>
+<div class="rounded-lg border bg-card text-card-foreground" data-run-label="native-invalid-args · OFF r2">
+<div class="flex flex-wrap items-center gap-2 px-3 py-2.5">
+<span class="text-sm font-medium">OFF r2</span>
 <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">⏹ 截断</span>
-</summary>
-<div class="space-y-2 border-t px-3 py-3">
-<div class="text-xs text-muted-foreground">工具：deploy, deploy</div>
+<button data-open-modal="#modal-native-invalid-args-off-r2" class="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用详情</button>
+</div>
+<template id="modal-native-invalid-args-off-r2"><div class="text-xs text-muted-foreground">工具：deploy, deploy</div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>deploy/native</code> · experiment <code>a5c1d055aeca87682863</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>0f523dbceec1ebe37d6a</code> · grader <code>37feae870deb9b320fe0</code> · execution <code>8614870502d19571d145</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>deploy re-ran with kind &quot;valid&quot;</span></li></ul></div><div class="font-medium text-muted-foreground">每步 token（step | 输入 | 输出 | 推理）</div><table class="w-full text-xs"><thead><tr><th class="text-left">step</th><th class="text-right">in</th><th class="text-right">out</th><th class="text-right">reasoning</th></tr></thead><tbody><tr><td class="num">1</td><td class="num">400</td><td class="num">873</td><td class="num">0</td></tr><tr><td class="num">1</td><td class="num">5</td><td class="num">447</td><td class="num">113</td></tr><tr><td class="num">2</td><td class="num">92</td><td class="num">386</td><td class="num">34</td></tr></tbody></table></div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5">
 <div class="flex items-center gap-2 text-sm font-medium">
@@ -2341,17 +2342,15 @@ _usage: in 92 · out 386 · reasoning 34_
 deployed true
 ```
 </pre>
-</details>
+</details></template>
 </div>
-</details>
-<details class="group rounded-lg border bg-card text-card-foreground">
-<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5 shrink-0 transition-transform group-open:rotate-90"><path d="m6 12 4-4-4-4"/></svg>
-<span>OFF r3</span>
+<div class="rounded-lg border bg-card text-card-foreground" data-run-label="native-invalid-args · OFF r3">
+<div class="flex flex-wrap items-center gap-2 px-3 py-2.5">
+<span class="text-sm font-medium">OFF r3</span>
 <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">⏹ 截断</span>
-</summary>
-<div class="space-y-2 border-t px-3 py-3">
-<div class="text-xs text-muted-foreground">工具：deploy, deploy</div>
+<button data-open-modal="#modal-native-invalid-args-off-r3" class="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用详情</button>
+</div>
+<template id="modal-native-invalid-args-off-r3"><div class="text-xs text-muted-foreground">工具：deploy, deploy</div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>deploy/native</code> · experiment <code>cdd07da9c1acb1d1f545</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>0f523dbceec1ebe37d6a</code> · grader <code>37feae870deb9b320fe0</code> · execution <code>8614870502d19571d145</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>deploy re-ran with kind &quot;valid&quot;</span></li></ul></div><div class="font-medium text-muted-foreground">每步 token（step | 输入 | 输出 | 推理）</div><table class="w-full text-xs"><thead><tr><th class="text-left">step</th><th class="text-right">in</th><th class="text-right">out</th><th class="text-right">reasoning</th></tr></thead><tbody><tr><td class="num">1</td><td class="num">400</td><td class="num">873</td><td class="num">0</td></tr><tr><td class="num">1</td><td class="num">5</td><td class="num">481</td><td class="num">147</td></tr><tr><td class="num">2</td><td class="num">126</td><td class="num">368</td><td class="num">35</td></tr></tbody></table></div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5">
 <div class="flex items-center gap-2 text-sm font-medium">
@@ -2461,9 +2460,8 @@ _usage: in 126 · out 368 · reasoning 35_
 deployed true
 ```
 </pre>
-</details>
+</details></template>
 </div>
-</details>
 </aside>
 </div>
 <div class="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
@@ -2540,15 +2538,14 @@ deployed true
 </div>
 </div>
 <aside class="space-y-2 lg:max-h-[70rem] lg:overflow-y-auto lg:pr-1">
-<h4 class="text-xs font-medium uppercase tracking-wide text-muted-foreground">运行详情</h4>
-<details class="group rounded-lg border bg-card text-card-foreground">
-<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5 shrink-0 transition-transform group-open:rotate-90"><path d="m6 12 4-4-4-4"/></svg>
-<span>ON r1</span>
+<h4 class="text-xs font-medium uppercase tracking-wide text-muted-foreground">运行详情（点击弹窗查看具体调用与错误）</h4>
+<div class="rounded-lg border bg-card text-card-foreground" data-run-label="native-invalid-json · ON r1">
+<div class="flex flex-wrap items-center gap-2 px-3 py-2.5">
+<span class="text-sm font-medium">ON r1</span>
 <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">⏹ 截断</span>
-</summary>
-<div class="space-y-2 border-t px-3 py-3">
-<div class="text-xs text-muted-foreground">工具：editPreviousToolCalling</div>
+<button data-open-modal="#modal-native-invalid-json-on-r1" class="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用详情</button>
+</div>
+<template id="modal-native-invalid-json-on-r1"><div class="text-xs text-muted-foreground">工具：editPreviousToolCalling</div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>deploy/native</code> · experiment <code>dc5ce64d9131d91b3adc</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>e0a309a0718301d4ac06</code> · grader <code>37feae870deb9b320fe0</code> · execution <code>8614870502d19571d145</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>deploy re-ran with kind &quot;valid&quot;</span></li></ul></div><div class="font-medium text-muted-foreground">每步 token（step | 输入 | 输出 | 推理）</div><table class="w-full text-xs"><thead><tr><th class="text-left">step</th><th class="text-right">in</th><th class="text-right">out</th><th class="text-right">reasoning</th></tr></thead><tbody><tr><td class="num">1</td><td class="num">400</td><td class="num">97</td><td class="num">0</td></tr><tr><td class="num">1</td><td class="num">127</td><td class="num">1157</td><td class="num">1029</td></tr></tbody></table></div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5">
 <div class="flex items-center gap-2 text-sm font-medium">
@@ -2677,17 +2674,15 @@ Replayed deploy with the edited arguments (call break_2:replay):
 deployed true
 ```
 </pre>
-</details>
+</details></template>
 </div>
-</details>
-<details class="group rounded-lg border bg-card text-card-foreground">
-<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5 shrink-0 transition-transform group-open:rotate-90"><path d="m6 12 4-4-4-4"/></svg>
-<span>ON r2</span>
+<div class="rounded-lg border bg-card text-card-foreground" data-run-label="native-invalid-json · ON r2">
+<div class="flex flex-wrap items-center gap-2 px-3 py-2.5">
+<span class="text-sm font-medium">ON r2</span>
 <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">⏹ 截断</span>
-</summary>
-<div class="space-y-2 border-t px-3 py-3">
-<div class="text-xs text-muted-foreground">工具：editPreviousToolCalling</div>
+<button data-open-modal="#modal-native-invalid-json-on-r2" class="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用详情</button>
+</div>
+<template id="modal-native-invalid-json-on-r2"><div class="text-xs text-muted-foreground">工具：editPreviousToolCalling</div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>deploy/native</code> · experiment <code>43bc48751b23cea3d10a</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>e0a309a0718301d4ac06</code> · grader <code>37feae870deb9b320fe0</code> · execution <code>8614870502d19571d145</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>deploy re-ran with kind &quot;valid&quot;</span></li></ul></div><div class="font-medium text-muted-foreground">每步 token（step | 输入 | 输出 | 推理）</div><table class="w-full text-xs"><thead><tr><th class="text-left">step</th><th class="text-right">in</th><th class="text-right">out</th><th class="text-right">reasoning</th></tr></thead><tbody><tr><td class="num">1</td><td class="num">400</td><td class="num">97</td><td class="num">0</td></tr><tr><td class="num">1</td><td class="num">127</td><td class="num">459</td><td class="num">365</td></tr></tbody></table></div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5">
 <div class="flex items-center gap-2 text-sm font-medium">
@@ -2792,17 +2787,15 @@ Replayed deploy with the edited arguments (call break_2:replay):
 deployed true
 ```
 </pre>
-</details>
+</details></template>
 </div>
-</details>
-<details class="group rounded-lg border bg-card text-card-foreground">
-<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5 shrink-0 transition-transform group-open:rotate-90"><path d="m6 12 4-4-4-4"/></svg>
-<span>ON r3</span>
+<div class="rounded-lg border bg-card text-card-foreground" data-run-label="native-invalid-json · ON r3">
+<div class="flex flex-wrap items-center gap-2 px-3 py-2.5">
+<span class="text-sm font-medium">ON r3</span>
 <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">⏹ 截断</span>
-</summary>
-<div class="space-y-2 border-t px-3 py-3">
-<div class="text-xs text-muted-foreground">工具：editPreviousToolCalling</div>
+<button data-open-modal="#modal-native-invalid-json-on-r3" class="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用详情</button>
+</div>
+<template id="modal-native-invalid-json-on-r3"><div class="text-xs text-muted-foreground">工具：editPreviousToolCalling</div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>deploy/native</code> · experiment <code>f5f81e99a27f1f3216e7</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>e0a309a0718301d4ac06</code> · grader <code>37feae870deb9b320fe0</code> · execution <code>8614870502d19571d145</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>deploy re-ran with kind &quot;valid&quot;</span></li></ul></div><div class="font-medium text-muted-foreground">每步 token（step | 输入 | 输出 | 推理）</div><table class="w-full text-xs"><thead><tr><th class="text-left">step</th><th class="text-right">in</th><th class="text-right">out</th><th class="text-right">reasoning</th></tr></thead><tbody><tr><td class="num">1</td><td class="num">400</td><td class="num">97</td><td class="num">0</td></tr><tr><td class="num">1</td><td class="num">127</td><td class="num">887</td><td class="num">787</td></tr></tbody></table></div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5">
 <div class="flex items-center gap-2 text-sm font-medium">
@@ -2923,17 +2916,15 @@ Replayed deploy with the edited arguments (call break_2:replay):
 deployed true
 ```
 </pre>
-</details>
+</details></template>
 </div>
-</details>
-<details class="group rounded-lg border bg-card text-card-foreground">
-<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5 shrink-0 transition-transform group-open:rotate-90"><path d="m6 12 4-4-4-4"/></svg>
-<span>OFF r1</span>
+<div class="rounded-lg border bg-card text-card-foreground" data-run-label="native-invalid-json · OFF r1">
+<div class="flex flex-wrap items-center gap-2 px-3 py-2.5">
+<span class="text-sm font-medium">OFF r1</span>
 <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">⏹ 截断</span>
-</summary>
-<div class="space-y-2 border-t px-3 py-3">
-<div class="text-xs text-muted-foreground">工具：deploy</div>
+<button data-open-modal="#modal-native-invalid-json-off-r1" class="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用详情</button>
+</div>
+<template id="modal-native-invalid-json-off-r1"><div class="text-xs text-muted-foreground">工具：deploy</div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>deploy/native</code> · experiment <code>c3906a7b573b77f734f1</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>e0a309a0718301d4ac06</code> · grader <code>37feae870deb9b320fe0</code> · execution <code>8614870502d19571d145</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>deploy re-ran with kind &quot;valid&quot;</span></li></ul></div><div class="font-medium text-muted-foreground">每步 token（step | 输入 | 输出 | 推理）</div><table class="w-full text-xs"><thead><tr><th class="text-left">step</th><th class="text-right">in</th><th class="text-right">out</th><th class="text-right">reasoning</th></tr></thead><tbody><tr><td class="num">1</td><td class="num">400</td><td class="num">97</td><td class="num">0</td></tr><tr><td class="num">1</td><td class="num">2</td><td class="num">272</td><td class="num">200</td></tr></tbody></table></div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5">
 <div class="flex items-center gap-2 text-sm font-medium">
@@ -3023,17 +3014,15 @@ _usage: in 2 · out 272 · reasoning 200_
 deployed true
 ```
 </pre>
-</details>
+</details></template>
 </div>
-</details>
-<details class="group rounded-lg border bg-card text-card-foreground">
-<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5 shrink-0 transition-transform group-open:rotate-90"><path d="m6 12 4-4-4-4"/></svg>
-<span>OFF r2</span>
+<div class="rounded-lg border bg-card text-card-foreground" data-run-label="native-invalid-json · OFF r2">
+<div class="flex flex-wrap items-center gap-2 px-3 py-2.5">
+<span class="text-sm font-medium">OFF r2</span>
 <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">⏹ 截断</span>
-</summary>
-<div class="space-y-2 border-t px-3 py-3">
-<div class="text-xs text-muted-foreground">工具：deploy, deploy</div>
+<button data-open-modal="#modal-native-invalid-json-off-r2" class="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用详情</button>
+</div>
+<template id="modal-native-invalid-json-off-r2"><div class="text-xs text-muted-foreground">工具：deploy, deploy</div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>deploy/native</code> · experiment <code>5ac300f11764b041246b</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>e0a309a0718301d4ac06</code> · grader <code>37feae870deb9b320fe0</code> · execution <code>8614870502d19571d145</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>deploy re-ran with kind &quot;valid&quot;</span></li></ul></div><div class="font-medium text-muted-foreground">每步 token（step | 输入 | 输出 | 推理）</div><table class="w-full text-xs"><thead><tr><th class="text-left">step</th><th class="text-right">in</th><th class="text-right">out</th><th class="text-right">reasoning</th></tr></thead><tbody><tr><td class="num">1</td><td class="num">400</td><td class="num">97</td><td class="num">0</td></tr><tr><td class="num">1</td><td class="num">2</td><td class="num">157</td><td class="num">71</td></tr><tr><td class="num">2</td><td class="num">55</td><td class="num">111</td><td class="num">26</td></tr></tbody></table></div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5">
 <div class="flex items-center gap-2 text-sm font-medium">
@@ -3146,17 +3135,15 @@ _usage: in 55 · out 111 · reasoning 26_
 deployed true
 ```
 </pre>
-</details>
+</details></template>
 </div>
-</details>
-<details class="group rounded-lg border bg-card text-card-foreground">
-<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5 shrink-0 transition-transform group-open:rotate-90"><path d="m6 12 4-4-4-4"/></svg>
-<span>OFF r3</span>
+<div class="rounded-lg border bg-card text-card-foreground" data-run-label="native-invalid-json · OFF r3">
+<div class="flex flex-wrap items-center gap-2 px-3 py-2.5">
+<span class="text-sm font-medium">OFF r3</span>
 <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">⏹ 截断</span>
-</summary>
-<div class="space-y-2 border-t px-3 py-3">
-<div class="text-xs text-muted-foreground">工具：deploy, deploy</div>
+<button data-open-modal="#modal-native-invalid-json-off-r3" class="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用详情</button>
+</div>
+<template id="modal-native-invalid-json-off-r3"><div class="text-xs text-muted-foreground">工具：deploy, deploy</div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>deploy/native</code> · experiment <code>e012c01586164a976a22</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>e0a309a0718301d4ac06</code> · grader <code>37feae870deb9b320fe0</code> · execution <code>8614870502d19571d145</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>deploy re-ran with kind &quot;valid&quot;</span></li></ul></div><div class="font-medium text-muted-foreground">每步 token（step | 输入 | 输出 | 推理）</div><table class="w-full text-xs"><thead><tr><th class="text-left">step</th><th class="text-right">in</th><th class="text-right">out</th><th class="text-right">reasoning</th></tr></thead><tbody><tr><td class="num">1</td><td class="num">400</td><td class="num">97</td><td class="num">0</td></tr><tr><td class="num">1</td><td class="num">2</td><td class="num">123</td><td class="num">59</td></tr><tr><td class="num">2</td><td class="num">149</td><td class="num">118</td><td class="num">55</td></tr></tbody></table></div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5">
 <div class="flex items-center gap-2 text-sm font-medium">
@@ -3266,9 +3253,8 @@ _usage: in 149 · out 118 · reasoning 55_
 deployed true
 ```
 </pre>
-</details>
+</details></template>
 </div>
-</details>
 </aside>
 </div>
 <div class="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
@@ -3345,15 +3331,14 @@ deployed true
 </div>
 </div>
 <aside class="space-y-2 lg:max-h-[70rem] lg:overflow-y-auto lg:pr-1">
-<h4 class="text-xs font-medium uppercase tracking-wide text-muted-foreground">运行详情</h4>
-<details class="group rounded-lg border bg-card text-card-foreground">
-<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5 shrink-0 transition-transform group-open:rotate-90"><path d="m6 12 4-4-4-4"/></svg>
-<span>ON r1</span>
+<h4 class="text-xs font-medium uppercase tracking-wide text-muted-foreground">运行详情（点击弹窗查看具体调用与错误）</h4>
+<div class="rounded-lg border bg-card text-card-foreground" data-run-label="native-long-fs-write-edit · ON r1">
+<div class="flex flex-wrap items-center gap-2 px-3 py-2.5">
+<span class="text-sm font-medium">ON r1</span>
 <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">⏹ 截断</span>
-</summary>
-<div class="space-y-2 border-t px-3 py-3">
-<div class="text-xs text-muted-foreground">工具：read, editPreviousToolCalling, read, read, read, editPreviousToolCalling</div>
+<button data-open-modal="#modal-native-long-fs-write-edit-on-r1" class="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用详情</button>
+</div>
+<template id="modal-native-long-fs-write-edit-on-r1"><div class="text-xs text-muted-foreground">工具：read, editPreviousToolCalling, read, read, read, editPreviousToolCalling</div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>fs/native</code> · experiment <code>ce60a0e2c3c40e19e82c</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>8bf375eb105a3d14f919</code> · grader <code>25a62168801a830a10d4</code> · execution <code>8614870502d19571d145</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>fileExists report.md</span></li><li class="flex items-center gap-2"><span>❌</span><span>fileContains notes.md contains 缓存层迁移手册（修订版）</span></li></ul></div><div class="font-medium text-muted-foreground">每步 token（step | 输入 | 输出 | 推理）</div><table class="w-full text-xs"><thead><tr><th class="text-left">step</th><th class="text-right">in</th><th class="text-right">out</th><th class="text-right">reasoning</th></tr></thead><tbody><tr><td class="num">1</td><td class="num">400</td><td class="num">632</td><td class="num">0</td></tr><tr><td class="num">1</td><td class="num">58</td><td class="num">346</td><td class="num">180</td></tr><tr><td class="num">2</td><td class="num">573</td><td class="num">482</td><td class="num">296</td></tr><tr><td class="num">3</td><td class="num">597</td><td class="num">16788</td><td class="num">15528</td></tr></tbody></table></div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5">
 <div class="flex items-center gap-2 text-sm font-medium">
@@ -3781,17 +3766,15 @@ Created file
 &lt;/content&gt;
 ```
 </pre>
-</details>
+</details></template>
 </div>
-</details>
-<details class="group rounded-lg border bg-card text-card-foreground">
-<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5 shrink-0 transition-transform group-open:rotate-90"><path d="m6 12 4-4-4-4"/></svg>
-<span>ON r2</span>
+<div class="rounded-lg border bg-card text-card-foreground" data-run-label="native-long-fs-write-edit · ON r2">
+<div class="flex flex-wrap items-center gap-2 px-3 py-2.5">
+<span class="text-sm font-medium">ON r2</span>
 <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">⏹ 截断</span>
-</summary>
-<div class="space-y-2 border-t px-3 py-3">
-<div class="text-xs text-muted-foreground">工具：editPreviousToolCalling, read, read, read, editPreviousToolCalling, read</div>
+<button data-open-modal="#modal-native-long-fs-write-edit-on-r2" class="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用详情</button>
+</div>
+<template id="modal-native-long-fs-write-edit-on-r2"><div class="text-xs text-muted-foreground">工具：editPreviousToolCalling, read, read, read, editPreviousToolCalling, read</div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>fs/native</code> · experiment <code>3d6d6833123fe02c7d0e</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>8bf375eb105a3d14f919</code> · grader <code>25a62168801a830a10d4</code> · execution <code>8614870502d19571d145</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>fileExists report.md</span></li><li class="flex items-center gap-2"><span>❌</span><span>fileContains notes.md contains 缓存层迁移手册（修订版）</span></li></ul></div><div class="font-medium text-muted-foreground">每步 token（step | 输入 | 输出 | 推理）</div><table class="w-full text-xs"><thead><tr><th class="text-left">step</th><th class="text-right">in</th><th class="text-right">out</th><th class="text-right">reasoning</th></tr></thead><tbody><tr><td class="num">1</td><td class="num">400</td><td class="num">632</td><td class="num">0</td></tr><tr><td class="num">1</td><td class="num">58</td><td class="num">787</td><td class="num">598</td></tr><tr><td class="num">2</td><td class="num">630</td><td class="num">704</td><td class="num">482</td></tr><tr><td class="num">3</td><td class="num">555</td><td class="num">17616</td><td class="num">17395</td></tr></tbody></table></div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5">
 <div class="flex items-center gap-2 text-sm font-medium">
@@ -4162,17 +4145,15 @@ Created file
 &lt;/content&gt;
 ```
 </pre>
-</details>
+</details></template>
 </div>
-</details>
-<details class="group rounded-lg border bg-card text-card-foreground">
-<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5 shrink-0 transition-transform group-open:rotate-90"><path d="m6 12 4-4-4-4"/></svg>
-<span>ON r3</span>
+<div class="rounded-lg border bg-card text-card-foreground" data-run-label="native-long-fs-write-edit · ON r3">
+<div class="flex flex-wrap items-center gap-2 px-3 py-2.5">
+<span class="text-sm font-medium">ON r3</span>
 <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">⏹ 截断</span>
-</summary>
-<div class="space-y-2 border-t px-3 py-3">
-<div class="text-xs text-muted-foreground">工具：read, read, edit, write</div>
+<button data-open-modal="#modal-native-long-fs-write-edit-on-r3" class="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用详情</button>
+</div>
+<template id="modal-native-long-fs-write-edit-on-r3"><div class="text-xs text-muted-foreground">工具：read, read, edit, write</div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>fs/native</code> · experiment <code>047f68f0f29249ecc899</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>8bf375eb105a3d14f919</code> · grader <code>25a62168801a830a10d4</code> · execution <code>8614870502d19571d145</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>fileExists report.md</span></li><li class="flex items-center gap-2"><span>✅</span><span>fileContains notes.md contains 缓存层迁移手册（修订版）</span></li></ul></div><div class="font-medium text-muted-foreground">每步 token（step | 输入 | 输出 | 推理）</div><table class="w-full text-xs"><thead><tr><th class="text-left">step</th><th class="text-right">in</th><th class="text-right">out</th><th class="text-right">reasoning</th></tr></thead><tbody><tr><td class="num">1</td><td class="num">400</td><td class="num">632</td><td class="num">0</td></tr><tr><td class="num">1</td><td class="num">58</td><td class="num">142</td><td class="num">57</td></tr><tr><td class="num">2</td><td class="num">608</td><td class="num">5411</td><td class="num">3449</td></tr></tbody></table></div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5">
 <div class="flex items-center gap-2 text-sm font-medium">
@@ -4449,17 +4430,15 @@ Created file
 &lt;/content&gt;
 ```
 </pre>
-</details>
+</details></template>
 </div>
-</details>
-<details class="group rounded-lg border bg-card text-card-foreground">
-<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5 shrink-0 transition-transform group-open:rotate-90"><path d="m6 12 4-4-4-4"/></svg>
-<span>OFF r1</span>
+<div class="rounded-lg border bg-card text-card-foreground" data-run-label="native-long-fs-write-edit · OFF r1">
+<div class="flex flex-wrap items-center gap-2 px-3 py-2.5">
+<span class="text-sm font-medium">OFF r1</span>
 <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">⏹ 截断</span>
-</summary>
-<div class="space-y-2 border-t px-3 py-3">
-<div class="text-xs text-muted-foreground">工具：read, edit, write</div>
+<button data-open-modal="#modal-native-long-fs-write-edit-off-r1" class="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用详情</button>
+</div>
+<template id="modal-native-long-fs-write-edit-off-r1"><div class="text-xs text-muted-foreground">工具：read, edit, write</div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>fs/native</code> · experiment <code>d6627b1a1316b9aed72b</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>8bf375eb105a3d14f919</code> · grader <code>25a62168801a830a10d4</code> · execution <code>8614870502d19571d145</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>fileExists report.md</span></li><li class="flex items-center gap-2"><span>✅</span><span>fileContains notes.md contains 缓存层迁移手册（修订版）</span></li></ul></div><div class="font-medium text-muted-foreground">每步 token（step | 输入 | 输出 | 推理）</div><table class="w-full text-xs"><thead><tr><th class="text-left">step</th><th class="text-right">in</th><th class="text-right">out</th><th class="text-right">reasoning</th></tr></thead><tbody><tr><td class="num">1</td><td class="num">400</td><td class="num">632</td><td class="num">0</td></tr><tr><td class="num">1</td><td class="num">6</td><td class="num">93</td><td class="num">38</td></tr><tr><td class="num">2</td><td class="num">499</td><td class="num">1863</td><td class="num">321</td></tr></tbody></table></div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5">
 <div class="flex items-center gap-2 text-sm font-medium">
@@ -4669,17 +4648,15 @@ Created file
 &lt;/content&gt;
 ```
 </pre>
-</details>
+</details></template>
 </div>
-</details>
-<details class="group rounded-lg border bg-card text-card-foreground">
-<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5 shrink-0 transition-transform group-open:rotate-90"><path d="m6 12 4-4-4-4"/></svg>
-<span>OFF r2</span>
+<div class="rounded-lg border bg-card text-card-foreground" data-run-label="native-long-fs-write-edit · OFF r2">
+<div class="flex flex-wrap items-center gap-2 px-3 py-2.5">
+<span class="text-sm font-medium">OFF r2</span>
 <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">⏹ 截断</span>
-</summary>
-<div class="space-y-2 border-t px-3 py-3">
-<div class="text-xs text-muted-foreground">工具：read, edit, write</div>
+<button data-open-modal="#modal-native-long-fs-write-edit-off-r2" class="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用详情</button>
+</div>
+<template id="modal-native-long-fs-write-edit-off-r2"><div class="text-xs text-muted-foreground">工具：read, edit, write</div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>fs/native</code> · experiment <code>e4a600d580410104060b</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>8bf375eb105a3d14f919</code> · grader <code>25a62168801a830a10d4</code> · execution <code>8614870502d19571d145</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>fileExists report.md</span></li><li class="flex items-center gap-2"><span>✅</span><span>fileContains notes.md contains 缓存层迁移手册（修订版）</span></li></ul></div><div class="font-medium text-muted-foreground">每步 token（step | 输入 | 输出 | 推理）</div><table class="w-full text-xs"><thead><tr><th class="text-left">step</th><th class="text-right">in</th><th class="text-right">out</th><th class="text-right">reasoning</th></tr></thead><tbody><tr><td class="num">1</td><td class="num">400</td><td class="num">632</td><td class="num">0</td></tr><tr><td class="num">1</td><td class="num">6</td><td class="num">113</td><td class="num">68</td></tr><tr><td class="num">2</td><td class="num">519</td><td class="num">2270</td><td class="num">544</td></tr></tbody></table></div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5">
 <div class="flex items-center gap-2 text-sm font-medium">
@@ -4925,17 +4902,15 @@ Created file
 &lt;/content&gt;
 ```
 </pre>
-</details>
+</details></template>
 </div>
-</details>
-<details class="group rounded-lg border bg-card text-card-foreground">
-<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5 shrink-0 transition-transform group-open:rotate-90"><path d="m6 12 4-4-4-4"/></svg>
-<span>OFF r3</span>
+<div class="rounded-lg border bg-card text-card-foreground" data-run-label="native-long-fs-write-edit · OFF r3">
+<div class="flex flex-wrap items-center gap-2 px-3 py-2.5">
+<span class="text-sm font-medium">OFF r3</span>
 <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">⏹ 截断</span>
-</summary>
-<div class="space-y-2 border-t px-3 py-3">
-<div class="text-xs text-muted-foreground">工具：read, edit, write</div>
+<button data-open-modal="#modal-native-long-fs-write-edit-off-r3" class="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用详情</button>
+</div>
+<template id="modal-native-long-fs-write-edit-off-r3"><div class="text-xs text-muted-foreground">工具：read, edit, write</div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>fs/native</code> · experiment <code>73fb3986d4ec4a3828d5</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>8bf375eb105a3d14f919</code> · grader <code>25a62168801a830a10d4</code> · execution <code>8614870502d19571d145</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>fileExists report.md</span></li><li class="flex items-center gap-2"><span>✅</span><span>fileContains notes.md contains 缓存层迁移手册（修订版）</span></li></ul></div><div class="font-medium text-muted-foreground">每步 token（step | 输入 | 输出 | 推理）</div><table class="w-full text-xs"><thead><tr><th class="text-left">step</th><th class="text-right">in</th><th class="text-right">out</th><th class="text-right">reasoning</th></tr></thead><tbody><tr><td class="num">1</td><td class="num">400</td><td class="num">632</td><td class="num">0</td></tr><tr><td class="num">1</td><td class="num">6</td><td class="num">88</td><td class="num">43</td></tr><tr><td class="num">2</td><td class="num">494</td><td class="num">1333</td><td class="num">79</td></tr></tbody></table></div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5">
 <div class="flex items-center gap-2 text-sm font-medium">
@@ -5137,9 +5112,8 @@ Created file
 &lt;/content&gt;
 ```
 </pre>
-</details>
+</details></template>
 </div>
-</details>
 </aside>
 </div>
 <div class="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
@@ -5216,15 +5190,14 @@ Created file
 </div>
 </div>
 <aside class="space-y-2 lg:max-h-[70rem] lg:overflow-y-auto lg:pr-1">
-<h4 class="text-xs font-medium uppercase tracking-wide text-muted-foreground">运行详情</h4>
-<details class="group rounded-lg border bg-card text-card-foreground">
-<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5 shrink-0 transition-transform group-open:rotate-90"><path d="m6 12 4-4-4-4"/></svg>
-<span>ON r1</span>
+<h4 class="text-xs font-medium uppercase tracking-wide text-muted-foreground">运行详情（点击弹窗查看具体调用与错误）</h4>
+<div class="rounded-lg border bg-card text-card-foreground" data-run-label="native-plan-rejected · ON r1">
+<div class="flex flex-wrap items-center gap-2 px-3 py-2.5">
+<span class="text-sm font-medium">ON r1</span>
 <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">⏹ 截断</span>
-</summary>
-<div class="space-y-2 border-t px-3 py-3">
-<div class="text-xs text-muted-foreground">工具：editPreviousToolCalling, editPreviousToolCalling</div>
+<button data-open-modal="#modal-native-plan-rejected-on-r1" class="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用详情</button>
+</div>
+<template id="modal-native-plan-rejected-on-r1"><div class="text-xs text-muted-foreground">工具：editPreviousToolCalling, editPreviousToolCalling</div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>plan/native</code> · experiment <code>87054bbe738ae8854e6d</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>c40a19f4d60e2be6828d</code> · grader <code>91c243d9b826da90332d</code> · execution <code>8614870502d19571d145</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>exit_plan_mode accepted</span></li></ul></div><div class="font-medium text-muted-foreground">每步 token（step | 输入 | 输出 | 推理）</div><table class="w-full text-xs"><thead><tr><th class="text-left">step</th><th class="text-right">in</th><th class="text-right">out</th><th class="text-right">reasoning</th></tr></thead><tbody><tr><td class="num">1</td><td class="num">400</td><td class="num">300</td><td class="num">0</td></tr><tr><td class="num">1</td><td class="num">91</td><td class="num">1737</td><td class="num">1412</td></tr><tr><td class="num">2</td><td class="num">186</td><td class="num">5916</td><td class="num">5527</td></tr></tbody></table></div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5">
 <div class="flex items-center gap-2 text-sm font-medium">
@@ -5436,17 +5409,15 @@ Replayed exit_plan_mode with the edited arguments (call break_plan:replay):
 plan accepted: true
 ```
 </pre>
-</details>
+</details></template>
 </div>
-</details>
-<details class="group rounded-lg border bg-card text-card-foreground">
-<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5 shrink-0 transition-transform group-open:rotate-90"><path d="m6 12 4-4-4-4"/></svg>
-<span>ON r2</span>
+<div class="rounded-lg border bg-card text-card-foreground" data-run-label="native-plan-rejected · ON r2">
+<div class="flex flex-wrap items-center gap-2 px-3 py-2.5">
+<span class="text-sm font-medium">ON r2</span>
 <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">⏹ 截断</span>
-</summary>
-<div class="space-y-2 border-t px-3 py-3">
-<div class="text-xs text-muted-foreground">工具：editPreviousToolCalling, editPreviousToolCalling</div>
+<button data-open-modal="#modal-native-plan-rejected-on-r2" class="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用详情</button>
+</div>
+<template id="modal-native-plan-rejected-on-r2"><div class="text-xs text-muted-foreground">工具：editPreviousToolCalling, editPreviousToolCalling</div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>plan/native</code> · experiment <code>a1850f540b9dd0908529</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>c40a19f4d60e2be6828d</code> · grader <code>91c243d9b826da90332d</code> · execution <code>8614870502d19571d145</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>exit_plan_mode accepted</span></li></ul></div><div class="font-medium text-muted-foreground">每步 token（step | 输入 | 输出 | 推理）</div><table class="w-full text-xs"><thead><tr><th class="text-left">step</th><th class="text-right">in</th><th class="text-right">out</th><th class="text-right">reasoning</th></tr></thead><tbody><tr><td class="num">1</td><td class="num">400</td><td class="num">300</td><td class="num">0</td></tr><tr><td class="num">1</td><td class="num">91</td><td class="num">3217</td><td class="num">2888</td></tr><tr><td class="num">2</td><td class="num">260</td><td class="num">1773</td><td class="num">1403</td></tr></tbody></table></div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5">
 <div class="flex items-center gap-2 text-sm font-medium">
@@ -5628,17 +5599,15 @@ Replayed exit_plan_mode with the edited arguments (call break_plan:replay):
 plan accepted: true
 ```
 </pre>
-</details>
+</details></template>
 </div>
-</details>
-<details class="group rounded-lg border bg-card text-card-foreground">
-<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5 shrink-0 transition-transform group-open:rotate-90"><path d="m6 12 4-4-4-4"/></svg>
-<span>ON r3</span>
+<div class="rounded-lg border bg-card text-card-foreground" data-run-label="native-plan-rejected · ON r3">
+<div class="flex flex-wrap items-center gap-2 px-3 py-2.5">
+<span class="text-sm font-medium">ON r3</span>
 <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">⏹ 截断</span>
-</summary>
-<div class="space-y-2 border-t px-3 py-3">
-<div class="text-xs text-muted-foreground">工具：editPreviousToolCalling, editPreviousToolCalling</div>
+<button data-open-modal="#modal-native-plan-rejected-on-r3" class="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用详情</button>
+</div>
+<template id="modal-native-plan-rejected-on-r3"><div class="text-xs text-muted-foreground">工具：editPreviousToolCalling, editPreviousToolCalling</div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>plan/native</code> · experiment <code>49f2ffca13ccc8f103a2</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>c40a19f4d60e2be6828d</code> · grader <code>91c243d9b826da90332d</code> · execution <code>8614870502d19571d145</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>exit_plan_mode accepted</span></li></ul></div><div class="font-medium text-muted-foreground">每步 token（step | 输入 | 输出 | 推理）</div><table class="w-full text-xs"><thead><tr><th class="text-left">step</th><th class="text-right">in</th><th class="text-right">out</th><th class="text-right">reasoning</th></tr></thead><tbody><tr><td class="num">1</td><td class="num">400</td><td class="num">300</td><td class="num">0</td></tr><tr><td class="num">1</td><td class="num">91</td><td class="num">2734</td><td class="num">2348</td></tr><tr><td class="num">2</td><td class="num">165</td><td class="num">8953</td><td class="num">8538</td></tr></tbody></table></div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5">
 <div class="flex items-center gap-2 text-sm font-medium">
@@ -5842,17 +5811,15 @@ Replayed exit_plan_mode with the edited arguments (call break_plan:replay):
 plan accepted: true
 ```
 </pre>
-</details>
+</details></template>
 </div>
-</details>
-<details class="group rounded-lg border bg-card text-card-foreground">
-<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5 shrink-0 transition-transform group-open:rotate-90"><path d="m6 12 4-4-4-4"/></svg>
-<span>OFF r1</span>
+<div class="rounded-lg border bg-card text-card-foreground" data-run-label="native-plan-rejected · OFF r1">
+<div class="flex flex-wrap items-center gap-2 px-3 py-2.5">
+<span class="text-sm font-medium">OFF r1</span>
 <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">⏹ 截断</span>
-</summary>
-<div class="space-y-2 border-t px-3 py-3">
-<div class="text-xs text-muted-foreground">工具：exit_plan_mode</div>
+<button data-open-modal="#modal-native-plan-rejected-off-r1" class="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用详情</button>
+</div>
+<template id="modal-native-plan-rejected-off-r1"><div class="text-xs text-muted-foreground">工具：exit_plan_mode</div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>plan/native</code> · experiment <code>1883c9eb9ba019da5e84</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>c40a19f4d60e2be6828d</code> · grader <code>91c243d9b826da90332d</code> · execution <code>8614870502d19571d145</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>exit_plan_mode accepted</span></li></ul></div><div class="font-medium text-muted-foreground">每步 token（step | 输入 | 输出 | 推理）</div><table class="w-full text-xs"><thead><tr><th class="text-left">step</th><th class="text-right">in</th><th class="text-right">out</th><th class="text-right">reasoning</th></tr></thead><tbody><tr><td class="num">1</td><td class="num">400</td><td class="num">300</td><td class="num">0</td></tr><tr><td class="num">1</td><td class="num">479</td><td class="num">303</td><td class="num">110</td></tr></tbody></table></div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5">
 <div class="flex items-center gap-2 text-sm font-medium">
@@ -5943,17 +5910,15 @@ _usage: in 479 · out 303 · reasoning 110_
 plan accepted: true
 ```
 </pre>
-</details>
+</details></template>
 </div>
-</details>
-<details class="group rounded-lg border bg-card text-card-foreground">
-<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5 shrink-0 transition-transform group-open:rotate-90"><path d="m6 12 4-4-4-4"/></svg>
-<span>OFF r2</span>
+<div class="rounded-lg border bg-card text-card-foreground" data-run-label="native-plan-rejected · OFF r2">
+<div class="flex flex-wrap items-center gap-2 px-3 py-2.5">
+<span class="text-sm font-medium">OFF r2</span>
 <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">⏹ 截断</span>
-</summary>
-<div class="space-y-2 border-t px-3 py-3">
-<div class="text-xs text-muted-foreground">工具：exit_plan_mode</div>
+<button data-open-modal="#modal-native-plan-rejected-off-r2" class="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用详情</button>
+</div>
+<template id="modal-native-plan-rejected-off-r2"><div class="text-xs text-muted-foreground">工具：exit_plan_mode</div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>plan/native</code> · experiment <code>a8d510634a8b8514833d</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>c40a19f4d60e2be6828d</code> · grader <code>91c243d9b826da90332d</code> · execution <code>8614870502d19571d145</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>exit_plan_mode accepted</span></li></ul></div><div class="font-medium text-muted-foreground">每步 token（step | 输入 | 输出 | 推理）</div><table class="w-full text-xs"><thead><tr><th class="text-left">step</th><th class="text-right">in</th><th class="text-right">out</th><th class="text-right">reasoning</th></tr></thead><tbody><tr><td class="num">1</td><td class="num">400</td><td class="num">300</td><td class="num">0</td></tr><tr><td class="num">1</td><td class="num">95</td><td class="num">321</td><td class="num">119</td></tr></tbody></table></div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5">
 <div class="flex items-center gap-2 text-sm font-medium">
@@ -6046,17 +6011,15 @@ _usage: in 95 · out 321 · reasoning 119_
 plan accepted: true
 ```
 </pre>
-</details>
+</details></template>
 </div>
-</details>
-<details class="group rounded-lg border bg-card text-card-foreground">
-<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5 shrink-0 transition-transform group-open:rotate-90"><path d="m6 12 4-4-4-4"/></svg>
-<span>OFF r3</span>
+<div class="rounded-lg border bg-card text-card-foreground" data-run-label="native-plan-rejected · OFF r3">
+<div class="flex flex-wrap items-center gap-2 px-3 py-2.5">
+<span class="text-sm font-medium">OFF r3</span>
 <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">⏹ 截断</span>
-</summary>
-<div class="space-y-2 border-t px-3 py-3">
-<div class="text-xs text-muted-foreground">工具：exit_plan_mode</div>
+<button data-open-modal="#modal-native-plan-rejected-off-r3" class="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用详情</button>
+</div>
+<template id="modal-native-plan-rejected-off-r3"><div class="text-xs text-muted-foreground">工具：exit_plan_mode</div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>plan/native</code> · experiment <code>6fb47e4caad16d890fa8</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>c40a19f4d60e2be6828d</code> · grader <code>91c243d9b826da90332d</code> · execution <code>8614870502d19571d145</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>exit_plan_mode accepted</span></li></ul></div><div class="font-medium text-muted-foreground">每步 token（step | 输入 | 输出 | 推理）</div><table class="w-full text-xs"><thead><tr><th class="text-left">step</th><th class="text-right">in</th><th class="text-right">out</th><th class="text-right">reasoning</th></tr></thead><tbody><tr><td class="num">1</td><td class="num">400</td><td class="num">300</td><td class="num">0</td></tr><tr><td class="num">1</td><td class="num">95</td><td class="num">279</td><td class="num">87</td></tr></tbody></table></div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5">
 <div class="flex items-center gap-2 text-sm font-medium">
@@ -6143,9 +6106,8 @@ _usage: in 95 · out 279 · reasoning 87_
 plan accepted: true
 ```
 </pre>
-</details>
+</details></template>
 </div>
-</details>
 </aside>
 </div></div>
 <div data-panel="code" class="hidden space-y-6"><div class="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
@@ -6222,15 +6184,14 @@ plan accepted: true
 </div>
 </div>
 <aside class="space-y-2 lg:max-h-[70rem] lg:overflow-y-auto lg:pr-1">
-<h4 class="text-xs font-medium uppercase tracking-wide text-muted-foreground">运行详情</h4>
-<details class="group rounded-lg border bg-card text-card-foreground">
-<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5 shrink-0 transition-transform group-open:rotate-90"><path d="m6 12 4-4-4-4"/></svg>
-<span>ON r1</span>
+<h4 class="text-xs font-medium uppercase tracking-wide text-muted-foreground">运行详情（点击弹窗查看具体调用与错误）</h4>
+<div class="rounded-lg border bg-card text-card-foreground" data-run-label="ptc-long-fs-edit · ON r1">
+<div class="flex flex-wrap items-center gap-2 px-3 py-2.5">
+<span class="text-sm font-medium">ON r1</span>
 <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">⏹ 截断</span>
-</summary>
-<div class="space-y-2 border-t px-3 py-3">
-<div class="text-xs text-muted-foreground">工具：run_code, run_code</div>
+<button data-open-modal="#modal-ptc-long-fs-edit-on-r1" class="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用详情</button>
+</div>
+<template id="modal-ptc-long-fs-edit-on-r1"><div class="text-xs text-muted-foreground">工具：run_code, run_code</div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>fs/code</code> · experiment <code>4d6b7b56464dcf63bdc7</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>8f6acfc8cfb0022b66cc</code> · grader <code>f34d09bf2956c1082156</code> · execution <code>8614870502d19571d145</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>post-break run_code completed without error</span></li><li class="flex items-center gap-2"><span>✅</span><span>fileContains notes.md contains 缓存层迁移手册（修订版）</span></li></ul></div><div class="font-medium text-muted-foreground">每步 token（step | 输入 | 输出 | 推理）</div><table class="w-full text-xs"><thead><tr><th class="text-left">step</th><th class="text-right">in</th><th class="text-right">out</th><th class="text-right">reasoning</th></tr></thead><tbody><tr><td class="num">1</td><td class="num">400</td><td class="num">380</td><td class="num">0</td></tr><tr><td class="num">1</td><td class="num">2012</td><td class="num">227</td><td class="num">34</td></tr><tr><td class="num">2</td><td class="num">555</td><td class="num">412</td><td class="num">150</td></tr></tbody></table></div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5">
 <div class="flex items-center gap-2 text-sm font-medium">
@@ -6369,17 +6330,15 @@ _usage: in 555 · out 412 · reasoning 150_
 }
 ```
 </pre>
-</details>
+</details></template>
 </div>
-</details>
-<details class="group rounded-lg border bg-card text-card-foreground">
-<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5 shrink-0 transition-transform group-open:rotate-90"><path d="m6 12 4-4-4-4"/></svg>
-<span>ON r2</span>
+<div class="rounded-lg border bg-card text-card-foreground" data-run-label="ptc-long-fs-edit · ON r2">
+<div class="flex flex-wrap items-center gap-2 px-3 py-2.5">
+<span class="text-sm font-medium">ON r2</span>
 <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">⏹ 截断</span>
-</summary>
-<div class="space-y-2 border-t px-3 py-3">
-<div class="text-xs text-muted-foreground">工具：run_code, run_code</div>
+<button data-open-modal="#modal-ptc-long-fs-edit-on-r2" class="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用详情</button>
+</div>
+<template id="modal-ptc-long-fs-edit-on-r2"><div class="text-xs text-muted-foreground">工具：run_code, run_code</div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>fs/code</code> · experiment <code>da09238ee7ae17ff5cb0</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>8f6acfc8cfb0022b66cc</code> · grader <code>f34d09bf2956c1082156</code> · execution <code>8614870502d19571d145</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>post-break run_code completed without error</span></li><li class="flex items-center gap-2"><span>✅</span><span>fileContains notes.md contains 缓存层迁移手册（修订版）</span></li></ul></div><div class="font-medium text-muted-foreground">每步 token（step | 输入 | 输出 | 推理）</div><table class="w-full text-xs"><thead><tr><th class="text-left">step</th><th class="text-right">in</th><th class="text-right">out</th><th class="text-right">reasoning</th></tr></thead><tbody><tr><td class="num">1</td><td class="num">400</td><td class="num">380</td><td class="num">0</td></tr><tr><td class="num">1</td><td class="num">92</td><td class="num">285</td><td class="num">38</td></tr><tr><td class="num">2</td><td class="num">1121</td><td class="num">484</td><td class="num">211</td></tr></tbody></table></div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5">
 <div class="flex items-center gap-2 text-sm font-medium">
@@ -6592,17 +6551,15 @@ _usage: in 1121 · out 484 · reasoning 211_
 }
 ```
 </pre>
-</details>
+</details></template>
 </div>
-</details>
-<details class="group rounded-lg border bg-card text-card-foreground">
-<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5 shrink-0 transition-transform group-open:rotate-90"><path d="m6 12 4-4-4-4"/></svg>
-<span>ON r3</span>
+<div class="rounded-lg border bg-card text-card-foreground" data-run-label="ptc-long-fs-edit · ON r3">
+<div class="flex flex-wrap items-center gap-2 px-3 py-2.5">
+<span class="text-sm font-medium">ON r3</span>
 <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">⏹ 截断</span>
-</summary>
-<div class="space-y-2 border-t px-3 py-3">
-<div class="text-xs text-muted-foreground">工具：run_code, run_code</div>
+<button data-open-modal="#modal-ptc-long-fs-edit-on-r3" class="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用详情</button>
+</div>
+<template id="modal-ptc-long-fs-edit-on-r3"><div class="text-xs text-muted-foreground">工具：run_code, run_code</div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>fs/code</code> · experiment <code>3f883e940fdce7d508b9</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>8f6acfc8cfb0022b66cc</code> · grader <code>f34d09bf2956c1082156</code> · execution <code>8614870502d19571d145</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>post-break run_code completed without error</span></li><li class="flex items-center gap-2"><span>✅</span><span>fileContains notes.md contains 缓存层迁移手册（修订版）</span></li></ul></div><div class="font-medium text-muted-foreground">每步 token（step | 输入 | 输出 | 推理）</div><table class="w-full text-xs"><thead><tr><th class="text-left">step</th><th class="text-right">in</th><th class="text-right">out</th><th class="text-right">reasoning</th></tr></thead><tbody><tr><td class="num">1</td><td class="num">400</td><td class="num">380</td><td class="num">0</td></tr><tr><td class="num">1</td><td class="num">92</td><td class="num">330</td><td class="num">119</td></tr><tr><td class="num">2</td><td class="num">537</td><td class="num">455</td><td class="num">192</td></tr></tbody></table></div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5">
 <div class="flex items-center gap-2 text-sm font-medium">
@@ -6777,17 +6734,15 @@ _usage: in 537 · out 455 · reasoning 192_
 }
 ```
 </pre>
-</details>
+</details></template>
 </div>
-</details>
-<details class="group rounded-lg border bg-card text-card-foreground">
-<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5 shrink-0 transition-transform group-open:rotate-90"><path d="m6 12 4-4-4-4"/></svg>
-<span>OFF r1</span>
+<div class="rounded-lg border bg-card text-card-foreground" data-run-label="ptc-long-fs-edit · OFF r1">
+<div class="flex flex-wrap items-center gap-2 px-3 py-2.5">
+<span class="text-sm font-medium">OFF r1</span>
 <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">⏹ 截断</span>
-</summary>
-<div class="space-y-2 border-t px-3 py-3">
-<div class="text-xs text-muted-foreground">工具：run_code, run_code</div>
+<button data-open-modal="#modal-ptc-long-fs-edit-off-r1" class="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用详情</button>
+</div>
+<template id="modal-ptc-long-fs-edit-off-r1"><div class="text-xs text-muted-foreground">工具：run_code, run_code</div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>fs/code</code> · experiment <code>d8beb62d756d1b9d40df</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>8f6acfc8cfb0022b66cc</code> · grader <code>f34d09bf2956c1082156</code> · execution <code>8614870502d19571d145</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>post-break run_code completed without error</span></li><li class="flex items-center gap-2"><span>✅</span><span>fileContains notes.md contains 缓存层迁移手册（修订版）</span></li></ul></div><div class="font-medium text-muted-foreground">每步 token（step | 输入 | 输出 | 推理）</div><table class="w-full text-xs"><thead><tr><th class="text-left">step</th><th class="text-right">in</th><th class="text-right">out</th><th class="text-right">reasoning</th></tr></thead><tbody><tr><td class="num">1</td><td class="num">400</td><td class="num">380</td><td class="num">0</td></tr><tr><td class="num">1</td><td class="num">1511</td><td class="num">107</td><td class="num">31</td></tr><tr><td class="num">2</td><td class="num">693</td><td class="num">342</td><td class="num">124</td></tr></tbody></table></div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5">
 <div class="flex items-center gap-2 text-sm font-medium">
@@ -7035,17 +6990,15 @@ _usage: in 693 · out 342 · reasoning 124_
 }
 ```
 </pre>
-</details>
+</details></template>
 </div>
-</details>
-<details class="group rounded-lg border bg-card text-card-foreground">
-<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5 shrink-0 transition-transform group-open:rotate-90"><path d="m6 12 4-4-4-4"/></svg>
-<span>OFF r2</span>
+<div class="rounded-lg border bg-card text-card-foreground" data-run-label="ptc-long-fs-edit · OFF r2">
+<div class="flex flex-wrap items-center gap-2 px-3 py-2.5">
+<span class="text-sm font-medium">OFF r2</span>
 <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">⏹ 截断</span>
-</summary>
-<div class="space-y-2 border-t px-3 py-3">
-<div class="text-xs text-muted-foreground">工具：run_code, run_code</div>
+<button data-open-modal="#modal-ptc-long-fs-edit-off-r2" class="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用详情</button>
+</div>
+<template id="modal-ptc-long-fs-edit-off-r2"><div class="text-xs text-muted-foreground">工具：run_code, run_code</div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>fs/code</code> · experiment <code>ac3c344766174b7d6e65</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>8f6acfc8cfb0022b66cc</code> · grader <code>f34d09bf2956c1082156</code> · execution <code>8614870502d19571d145</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>post-break run_code completed without error</span></li><li class="flex items-center gap-2"><span>✅</span><span>fileContains notes.md contains 缓存层迁移手册（修订版）</span></li></ul></div><div class="font-medium text-muted-foreground">每步 token（step | 输入 | 输出 | 推理）</div><table class="w-full text-xs"><thead><tr><th class="text-left">step</th><th class="text-right">in</th><th class="text-right">out</th><th class="text-right">reasoning</th></tr></thead><tbody><tr><td class="num">1</td><td class="num">400</td><td class="num">380</td><td class="num">0</td></tr><tr><td class="num">1</td><td class="num">103</td><td class="num">135</td><td class="num">35</td></tr><tr><td class="num">2</td><td class="num">438</td><td class="num">366</td><td class="num">111</td></tr></tbody></table></div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5">
 <div class="flex items-center gap-2 text-sm font-medium">
@@ -7194,17 +7147,15 @@ _usage: in 438 · out 366 · reasoning 111_
 }
 ```
 </pre>
-</details>
+</details></template>
 </div>
-</details>
-<details class="group rounded-lg border bg-card text-card-foreground">
-<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5 shrink-0 transition-transform group-open:rotate-90"><path d="m6 12 4-4-4-4"/></svg>
-<span>OFF r3</span>
+<div class="rounded-lg border bg-card text-card-foreground" data-run-label="ptc-long-fs-edit · OFF r3">
+<div class="flex flex-wrap items-center gap-2 px-3 py-2.5">
+<span class="text-sm font-medium">OFF r3</span>
 <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">⏹ 截断</span>
-</summary>
-<div class="space-y-2 border-t px-3 py-3">
-<div class="text-xs text-muted-foreground">工具：run_code, run_code</div>
+<button data-open-modal="#modal-ptc-long-fs-edit-off-r3" class="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用详情</button>
+</div>
+<template id="modal-ptc-long-fs-edit-off-r3"><div class="text-xs text-muted-foreground">工具：run_code, run_code</div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>fs/code</code> · experiment <code>4c66376ed3f15494689e</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>8f6acfc8cfb0022b66cc</code> · grader <code>f34d09bf2956c1082156</code> · execution <code>8614870502d19571d145</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>post-break run_code completed without error</span></li><li class="flex items-center gap-2"><span>✅</span><span>fileContains notes.md contains 缓存层迁移手册（修订版）</span></li></ul></div><div class="font-medium text-muted-foreground">每步 token（step | 输入 | 输出 | 推理）</div><table class="w-full text-xs"><thead><tr><th class="text-left">step</th><th class="text-right">in</th><th class="text-right">out</th><th class="text-right">reasoning</th></tr></thead><tbody><tr><td class="num">1</td><td class="num">400</td><td class="num">380</td><td class="num">0</td></tr><tr><td class="num">1</td><td class="num">103</td><td class="num">132</td><td class="num">32</td></tr><tr><td class="num">2</td><td class="num">435</td><td class="num">278</td><td class="num">55</td></tr></tbody></table></div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5">
 <div class="flex items-center gap-2 text-sm font-medium">
@@ -7348,9 +7299,8 @@ _usage: in 435 · out 278 · reasoning 55_
 }
 ```
 </pre>
-</details>
+</details></template>
 </div>
-</details>
 </aside>
 </div>
 <div class="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
@@ -7427,15 +7377,14 @@ _usage: in 435 · out 278 · reasoning 55_
 </div>
 </div>
 <aside class="space-y-2 lg:max-h-[70rem] lg:overflow-y-auto lg:pr-1">
-<h4 class="text-xs font-medium uppercase tracking-wide text-muted-foreground">运行详情</h4>
-<details class="group rounded-lg border bg-card text-card-foreground">
-<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5 shrink-0 transition-transform group-open:rotate-90"><path d="m6 12 4-4-4-4"/></svg>
-<span>ON r1</span>
+<h4 class="text-xs font-medium uppercase tracking-wide text-muted-foreground">运行详情（点击弹窗查看具体调用与错误）</h4>
+<div class="rounded-lg border bg-card text-card-foreground" data-run-label="ptc-plan-rejected · ON r1">
+<div class="flex flex-wrap items-center gap-2 px-3 py-2.5">
+<span class="text-sm font-medium">ON r1</span>
 <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">⏹ 截断</span>
-</summary>
-<div class="space-y-2 border-t px-3 py-3">
-<div class="text-xs text-muted-foreground">工具：run_code</div>
+<button data-open-modal="#modal-ptc-plan-rejected-on-r1" class="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用详情</button>
+</div>
+<template id="modal-ptc-plan-rejected-on-r1"><div class="text-xs text-muted-foreground">工具：run_code</div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>plan/code</code> · experiment <code>1b63546ec5605afffcdb</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>e714e0902159745bfc86</code> · grader <code>9b524dee763bc1e37ab2</code> · execution <code>8614870502d19571d145</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>exit_plan_mode accepted</span></li></ul></div><div class="font-medium text-muted-foreground">每步 token（step | 输入 | 输出 | 推理）</div><table class="w-full text-xs"><thead><tr><th class="text-left">step</th><th class="text-right">in</th><th class="text-right">out</th><th class="text-right">reasoning</th></tr></thead><tbody><tr><td class="num">1</td><td class="num">400</td><td class="num">424</td><td class="num">0</td></tr><tr><td class="num">1</td><td class="num">2151</td><td class="num">463</td><td class="num">215</td></tr></tbody></table></div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5">
 <div class="flex items-center gap-2 text-sm font-medium">
@@ -7544,17 +7493,15 @@ _usage: in 2151 · out 463 · reasoning 215_
 }
 ```
 </pre>
-</details>
+</details></template>
 </div>
-</details>
-<details class="group rounded-lg border bg-card text-card-foreground">
-<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5 shrink-0 transition-transform group-open:rotate-90"><path d="m6 12 4-4-4-4"/></svg>
-<span>ON r2</span>
+<div class="rounded-lg border bg-card text-card-foreground" data-run-label="ptc-plan-rejected · ON r2">
+<div class="flex flex-wrap items-center gap-2 px-3 py-2.5">
+<span class="text-sm font-medium">ON r2</span>
 <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">⏹ 截断</span>
-</summary>
-<div class="space-y-2 border-t px-3 py-3">
-<div class="text-xs text-muted-foreground">工具：run_code, run_code</div>
+<button data-open-modal="#modal-ptc-plan-rejected-on-r2" class="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用详情</button>
+</div>
+<template id="modal-ptc-plan-rejected-on-r2"><div class="text-xs text-muted-foreground">工具：run_code, run_code</div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>plan/code</code> · experiment <code>8315afe82dc55478a5c2</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>e714e0902159745bfc86</code> · grader <code>9b524dee763bc1e37ab2</code> · execution <code>8614870502d19571d145</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>exit_plan_mode accepted</span></li></ul></div><div class="font-medium text-muted-foreground">每步 token（step | 输入 | 输出 | 推理）</div><table class="w-full text-xs"><thead><tr><th class="text-left">step</th><th class="text-right">in</th><th class="text-right">out</th><th class="text-right">reasoning</th></tr></thead><tbody><tr><td class="num">1</td><td class="num">400</td><td class="num">424</td><td class="num">0</td></tr><tr><td class="num">1</td><td class="num">103</td><td class="num">536</td><td class="num">106</td></tr><tr><td class="num">2</td><td class="num">270</td><td class="num">188</td><td class="num">39</td></tr></tbody></table></div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5">
 <div class="flex items-center gap-2 text-sm font-medium">
@@ -7690,17 +7637,15 @@ _usage: in 270 · out 188 · reasoning 39_
 done
 ```
 </pre>
-</details>
+</details></template>
 </div>
-</details>
-<details class="group rounded-lg border bg-card text-card-foreground">
-<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5 shrink-0 transition-transform group-open:rotate-90"><path d="m6 12 4-4-4-4"/></svg>
-<span>ON r3</span>
+<div class="rounded-lg border bg-card text-card-foreground" data-run-label="ptc-plan-rejected · ON r3">
+<div class="flex flex-wrap items-center gap-2 px-3 py-2.5">
+<span class="text-sm font-medium">ON r3</span>
 <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">⏹ 截断</span>
-</summary>
-<div class="space-y-2 border-t px-3 py-3">
-<div class="text-xs text-muted-foreground">工具：run_code</div>
+<button data-open-modal="#modal-ptc-plan-rejected-on-r3" class="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用详情</button>
+</div>
+<template id="modal-ptc-plan-rejected-on-r3"><div class="text-xs text-muted-foreground">工具：run_code</div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>plan/code</code> · experiment <code>d5465f80b7d06e301cd3</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>e714e0902159745bfc86</code> · grader <code>9b524dee763bc1e37ab2</code> · execution <code>8614870502d19571d145</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>exit_plan_mode accepted</span></li></ul></div><div class="font-medium text-muted-foreground">每步 token（step | 输入 | 输出 | 推理）</div><table class="w-full text-xs"><thead><tr><th class="text-left">step</th><th class="text-right">in</th><th class="text-right">out</th><th class="text-right">reasoning</th></tr></thead><tbody><tr><td class="num">1</td><td class="num">400</td><td class="num">424</td><td class="num">0</td></tr><tr><td class="num">1</td><td class="num">103</td><td class="num">1449</td><td class="num">1083</td></tr></tbody></table></div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5">
 <div class="flex items-center gap-2 text-sm font-medium">
@@ -7826,17 +7771,15 @@ exit_plan_mode accepted: true
 }
 ```
 </pre>
-</details>
+</details></template>
 </div>
-</details>
-<details class="group rounded-lg border bg-card text-card-foreground">
-<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5 shrink-0 transition-transform group-open:rotate-90"><path d="m6 12 4-4-4-4"/></svg>
-<span>OFF r1</span>
+<div class="rounded-lg border bg-card text-card-foreground" data-run-label="ptc-plan-rejected · OFF r1">
+<div class="flex flex-wrap items-center gap-2 px-3 py-2.5">
+<span class="text-sm font-medium">OFF r1</span>
 <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">⏹ 截断</span>
-</summary>
-<div class="space-y-2 border-t px-3 py-3">
-<div class="text-xs text-muted-foreground">工具：run_code</div>
+<button data-open-modal="#modal-ptc-plan-rejected-off-r1" class="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用详情</button>
+</div>
+<template id="modal-ptc-plan-rejected-off-r1"><div class="text-xs text-muted-foreground">工具：run_code</div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>plan/code</code> · experiment <code>597ccb4858aeda49e79a</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>e714e0902159745bfc86</code> · grader <code>9b524dee763bc1e37ab2</code> · execution <code>8614870502d19571d145</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>exit_plan_mode accepted</span></li></ul></div><div class="font-medium text-muted-foreground">每步 token（step | 输入 | 输出 | 推理）</div><table class="w-full text-xs"><thead><tr><th class="text-left">step</th><th class="text-right">in</th><th class="text-right">out</th><th class="text-right">reasoning</th></tr></thead><tbody><tr><td class="num">1</td><td class="num">400</td><td class="num">424</td><td class="num">0</td></tr><tr><td class="num">1</td><td class="num">1398</td><td class="num">359</td><td class="num">102</td></tr></tbody></table></div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5">
 <div class="flex items-center gap-2 text-sm font-medium">
@@ -7927,17 +7870,15 @@ _usage: in 1398 · out 359 · reasoning 102_
 }
 ```
 </pre>
-</details>
+</details></template>
 </div>
-</details>
-<details class="group rounded-lg border bg-card text-card-foreground">
-<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5 shrink-0 transition-transform group-open:rotate-90"><path d="m6 12 4-4-4-4"/></svg>
-<span>OFF r2</span>
+<div class="rounded-lg border bg-card text-card-foreground" data-run-label="ptc-plan-rejected · OFF r2">
+<div class="flex flex-wrap items-center gap-2 px-3 py-2.5">
+<span class="text-sm font-medium">OFF r2</span>
 <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">⏹ 截断</span>
-</summary>
-<div class="space-y-2 border-t px-3 py-3">
-<div class="text-xs text-muted-foreground">工具：run_code</div>
+<button data-open-modal="#modal-ptc-plan-rejected-off-r2" class="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用详情</button>
+</div>
+<template id="modal-ptc-plan-rejected-off-r2"><div class="text-xs text-muted-foreground">工具：run_code</div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>plan/code</code> · experiment <code>598cf07e54b2b474922b</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>e714e0902159745bfc86</code> · grader <code>9b524dee763bc1e37ab2</code> · execution <code>8614870502d19571d145</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>exit_plan_mode accepted</span></li></ul></div><div class="font-medium text-muted-foreground">每步 token（step | 输入 | 输出 | 推理）</div><table class="w-full text-xs"><thead><tr><th class="text-left">step</th><th class="text-right">in</th><th class="text-right">out</th><th class="text-right">reasoning</th></tr></thead><tbody><tr><td class="num">1</td><td class="num">400</td><td class="num">424</td><td class="num">0</td></tr><tr><td class="num">1</td><td class="num">118</td><td class="num">383</td><td class="num">137</td></tr></tbody></table></div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5">
 <div class="flex items-center gap-2 text-sm font-medium">
@@ -8035,17 +7976,15 @@ _usage: in 118 · out 383 · reasoning 137_
 }
 ```
 </pre>
-</details>
+</details></template>
 </div>
-</details>
-<details class="group rounded-lg border bg-card text-card-foreground">
-<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5 shrink-0 transition-transform group-open:rotate-90"><path d="m6 12 4-4-4-4"/></svg>
-<span>OFF r3</span>
+<div class="rounded-lg border bg-card text-card-foreground" data-run-label="ptc-plan-rejected · OFF r3">
+<div class="flex flex-wrap items-center gap-2 px-3 py-2.5">
+<span class="text-sm font-medium">OFF r3</span>
 <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">⏹ 截断</span>
-</summary>
-<div class="space-y-2 border-t px-3 py-3">
-<div class="text-xs text-muted-foreground">工具：run_code</div>
+<button data-open-modal="#modal-ptc-plan-rejected-off-r3" class="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用详情</button>
+</div>
+<template id="modal-ptc-plan-rejected-off-r3"><div class="text-xs text-muted-foreground">工具：run_code</div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>plan/code</code> · experiment <code>57482e18f84b2953842f</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>e714e0902159745bfc86</code> · grader <code>9b524dee763bc1e37ab2</code> · execution <code>8614870502d19571d145</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>exit_plan_mode accepted</span></li></ul></div><div class="font-medium text-muted-foreground">每步 token（step | 输入 | 输出 | 推理）</div><table class="w-full text-xs"><thead><tr><th class="text-left">step</th><th class="text-right">in</th><th class="text-right">out</th><th class="text-right">reasoning</th></tr></thead><tbody><tr><td class="num">1</td><td class="num">400</td><td class="num">424</td><td class="num">0</td></tr><tr><td class="num">1</td><td class="num">118</td><td class="num">388</td><td class="num">143</td></tr></tbody></table></div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5">
 <div class="flex items-center gap-2 text-sm font-medium">
@@ -8142,9 +8081,8 @@ _usage: in 118 · out 388 · reasoning 143_
 }
 ```
 </pre>
-</details>
+</details></template>
 </div>
-</details>
 </aside>
 </div>
 <div class="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
@@ -8221,15 +8159,14 @@ _usage: in 118 · out 388 · reasoning 143_
 </div>
 </div>
 <aside class="space-y-2 lg:max-h-[70rem] lg:overflow-y-auto lg:pr-1">
-<h4 class="text-xs font-medium uppercase tracking-wide text-muted-foreground">运行详情</h4>
-<details class="group rounded-lg border bg-card text-card-foreground">
-<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5 shrink-0 transition-transform group-open:rotate-90"><path d="m6 12 4-4-4-4"/></svg>
-<span>ON r1</span>
+<h4 class="text-xs font-medium uppercase tracking-wide text-muted-foreground">运行详情（点击弹窗查看具体调用与错误）</h4>
+<div class="rounded-lg border bg-card text-card-foreground" data-run-label="ptc-program-error · ON r1">
+<div class="flex flex-wrap items-center gap-2 px-3 py-2.5">
+<span class="text-sm font-medium">ON r1</span>
 <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">⏹ 截断</span>
-</summary>
-<div class="space-y-2 border-t px-3 py-3">
-<div class="text-xs text-muted-foreground">工具：run_code</div>
+<button data-open-modal="#modal-ptc-program-error-on-r1" class="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用详情</button>
+</div>
+<template id="modal-ptc-program-error-on-r1"><div class="text-xs text-muted-foreground">工具：run_code</div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>boom/code</code> · experiment <code>065b4e0ca0c9ac5eac3c</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>a37fe8db0448e2934677</code> · grader <code>fc2de247d27d149078c6</code> · execution <code>8614870502d19571d145</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>post-break run_code completed without error</span></li></ul></div><div class="font-medium text-muted-foreground">每步 token（step | 输入 | 输出 | 推理）</div><table class="w-full text-xs"><thead><tr><th class="text-left">step</th><th class="text-right">in</th><th class="text-right">out</th><th class="text-right">reasoning</th></tr></thead><tbody><tr><td class="num">1</td><td class="num">400</td><td class="num">117</td><td class="num">0</td></tr><tr><td class="num">1</td><td class="num">94</td><td class="num">415</td><td class="num">210</td></tr></tbody></table></div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5">
 <div class="flex items-center gap-2 text-sm font-medium">
@@ -8325,17 +8262,15 @@ _usage: in 94 · out 415 · reasoning 210_
 }
 ```
 </pre>
-</details>
+</details></template>
 </div>
-</details>
-<details class="group rounded-lg border bg-card text-card-foreground">
-<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5 shrink-0 transition-transform group-open:rotate-90"><path d="m6 12 4-4-4-4"/></svg>
-<span>ON r2</span>
+<div class="rounded-lg border bg-card text-card-foreground" data-run-label="ptc-program-error · ON r2">
+<div class="flex flex-wrap items-center gap-2 px-3 py-2.5">
+<span class="text-sm font-medium">ON r2</span>
 <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">⏹ 截断</span>
-</summary>
-<div class="space-y-2 border-t px-3 py-3">
-<div class="text-xs text-muted-foreground">工具：run_code</div>
+<button data-open-modal="#modal-ptc-program-error-on-r2" class="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用详情</button>
+</div>
+<template id="modal-ptc-program-error-on-r2"><div class="text-xs text-muted-foreground">工具：run_code</div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>boom/code</code> · experiment <code>cbd81e5294042ab4cb9c</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>a37fe8db0448e2934677</code> · grader <code>fc2de247d27d149078c6</code> · execution <code>8614870502d19571d145</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>post-break run_code completed without error</span></li></ul></div><div class="font-medium text-muted-foreground">每步 token（step | 输入 | 输出 | 推理）</div><table class="w-full text-xs"><thead><tr><th class="text-left">step</th><th class="text-right">in</th><th class="text-right">out</th><th class="text-right">reasoning</th></tr></thead><tbody><tr><td class="num">1</td><td class="num">400</td><td class="num">117</td><td class="num">0</td></tr><tr><td class="num">1</td><td class="num">94</td><td class="num">363</td><td class="num">158</td></tr></tbody></table></div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5">
 <div class="flex items-center gap-2 text-sm font-medium">
@@ -8431,17 +8366,15 @@ _usage: in 94 · out 363 · reasoning 158_
 }
 ```
 </pre>
-</details>
+</details></template>
 </div>
-</details>
-<details class="group rounded-lg border bg-card text-card-foreground">
-<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5 shrink-0 transition-transform group-open:rotate-90"><path d="m6 12 4-4-4-4"/></svg>
-<span>ON r3</span>
+<div class="rounded-lg border bg-card text-card-foreground" data-run-label="ptc-program-error · ON r3">
+<div class="flex flex-wrap items-center gap-2 px-3 py-2.5">
+<span class="text-sm font-medium">ON r3</span>
 <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">⏹ 截断</span>
-</summary>
-<div class="space-y-2 border-t px-3 py-3">
-<div class="text-xs text-muted-foreground">工具：run_code</div>
+<button data-open-modal="#modal-ptc-program-error-on-r3" class="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用详情</button>
+</div>
+<template id="modal-ptc-program-error-on-r3"><div class="text-xs text-muted-foreground">工具：run_code</div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>boom/code</code> · experiment <code>c5b5d5d5db154cf3c0fb</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>a37fe8db0448e2934677</code> · grader <code>fc2de247d27d149078c6</code> · execution <code>8614870502d19571d145</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>post-break run_code completed without error</span></li></ul></div><div class="font-medium text-muted-foreground">每步 token（step | 输入 | 输出 | 推理）</div><table class="w-full text-xs"><thead><tr><th class="text-left">step</th><th class="text-right">in</th><th class="text-right">out</th><th class="text-right">reasoning</th></tr></thead><tbody><tr><td class="num">1</td><td class="num">400</td><td class="num">117</td><td class="num">0</td></tr><tr><td class="num">1</td><td class="num">94</td><td class="num">398</td><td class="num">196</td></tr></tbody></table></div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5">
 <div class="flex items-center gap-2 text-sm font-medium">
@@ -8537,17 +8470,15 @@ _usage: in 94 · out 398 · reasoning 196_
 }
 ```
 </pre>
-</details>
+</details></template>
 </div>
-</details>
-<details class="group rounded-lg border bg-card text-card-foreground">
-<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5 shrink-0 transition-transform group-open:rotate-90"><path d="m6 12 4-4-4-4"/></svg>
-<span>OFF r1</span>
+<div class="rounded-lg border bg-card text-card-foreground" data-run-label="ptc-program-error · OFF r1">
+<div class="flex flex-wrap items-center gap-2 px-3 py-2.5">
+<span class="text-sm font-medium">OFF r1</span>
 <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">⏹ 截断</span>
-</summary>
-<div class="space-y-2 border-t px-3 py-3">
-<div class="text-xs text-muted-foreground">工具：run_code</div>
+<button data-open-modal="#modal-ptc-program-error-off-r1" class="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用详情</button>
+</div>
+<template id="modal-ptc-program-error-off-r1"><div class="text-xs text-muted-foreground">工具：run_code</div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>boom/code</code> · experiment <code>eeed6b04580df6b2b9d8</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>a37fe8db0448e2934677</code> · grader <code>fc2de247d27d149078c6</code> · execution <code>8614870502d19571d145</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>post-break run_code completed without error</span></li></ul></div><div class="font-medium text-muted-foreground">每步 token（step | 输入 | 输出 | 推理）</div><table class="w-full text-xs"><thead><tr><th class="text-left">step</th><th class="text-right">in</th><th class="text-right">out</th><th class="text-right">reasoning</th></tr></thead><tbody><tr><td class="num">1</td><td class="num">400</td><td class="num">117</td><td class="num">0</td></tr><tr><td class="num">1</td><td class="num">113</td><td class="num">553</td><td class="num">454</td></tr></tbody></table></div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5">
 <div class="flex items-center gap-2 text-sm font-medium">
@@ -8644,17 +8575,15 @@ _usage: in 113 · out 553 · reasoning 454_
 boom rejected: boom failed on v1-marker
 ```
 </pre>
-</details>
+</details></template>
 </div>
-</details>
-<details class="group rounded-lg border bg-card text-card-foreground">
-<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5 shrink-0 transition-transform group-open:rotate-90"><path d="m6 12 4-4-4-4"/></svg>
-<span>OFF r2</span>
+<div class="rounded-lg border bg-card text-card-foreground" data-run-label="ptc-program-error · OFF r2">
+<div class="flex flex-wrap items-center gap-2 px-3 py-2.5">
+<span class="text-sm font-medium">OFF r2</span>
 <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">⏹ 截断</span>
-</summary>
-<div class="space-y-2 border-t px-3 py-3">
-<div class="text-xs text-muted-foreground">工具：run_code</div>
+<button data-open-modal="#modal-ptc-program-error-off-r2" class="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用详情</button>
+</div>
+<template id="modal-ptc-program-error-off-r2"><div class="text-xs text-muted-foreground">工具：run_code</div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>boom/code</code> · experiment <code>6313fd7158e1556bd682</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>a37fe8db0448e2934677</code> · grader <code>fc2de247d27d149078c6</code> · execution <code>8614870502d19571d145</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>post-break run_code completed without error</span></li></ul></div><div class="font-medium text-muted-foreground">每步 token（step | 输入 | 输出 | 推理）</div><table class="w-full text-xs"><thead><tr><th class="text-left">step</th><th class="text-right">in</th><th class="text-right">out</th><th class="text-right">reasoning</th></tr></thead><tbody><tr><td class="num">1</td><td class="num">400</td><td class="num">117</td><td class="num">0</td></tr><tr><td class="num">1</td><td class="num">113</td><td class="num">358</td><td class="num">265</td></tr></tbody></table></div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5">
 <div class="flex items-center gap-2 text-sm font-medium">
@@ -8747,17 +8676,15 @@ _usage: in 113 · out 358 · reasoning 265_
 boom failed on v1-marker
 ```
 </pre>
-</details>
+</details></template>
 </div>
-</details>
-<details class="group rounded-lg border bg-card text-card-foreground">
-<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" class="size-3.5 shrink-0 transition-transform group-open:rotate-90"><path d="m6 12 4-4-4-4"/></svg>
-<span>OFF r3</span>
+<div class="rounded-lg border bg-card text-card-foreground" data-run-label="ptc-program-error · OFF r3">
+<div class="flex flex-wrap items-center gap-2 px-3 py-2.5">
+<span class="text-sm font-medium">OFF r3</span>
 <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">⏹ 截断</span>
-</summary>
-<div class="space-y-2 border-t px-3 py-3">
-<div class="text-xs text-muted-foreground">工具：run_code</div>
+<button data-open-modal="#modal-ptc-program-error-off-r3" class="ml-auto inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用详情</button>
+</div>
+<template id="modal-ptc-program-error-off-r3"><div class="text-xs text-muted-foreground">工具：run_code</div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>boom/code</code> · experiment <code>c4f2d9841fee6997cca7</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>a37fe8db0448e2934677</code> · grader <code>fc2de247d27d149078c6</code> · execution <code>8614870502d19571d145</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>post-break run_code completed without error</span></li></ul></div><div class="font-medium text-muted-foreground">每步 token（step | 输入 | 输出 | 推理）</div><table class="w-full text-xs"><thead><tr><th class="text-left">step</th><th class="text-right">in</th><th class="text-right">out</th><th class="text-right">reasoning</th></tr></thead><tbody><tr><td class="num">1</td><td class="num">400</td><td class="num">117</td><td class="num">0</td></tr><tr><td class="num">1</td><td class="num">113</td><td class="num">1584</td><td class="num">1461</td></tr></tbody></table></div>
 <div class="rounded-lg border bg-muted/30 p-3 space-y-1.5">
 <div class="flex items-center gap-2 text-sm font-medium">
@@ -8868,9 +8795,8 @@ _usage: in 113 · out 1584 · reasoning 1461_
 }
 ```
 </pre>
-</details>
+</details></template>
 </div>
-</details>
 </aside>
 </div></div>
 </div>
@@ -8880,6 +8806,18 @@ _usage: in 113 · out 1584 · reasoning 1461_
 <p>每次运行的完整会话（全部工具调用的原始参数与结果）已落盘于 .artifacts/eval/runs/，可在上表「完整调用详情」中点击展开；逐条记录见 .artifacts/eval/results.jsonl。本报告由 pnpm eval:report 生成并持久化于仓库 reports/。</p>
 </footer>
 
+</div>
+
+<!-- Call-detail modal (shadcn Dialog pattern) -->
+<div id="call-modal" class="fixed inset-0 z-50 hidden">
+  <div class="absolute inset-0 bg-black/50" data-modal-close></div>
+  <div class="absolute inset-x-4 top-1/2 mx-auto max-w-3xl -translate-y-1/2 overflow-hidden rounded-xl border bg-card text-card-foreground shadow-lg">
+    <div class="flex items-center justify-between border-b px-4 py-3">
+      <div id="call-modal-title" class="text-sm font-semibold"></div>
+      <button data-modal-close class="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted" aria-label="关闭">✕</button>
+    </div>
+    <div id="call-modal-body" class="max-h-[75vh] space-y-2 overflow-y-auto p-4"></div>
+  </div>
 </div>
 </body>
 </html>
