@@ -193,8 +193,11 @@ interface ScenarioRow {
   offInput: number
   onTotalOutput: number
   offTotalOutput: number
+  totalSavingsPercent: number
   onSteps: number
   offSteps: number
+  stepsRatio: number
+  onRetryPp: number
   runs: RunRecord[]
 }
 
@@ -230,8 +233,19 @@ function buildScenarioRows(records: RunRecord[]): ScenarioRow[] {
       offInput: median(off.map(run => run.summary.postBreakInputTokens)),
       onTotalOutput: median(on.map(totalPostBreakOutput)),
       offTotalOutput: median(off.map(totalPostBreakOutput)),
+      totalSavingsPercent: (() => {
+        const onTotal = median(on.map(totalPostBreakOutput))
+        const offTotal = median(off.map(totalPostBreakOutput))
+        return offTotal > 0 ? Math.round((1 - onTotal / offTotal) * 1000) / 10 : 0
+      })(),
       onSteps: median(on.map(run => postBreakMessages(run).length)),
       offSteps: median(off.map(run => postBreakMessages(run).length)),
+      stepsRatio: (() => {
+        const offSteps = median(off.map(run => postBreakMessages(run).length))
+        return offSteps > 0 ? Math.round((median(on.map(run => postBreakMessages(run).length)) / offSteps) * 100) / 100 : 0
+      })(),
+      onRetryPp: Math.round(rate(on.map(run => run.summary.retrySuccess)) * 100)
+        - Math.round(rate(off.map(run => run.summary.retrySuccess)) * 100),
       runs,
     }
   })
@@ -265,12 +279,6 @@ function statusBadge(status: string): string {
   return badge(entry.label, entry.tone)
 }
 
-function savingsBadge(percentValue: number): string {
-  if (percentValue >= 40) return badge(`${percentValue}%`, 'positive')
-  if (percentValue < 0) return badge(`${percentValue}%`, 'negative')
-  return badge(`${percentValue}%`, 'neutral')
-}
-
 function percent(value: number): string {
   return `${Math.round(value * 100)}%`
 }
@@ -285,41 +293,68 @@ function statCard(label: string, value: string, hint: string, tone: 'positive' |
   ].join('\n')
 }
 
-/** Scenario comparison table (shadcn Table inside a Card). */
-function scenarioTable(title: string, rows: ScenarioRow[]): string {
-  const body = rows.map((row) => [
-    '<tr class="border-t transition-colors hover:bg-muted/50">',
-    `<td class="p-3 font-medium">${escapeHtml(row.scenario)}</td>`,
-    `<td class="p-3 text-right tabular-nums">${row.onSteps}</td>`,
-    `<td class="p-3 text-right tabular-nums">${row.offSteps}</td>`,
-    `<td class="p-3 text-right tabular-nums">${row.onTokens}</td>`,
-    `<td class="p-3 text-right tabular-nums">${row.offTokens}</td>`,
-    `<td class="p-3 text-right">${savingsBadge(row.savingsPercent)}</td>`,
-    `<td class="p-3 text-right tabular-nums">${row.onContentTokens}</td>`,
-    `<td class="p-3 text-right tabular-nums">${row.offContentTokens}</td>`,
-    `<td class="p-3 text-right">${savingsBadge(row.contentSavingsPercent)}</td>`,
-    `<td class="p-3 text-right tabular-nums">${row.onTotalOutput}</td>`,
-    `<td class="p-3 text-right tabular-nums">${row.offTotalOutput}</td>`,
-    `<td class="p-3 text-right tabular-nums">${percent(row.adoptionRate)}</td>`,
-    `<td class="p-3 text-right tabular-nums">${percent(row.onRetryRate)}</td>`,
-    `<td class="p-3 text-right tabular-nums">${percent(row.offRetryRate)}</td>`,
-    `<td class="p-3 text-right tabular-nums">${row.notices}</td>`,
-    `<td class="p-3 text-right tabular-nums">${row.noticeBytes}</td>`,
-    '</tr>',
+/** One A/B comparison card: ON | ratio | OFF side by side, headline ratio. */
+function abCard(row: ScenarioRow): string {
+  const headlineTone = row.contentSavingsPercent >= 10 ? 'positive' : row.contentSavingsPercent <= -10 ? 'negative' : 'neutral'
+  const verdict = row.contentSavingsPercent >= 10 ? '特性优势' : row.contentSavingsPercent <= -10 ? '特性劣势' : '中性'
+  const maxContent = Math.max(row.onContentTokens, row.offContentTokens, 1)
+  const metricRows: [string, string, string, string, ('positive' | 'negative' | 'neutral') | undefined][] = [
+    ['断点后步数', String(row.onSteps), String(row.offSteps), row.stepsRatio === 0 ? '—' : `${row.stepsRatio}×`, row.stepsRatio <= 1 ? 'positive' : 'negative'],
+    ['第一步输出（含推理）', String(row.onTokens), String(row.offTokens), `${row.savingsPercent}%`, row.savingsPercent >= 0 ? 'positive' : 'negative'],
+    ['内容 token（第一步）', String(row.onContentTokens), String(row.offContentTokens), `${row.contentSavingsPercent}%`, headlineTone],
+    ['全程输出（含推理）', String(row.onTotalOutput), String(row.offTotalOutput), `${row.totalSavingsPercent}%`, row.totalSavingsPercent >= 0 ? 'positive' : 'negative'],
+    ['断点后输入 token', String(row.onInput), String(row.offInput), '—', undefined],
+    ['重试成功率', percent(row.onRetryRate), percent(row.offRetryRate), `${row.onRetryPp > 0 ? '+' : ''}${row.onRetryPp}pp`, row.onRetryPp >= 0 ? 'positive' : 'negative'],
+    ['通知条数（中位）', String(row.notices), '—', row.notices === 0 ? '0（无额外失败）' : `${row.notices} 次迭代失败`, undefined],
+  ]
+  const rowsHtml = metricRows.map(([label, on, off, ratio, tone]) => [
+    '<div class="grid grid-cols-[1fr_auto_1fr] items-center gap-2 border-t py-2 text-sm">',
+    `<div class="tabular-nums text-right font-medium">${on}</div>`,
+    `<div class="w-24 text-center">${tone === undefined ? `<span class="text-xs text-muted-foreground">${ratio}</span>` : savingsCell(ratio, tone ?? 'neutral')}</div>`,
+    `<div class="tabular-nums text-muted-foreground">${off}</div>`,
+    `<div class="col-span-3 text-center text-[11px] uppercase tracking-wide text-muted-foreground">${label}</div>`,
+    '</div>',
   ].join('\n')).join('\n')
   return [
-    '<section class="space-y-3">',
-    `<h2 class="text-lg font-semibold tracking-tight">${title}</h2>`,
     '<div class="rounded-xl border bg-card text-card-foreground shadow-xs overflow-hidden">',
-    '<div class="overflow-x-auto">',
-    '<table class="w-full caption-bottom text-sm">',
-    '<thead class="bg-muted/50 [&_th]:h-10 [&_th]:px-3 [&_th]:text-left [&_th]:align-middle [&_th]:font-medium [&_th]:text-muted-foreground [&_th]:whitespace-nowrap">',
-    '<tr><th>场景</th><th class="text-right">ON 步数</th><th class="text-right">OFF 步数</th><th class="text-right">ON 第一步输出<br><span class="font-normal">含推理</span></th><th class="text-right">OFF 第一步输出<br><span class="font-normal">含推理</span></th><th class="text-right">第一步节省 %</th><th class="text-right">ON 内容 token</th><th class="text-right">OFF 内容 token</th><th class="text-right">内容节省 %</th><th class="text-right">ON 全程输出</th><th class="text-right">OFF 全程输出</th><th class="text-right">采用率</th><th class="text-right">重试成功 ON</th><th class="text-right">重试成功 OFF</th><th class="text-right">通知条数</th><th class="text-right">通知字节</th></tr>',
-    '</thead>',
-    `<tbody>${body}</tbody>`,
-    '</table>',
-    '</div></div></section>',
+    '<div class="flex flex-wrap items-center gap-2 border-b bg-muted/40 px-4 py-3">',
+    `<h3 class="text-sm font-semibold tracking-tight">${escapeHtml(row.scenario)}</h3>`,
+    `<span class="text-xs text-muted-foreground">${row.mode === 'native' ? 'native' : 'PTC'}</span>`,
+    '<span class="ml-auto flex items-center gap-2">',
+    badge(`内容 token ${row.contentSavingsPercent >= 0 ? '省' : '多'} ${Math.abs(row.contentSavingsPercent)}%`, headlineTone),
+    badge(verdict, headlineTone),
+    '</span>',
+    '</div>',
+    '<div class="space-y-0 px-4 pb-4">',
+    '<div class="flex items-center gap-2 pt-3 text-xs font-medium text-muted-foreground">',
+    '<span class="flex-1 text-right">ON（挂载插件）</span>',
+    '<span class="w-24 text-center">Δ 优化比</span>',
+    '<span class="flex-1">OFF（基线）</span>',
+    '</div>',
+    rowsHtml,
+    // Visual ratio bar: content tokens ON vs OFF.
+    '<div class="grid grid-cols-[1fr_auto_1fr] items-center gap-2 pt-3">',
+    '<div class="flex justify-end"><div class="flex h-2 w-full max-w-40 overflow-hidden rounded-full bg-muted"><div class="h-full bg-foreground/80" style="width:' + String(Math.round(row.onContentTokens / maxContent * 100)) + '%"></div></div></div>',
+    '<div class="w-24 text-center text-[11px] text-muted-foreground">内容 token</div>',
+    '<div class="flex"><div class="flex h-2 w-full max-w-40 overflow-hidden rounded-full bg-muted"><div class="h-full bg-muted-foreground/60" style="width:' + String(Math.round(row.offContentTokens / maxContent * 100)) + '%"></div></div></div>',
+    '</div>',
+    '<div class="flex flex-wrap items-center gap-2 pt-3">',
+    badge(`采用率 ${percent(row.adoptionRate)}`, row.adoptionRate >= 0.5 ? 'positive' : 'neutral'),
+    badge(`通知字节 ${row.noticeBytes}`, 'neutral'),
+    '</div>',
+    '</div>',
+    '</div>',
   ].join('\n')
+}
+
+/** Ratio cell with sign coloring. */
+function savingsCell(ratio: string, tone: 'positive' | 'negative' | 'neutral'): string {
+  const tones = {
+    positive: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400',
+    negative: 'border-destructive/30 bg-destructive/10 text-destructive dark:text-destructive-foreground',
+    neutral: 'border-border bg-muted text-muted-foreground',
+  }
+  return `<span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums ${tones[tone]}">${ratio}</span>`
 }
 
 /** Run metadata block: experiment identity, grader evidence, per-step tokens. */
@@ -480,7 +515,8 @@ function tabPanels(rows: ScenarioRow[]): string {
   const panels = (['native', 'code'] as const).map((mode) => {
     const group = rows.filter(row => row.mode === mode)
     if (group.length === 0) return ''
-    return `<div data-panel="${mode}" class="hidden space-y-6">${scenarioTable(mode === 'native' ? 'native 模式' : 'PTC（code）模式', group)}</div>`
+    const cards = group.map(abCard).join('\n')
+    return `<div data-panel="${mode}" class="hidden space-y-6">${cards}</div>`
   })
   const tabs = (['native', 'code'] as const)
     .filter(mode => rows.some(row => row.mode === mode))
