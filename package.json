@@ -18,8 +18,9 @@
     "test:watch": "vitest",
     "typecheck": "tsc -b --force && tsc -p tsconfig.tests.json",
     "check": "tsx scripts/check.ts",
-    "build:replay-fixtures": "tsx scripts/build-replay-fixtures.ts",
-    "e2e:real": "tsx scripts/e2e-real.ts"
+    "e2e:real": "tsx scripts/e2e-real.ts",
+    "build:fixtures": "tsx scripts/build-fixtures.ts",
+    "eval:real": "tsx scripts/eval.ts"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

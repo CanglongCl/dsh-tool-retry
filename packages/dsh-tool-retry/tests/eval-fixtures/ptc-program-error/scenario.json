@@ -1,0 +1,8 @@
+{
+  "name": "ptc-program-error",
+  "mode": "code",
+  "callId": "break_rc",
+  "tool": "run_code",
+  "continuation": "That program failed. Fix it with the smallest change, run the corrected program, and report the result.",
+  "notice": "Your failed `run_code` program was saved.\n- path: __CHECKPOINT_DIR__/by-id/break_rc.json\nTo apply a small fix, read and JSON.parse it in a new `run_code`\nprogram, replace the fragment, and run the corrected program with the\nAsyncFunction constructor."
+}
