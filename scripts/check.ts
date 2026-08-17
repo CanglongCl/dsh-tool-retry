@@ -19,7 +19,7 @@ import { spawnSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { dirname, join, relative } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { DEVELOPMENT_ENTRY_NAME, OFFICIAL_PACKAGE_NAME } from './development-entry.ts'
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
@@ -224,6 +224,52 @@ assert(
   () => `lib/index.js has non-builtin imports: ${esmImports(readFileSync(join(PKG, 'lib', 'index.js'), 'utf8'))
     .filter(specifier => !specifier.startsWith('node:')).join(', ')}`,
 )
+
+// Plugin form compliance (harness packages/AGENTS.md): the cordis shape,
+// HMR-safe disposal, and the canonical Model Experience README.
+assert(
+  'source entry declares the cordis plugin shape without a default export',
+  () => {
+    const source = readFileSync(join(PKG, 'src', 'index.ts'), 'utf8')
+    return source.includes("export const name = 'tool-retry'")
+      && source.includes("export const inject = ['tools', 'fs', 'systemPrompt']")
+      && source.includes('export const Config')
+      && source.includes('export function apply(')
+      && !source.includes('export default')
+  },
+  () => 'src/index.ts must export name/inject/Config/apply and never a default (unwrapExports collapse)',
+)
+assert(
+  'apply unwinds with ctx.effect (HMR-safe disposal)',
+  () => readFileSync(join(PKG, 'src', 'index.ts'), 'utf8').includes('ctx.effect('),
+  () => 'the plugin must register a ctx.effect teardown for HMR safety',
+)
+assert(
+  'package README follows the canonical Model Experience format',
+  () => {
+    const readme = readFileSync(join(PKG, 'README.md'), 'utf8')
+    return readme.includes('## Model Experience')
+      && readme.includes('#### What the model sees')
+      && readme.includes('#### Token effect')
+      && readme.includes('#### KV Cache effect')
+      && readme.includes('## Known Limitations and Deferred Work')
+  },
+  () => 'README.md must carry the Model Experience block and the Known Limitations section',
+)
+{
+  // The built artifact must expose the same shape over the class-identity
+  // boundary (the bundle inlines its own copies of the DSH classes).
+  const shape = await import(pathToFileURL(join(PKG, 'lib', 'index.js')).href) as Record<string, unknown>
+  assert(
+    'built entry exposes name/inject/Config/apply and no default',
+    () => typeof shape.name === 'string'
+      && Array.isArray(shape.inject)
+      && typeof shape.apply === 'function'
+      && (typeof shape.Config === 'function' || typeof shape.Config === 'object')
+      && shape.default === undefined,
+    () => 'lib/index.js must export the cordis plugin shape without a default export',
+  )
+}
 
 // Preset templates: two copies of the shipped compositions + one tool-retry row.
 const presetIds = ['tool-retry-standard', 'tool-retry-code']

@@ -1,6 +1,6 @@
 # @canglongcl/dsh-tool-retry
 
-External DSH agent-plane plugin that checkpoints every model tool-call block (success or failure) to the OS temp directory, injects one minimal notice per failed call, and provides the editPreviousToolCalling replay tool (native mode) so the model can fix a saved call's arguments instead of regenerating them. In code mode (PTC) no tool is registered; the model replays by reading the checkpoint inside a new run_code program, JSON.parsing it, applying a literal replace on the real program text, and eval'ing the corrected program in place.
+External DSH agent-plane plugin that checkpoints every model tool-call block (success or failure) to the OS temp directory, injects one minimal notice per failed call, and provides the editPreviousToolCalling replay tool (native mode) so the model can fix a saved call's arguments instead of regenerating them. In code mode (PTC) no tool is registered; the model replays by reading the checkpoint inside a new run_code program, JSON.parsing it, applying a literal replace on the real program text, and running the corrected program through the AsyncFunction constructor.
 
 The harness checkout is not modified.
 
@@ -14,8 +14,9 @@ pnpm gen-config        # regenerate the dev overlay after moving the repo
 pnpm install-presets   # install the two user presets under ~/.dsh/.agent-presets/
 pnpm dev               # launch the harness CLI with the dev alias linked
 pnpm dev:headless -- "<task>"  # one-shot self-test session through the headless profile
-pnpm test              # unit + integration + built-bundle boundary regressions
-pnpm check             # typecheck + unit suite + gen-config idempotence + staging allowlist
+pnpm test              # unit + integration + keyless llm-replay A/B + built-bundle boundary
+pnpm check             # typecheck + unit suite + fixture/gen-config idempotence + staging allowlist
+pnpm e2e:real          # real-API e2e (native + PTC); auto-skips without DEEPSEEK_API_KEY
 pnpm package:official  # stage the publishable tarball under dist/
 ```
 
@@ -29,30 +30,37 @@ pnpm package:official  # stage the publishable tarball under dist/
                                      # blocks; rebuilt each round (Windows: copy fallback)
 ```
 
-## Context model
+## Model Experience
 
-### What the model sees
+### Request surface and condition
 
-- **Static system-prompt section** tool:checkpoint-replay (order 149): the two access forms (by-id files and previous/1.json aliases), history.jsonl lookup, the usage matrix (previous message -> ordinal, older -> call id: failed ids were injected, successful ids come from history.jsonl), and the replay-tool usage. The PTC flavor describes the checkpoint as the whole previous run_code program.
-- **Per-failure notice** (every failure, via tools/post-execute additionalContexts): "saved + call id (+ by-id path in PTC) + use editPreviousToolCalling (PTC: edit/read + tools.run_code)". The failure reason is NOT repeated — the harness tool/result already carries it.
-- **Replay tool editPreviousToolCalling** (native only): { previous_ordinal?, call_id?, old_string, new_string, replace_all }, exactly one locator; edits the by-id file internally and re-invokes the original tool with the edited arguments.
-- The model never computes ids or paths; ids are injected verbatim and echoed back.
+#### What the model sees
 
-### Token effect
+Three surfaces, all conditional on the assembling scope being a session that mounts this plugin:
+
+- **Static system-prompt section** `tool:checkpoint-replay` (order 149): the two access forms (by-id files and previous/1.json aliases), history.jsonl lookup, the usage matrix (previous message -> ordinal, older -> call id: failed ids were injected, successful ids come from history.jsonl), and the replay-tool usage. The PTC flavor describes the checkpoint as the whole previous run_code program. The reviewed verbatim drafts live in the plan's appendix B (injection language is English).
+- **Per-failure notice** (every failing model-direct call, via tools/post-execute additionalContexts): "saved + call id (+ by-id path in PTC) + use editPreviousToolCalling (PTC: read + JSON.parse + replace + AsyncFunction re-run)". The failure reason is NOT repeated — the harness tool/result already carries it.
+- **Replay tool `editPreviousToolCalling`** (native only): { previous_ordinal?, call_id?, old_string, new_string, replace_all }, exactly one locator; edits the by-id file internally and re-invokes the original tool with the edited arguments.
+
+The model never computes ids or paths; ids are injected verbatim and echoed back.
+
+#### Token effect
 
 - Static section: ~100-180 tokens once per prompt assembly (mode-conditional).
 - Each failure notice: ~20-40 tokens, once per failure.
 - Checkpoint files and history.jsonl are not injected; the model pays nothing unless it chooses to read them.
 
-### KV Cache effect
+#### KV Cache effect
 
-- No per-turn context mutation beyond the static section and the occasional failure notice, so KV-cache reuse is unaffected in ordinary steps.
+- No per-turn context mutation beyond the static section and the occasional failure notice, so KV-cache reuse is unaffected in ordinary steps. A notice appends a user message after its failing tool result; the static section is prefix-stable for a given mode.
 
 ## Known Limitations and Deferred Work
 
-- Windows alias fallback is a content copy (edits through an alias diverge from by-id/).
+- Windows alias fallback is a content copy (edits through an alias diverge from by-id/; native replay edits by-id directly, so only PTC fs-tool edits are affected).
 - both mode is treated as code mode: the replay tool is not registered.
-- PTC retry guidance is eval-in-place: JSON.parse + literal replace on the parsed program text, then eval the corrected program (no JSON escaping in the match; `await`/`return` inherit the loader's async context). When the retry itself fails, the new checkpoint holds the loader — its file_path still points at the original program.
-- v1 embeds replay audit data in tool/result meta; a dedicated tool/replay session event is deferred (requires harness core changes).
+- PTC retry guidance is loader-based: JSON.parse + literal replace on the parsed program text (`prev.code`), then the corrected program runs through the AsyncFunction constructor — no JSON escaping enters the match, and top-level `return`/`await` keep their native run_code semantics (plain eval rejects `return` in strict mode). When the retry itself fails, the new checkpoint holds the loader — its file_path still points at the original program.
+- Replaying an UNKNOWN_TOOL checkpoint fails again (expected; the model moves on).
+- v1 embeds replay audit data in tool/result content and meta; a dedicated tool/replay session event is deferred (requires harness core changes).
 - Non-local fs backends (e.g. e2b) skip previous/ aliases; notices still carry exact paths.
 - ABORTED boundary (verified; see AGENTS.md "Zero filtering"): ABORTED_BEFORE_DISPATCH bypasses post-execute entirely (no checkpoint, no notice); a post-body ABORTED checkpoints but its result replacement happens after our decision (no notice).
+- os.tmpdir() may be reclaimed by the OS between sessions; within a session the plugin recreates directories as needed.
