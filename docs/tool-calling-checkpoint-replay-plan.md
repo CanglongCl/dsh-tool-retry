@@ -271,15 +271,17 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工�
 3. `pnpm package:official` 打包链路（staging + `cordis.patch.yml`）就绪。
 4. **验收**：native 与 code 双模式集成测试通过（§5.2）；「editPreviousToolCalling(id) → 编辑 → 重放」单次调用全链路可复现；code 模式确认不注册该工具、PTC 文案生效。
 
-### 阶段四：测试与验证
+### 阶段四：测试与验证 ✅（已实现）
 
 - 完整测试清单见 §5；独立仓库自身 CI：typecheck / lint / unit / 集成；keyless 快照与真实 e2e 纳入仓库脚本。
-- **验收**：§5 全部通过；插件包形态符合 harness 惯例（`name`/`inject`/`Config`/`apply` 导出、README Model Experience 格式）。
+- **实现落点**：单测 `tests/checkpoint.spec.ts` + `tests/replay-tool.spec.ts`；agent-loop 集成 `tests/integration.spec.ts`（含并行 block 各自可重放、call_id 多次重试）；代码模式集成 `tests/code-mode-integration.spec.ts`（内联程序运行时走真实 run_code 传输，§5.4 全部断言）；keyless llm-replay A/B `tests/mechanism-verify.spec.ts` + 断点语料 `tests/replay-fixtures/`（`replay.override.json` 脚本化双臂、逐场景 JSON 摘要快照断言、`pnpm build:fixtures` 幂等再生入 check 门禁）；真实 API e2e `pnpm e2e:real`（native + PTC，`DEEPSEEK_API_KEY` 门控、无 key 自动跳过）；插件形态合规（导出形状/HMR disposal/Model Experience README）入 check 门禁。
+- **验收**：§5 全部通过（`pnpm check` 全绿）；插件包形态符合 harness 惯例。
 
-### 阶段五：评测
+### 阶段五：评测 ✅（评测系统已实现；真实模型数据运行需 provider key）
 
 - 评测方案见 §6（真模型评测；机制验证已并入 §5 阶段四）。
-- **验收**：真模型评测数据（token 节省、重试成功率、采用率、开销）；结论支持/否定目标（§1）。
+- **实现落点**：断点快照语料 `tests/eval-fixtures/<scenario>/session-prefix.jsonl`（可恢复的完整前缀，与 §5.5 语料同源生成）；恢复驱动 `tests/support/real-eval-runner.ts`（published session-persistence-jsonl 恢复 + ON 臂预置 checkpoint 存储/观察）；keyless 恢复机制冒烟 `tests/eval-resume.spec.ts`（脚本化 mock 验证恢复 + 指标管线，进 commit 门禁）；真实模型驱动 `pnpm eval:real`（每场景 × 臂 × N≥3 次、指标：重试步输出 token/采用率/重试成功率/通知条数与字节、按 native/PTC 分表聚合、JSON 落 `.artifacts/eval/`）。
+- **验收**：真模型评测数据（token 节省、重试成功率、采用率、开销）——数据运行需要 `DEEPSEEK_API_KEY`（无 key 自动跳过；评测系统本体已由 keyless 冒烟与门禁全量验证）。结论支持/否定目标（§1）。
 
 ---
 

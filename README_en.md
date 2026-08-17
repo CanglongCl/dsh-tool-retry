@@ -93,8 +93,11 @@ pnpm gen-config        # regenerate the dev overlay (cordis.yml + entry-name.jso
 pnpm install-presets   # install the tool-retry-standard / tool-retry-code user presets
 pnpm dev               # link the dev alias and launch the harness Web CLI (needs DSH_HARNESS)
 pnpm dev:headless -- "<one-shot task>"   # self-test: one headless session runs the full loop and exits
-pnpm test              # unit + integration + built-bundle boundary regressions (vitest)
-pnpm check             # repo gate: typecheck + tests + gen-config idempotence + official allowlist
+pnpm test              # unit + integration + code-mode integration + keyless A/B + eval-resume smoke (vitest)
+pnpm build:fixtures    # regenerate the breakpoint corpora (replay-fixtures/ + eval-fixtures/; check verifies idempotence)
+pnpm e2e:real          # real-API e2e (native + PTC; needs DEEPSEEK_API_KEY, auto-skips without it)
+pnpm eval:real         # real-model evaluation (plan §6: per scenario x arm x N; reports under .artifacts/eval/)
+pnpm check             # repo gate: typecheck + tests + fixture/gen-config idempotence + official allowlist
 pnpm package:official  # assemble the publishable official tarball under dist/
 ```
 

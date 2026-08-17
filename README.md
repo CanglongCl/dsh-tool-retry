@@ -96,8 +96,11 @@ pnpm gen-config        # 生成开发覆盖层（cordis.yml + entry-name.json）
 pnpm install-presets   # 安装 tool-retry-standard / tool-retry-code 两个用户预设
 pnpm dev               # 链接开发别名并启动 harness Web CLI（需 DSH_HARNESS）
 pnpm dev:headless -- "<一句话任务>"   # 一次性自测：headless 会话跑完整闭环后退出
-pnpm test              # 单测 + 集成 + 构建产物边界回归（vitest）
-pnpm check             # 仓库门禁：typecheck + 单测 + gen-config 幂等 + 官方包 allowlist
+pnpm test              # 单测 + 集成 + 代码模式集成 + keyless A/B + eval 恢复机制冒烟（vitest）
+pnpm build:fixtures    # 重新生成断点语料（replay-fixtures/ + eval-fixtures/，check 校验幂等）
+pnpm e2e:real          # 真实 API e2e（native + PTC，需 DEEPSEEK_API_KEY，无 key 自动跳过）
+pnpm eval:real         # 真实模型评测（§6：每场景 × 臂 × N 次，报告输出到 .artifacts/eval/，需 key）
+pnpm check             # 仓库门禁：typecheck + 单测 + 语料/gen-config 幂等 + 官方包 allowlist
 pnpm package:official  # 组装可发布的官方 tarball 到 dist/
 ```
 
