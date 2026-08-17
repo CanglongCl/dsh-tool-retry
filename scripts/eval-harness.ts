@@ -96,6 +96,8 @@ if (!loadLayeredEnv()) {
 }
 
 const scenarioFilter = flagValue('scenario', '')
+const armFilter = flagValue('arm', '')
+const modeFilter = flagValue('mode', '')
 const scenarios = readdirSync(EVAL_FIXTURES, { withFileTypes: true })
   .filter(entry => entry.isDirectory())
   .map(entry => entry.name)
@@ -123,8 +125,8 @@ interface Queued {
   rep: number
 }
 const queue: Queued[] = scenarios.flatMap(name =>
-  MODES.flatMap(mode =>
-    ARMS.flatMap(arm =>
+  MODES.filter(mode => modeFilter === '' || mode === modeFilter).flatMap(mode =>
+    ARMS.filter(arm => armFilter === '' || arm === armFilter).flatMap(arm =>
       Array.from({ length: REPEATS }, (_, index) => ({ name, mode, arm, rep: index + 1 })))))
 console.log(`eval:real ${queue.length} run(s) queued, ${CONCURRENCY} concurrent, harness ${process.env.DSH_HARNESS}`)
 
