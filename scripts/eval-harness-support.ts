@@ -14,7 +14,9 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from 'node:fs'
@@ -41,6 +43,11 @@ export interface ScenarioMeta {
   successChecks?: { kind: 'fileExists' | 'fileContains' | 'writeSucceeded'; path: string; fragment?: string }[]
   workspaceRepo?: { path: string; commit: string }
   model?: { provider: string; model: string; reasoningEffort: string }
+  /** Fresh-start minimal scenarios: no recorded prefix; the failure happens
+   * inside THIS run so the plugin's notice channel fires for real. */
+  fresh?: boolean
+  task?: string
+  targetTool?: boolean
 }
 
 export interface LoadedScenario {
@@ -55,6 +62,15 @@ export interface LoadedScenario {
 
 export function loadScenario(dir: string): LoadedScenario {
   const scenario = JSON.parse(readFileSync(join(dir, 'scenario.json'), 'utf8')) as ScenarioMeta
+  if (scenario.fresh === true) {
+    return {
+      scenario,
+      header: { id: scenario.name, createdAt: 1 },
+      prefixText: '',
+      rows: [],
+      seededRows: 0,
+    }
+  }
   const lines = readFileSync(join(dir, 'session-prefix.jsonl'), 'utf8').split('\n').filter(line => line.trim() !== '')
   const header = JSON.parse(lines[0]!) as { id: string; createdAt: number }
   return {
@@ -201,6 +217,8 @@ export interface RunConfig {
   mockScript?: unknown[]
   /** Retry-success criterion JSON — the driver stop-at cut. */
   grader: { kind: 'deploy' | 'boom' | 'fs' | 'plan'; mode: 'native' | 'code'; checks: { kind: string; path: string; fragment?: string }[] }
+  start: { kind: 'fresh'; task: string } | { kind: 'resume'; sessionId: string }
+  targetTool: boolean
 }
 
 /** Write the per-run cordis overlay (the dsh-web-review writeOverlay port). */
@@ -219,6 +237,8 @@ export function writeOverlay(runDir: string, config: RunConfig, sessionsRoot: st
     ...(config.reasoningEffort === '' ? [] : [`        reasoningEffort: ${config.reasoningEffort}`]),
     ...(config.mockScript === undefined ? [] : [`        mock: '${JSON.stringify(config.mockScript).replaceAll("'", "''")}'`]),
     `        grader: '${JSON.stringify(config.grader).replaceAll("'", "''")}'`,
+    `        start: '${JSON.stringify(config.start).replaceAll("'", "''")}'`,
+    `        targetTool: '${config.targetTool ? 'true' : 'false'}'`,
   ]
   if (config.arm === 'on') {
     rows.push('    - id: tool-retry', `      name: '${PLUGIN_ALIAS}'`)
@@ -478,11 +498,34 @@ export function buildSummary(
   }
 }
 
-/** Copy the child's harvested session log + workspace into the run dir. */
+/** Copy the child's harvested session log + workspace into the run dir.
+ * The exact session path is tried first; otherwise the sessions root is
+ * scanned for the newest log (the web-review collectSessionLog fallback —
+ * fresh sessions may derive a different project dir under the backend). */
 export function collectArtifacts(sessionsRoot: string, workspaceDir: string, sessionId: string, runDir: string): void {
   mkdirSync(runDir, { recursive: true })
   const log = sessionLogPath(sessionsRoot, workspaceDir, sessionId)
-  if (existsSync(log)) copyFileSync(log, join(runDir, 'session.jsonl'))
+  if (existsSync(log)) {
+    copyFileSync(log, join(runDir, 'session.jsonl'))
+  } else {
+    const found: { path: string; mtime: number }[] = []
+    const walk = (dir: string): void => {
+      let entries: string[] = []
+      try {
+        entries = readdirSync(dir, { withFileTypes: true })
+          .map(entry => join(dir, entry.name))
+      } catch { return }
+      for (const entry of entries) {
+        try {
+          if (statSync(entry).isDirectory()) walk(entry)
+          else if (entry.endsWith('session.jsonl')) found.push({ path: entry, mtime: statSync(entry).mtimeMs })
+        } catch { /* skip */ }
+      }
+    }
+    walk(sessionsRoot)
+    const newest = found.sort((a, b) => b.mtime - a.mtime)[0]
+    if (newest !== undefined) copyFileSync(newest.path, join(runDir, 'session.jsonl'))
+  }
   mkdirSync(join(runDir, 'workspace'), { recursive: true })
   cpSync(workspaceDir, join(runDir, 'workspace'), {
     recursive: true,

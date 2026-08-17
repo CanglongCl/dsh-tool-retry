@@ -14,6 +14,7 @@ import z from '@deepseek-ai/schemastery'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { installModelSelection, type ModelSelectionRef } from '@deepseek-ai/dsh-agent'
+import { defineTool } from '@deepseek-ai/dsh-tools'
 import { createUserMessage } from '@deepseek-ai/dsh-llm/message'
 import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
@@ -23,7 +24,7 @@ import { MockAdapter } from './mock-adapter.ts'
 export const name = 'dsh-tool-retry-eval-runner'
 
 /** Core services required before the resume can start. */
-export const inject = ['agentDefaultModel', 'agents', 'sessions', 'llm']
+export const inject = ['agentDefaultModel', 'agents', 'sessions', 'llm', 'tools']
 
 /** Plugin config, populated by the per-run overlay. */
 export interface Config {
@@ -42,6 +43,13 @@ export interface Config {
    * the run the moment it passes (stop-at), so successful retries end in a
    * few steps instead of waiting for the turn to converge. */
   grader: string
+  /** JSON start spec: { kind: 'resume', sessionId } (the breakpoint corpus)
+   * or { kind: 'fresh', task } (minimal live scenarios — the failure happens
+   * IN this run, so the plugin's notice channel fires for real). */
+  start: string
+  /** 'true' mounts the deterministic eval_target tool (minimal live scenario:
+   * version 'v1' throws, anything else writes OK-<version> to target-result.txt). */
+  targetTool: string
 }
 
 export const Config: z<Config> = z.object({
@@ -52,6 +60,8 @@ export const Config: z<Config> = z.object({
   reasoningEffort: z.string(),
   mock: z.string(),
   grader: z.string(),
+  start: z.string(),
+  targetTool: z.string(),
 })
 
 /** Process-facing effects of one run (mirrors the headless bundle). */
@@ -144,6 +154,29 @@ function lastReason(session: { events: readonly { type: string; data?: { reason?
   return 'unknown'
 }
 
+/** The deterministic minimal-scenario tool: the first call the task forces
+ * (version 'v1') fails for real; any later call succeeds and writes the
+ * grader marker into the workspace. */
+function registerTargetTool(ctx: Context): void {
+  ctx.tools.register(defineTool({
+    name: 'eval_target',
+    description: 'Submit a version marker for the evaluation target.',
+    parameters: { version: { type: 'string', required: true, description: 'The version marker to submit.' } },
+    output: {
+      schema: { type: 'object', additionalProperties: false, properties: { ok: { type: 'boolean', required: true } } },
+      render: (_args, value) => [{ type: 'text', text: `target ok: ${String(value.ok)}` }],
+    },
+    async execute(args) {
+      const version = String(args.version)
+      if (version === 'v1') throw new Error('target rejected version "v1"')
+      const { writeFileSync } = await import('node:fs')
+      const { join } = await import('node:path')
+      writeFileSync(join(process.cwd(), 'target-result.txt'), `OK-${version}\n`)
+      return { ok: true }
+    },
+  }))
+}
+
 async function run(ctx: Context, config: Config, io: RunnerIo): Promise<void> {
   // Loader siblings mount concurrently; await the complete application.
   await (ctx.get('loader') as { await(): Promise<void> } | undefined)?.await()
@@ -154,6 +187,7 @@ async function run(ctx: Context, config: Config, io: RunnerIo): Promise<void> {
   if (config.mock !== undefined && config.mock !== '') {
     ctx.llm.registerAdapter(['mock'], new MockAdapter(JSON.parse(config.mock) as never[]))
   }
+  if (config.targetTool === 'true') registerTargetTool(ctx)
   const effort = config.reasoningEffort ?? ''
   const current: ModelSelectionRef['current'] = {
     provider: config.provider,
@@ -164,18 +198,30 @@ async function run(ctx: Context, config: Config, io: RunnerIo): Promise<void> {
   }
   const selection: ModelSelectionRef = { current, assembled: undefined }
 
-  // Resume the pre-seeded breakpoint session (the eval plan's delta vs the
-  // headless bundle's fresh agents.create): the real harness composition
-  // reconstructs the session with its interrupted-turn repair, then the
-  // neutral wake opens the retry turn.
-  const { agent } = await agents.resume({
-    resumeSessionId: SessionId(config.sessionId),
-    agentOptions: { provider: config.provider, model: config.model },
-    setup: (agentCtx: Context) => {
-      installModelSelection(agentCtx, selection)
-    },
-  })
-  const wake = JSON.parse(config.wake) as { kind: 'empty' | 'user'; text?: string }
+  // Two start shapes: RESUME a pre-seeded breakpoint session (the real
+  // corpus), or FRESH-create a session for minimal live scenarios where the
+  // failure happens inside THIS run — the only way the plugin's notice
+  // channel actually fires and drives adoption.
+  const start = JSON.parse(config.start === undefined || config.start === '' ? '{}' : config.start) as
+    { kind: 'resume'; sessionId: string } | { kind: 'fresh'; task: string }
+  const setup = (agentCtx: Context) => {
+    installModelSelection(agentCtx, selection)
+  }
+  const { agent } = start.kind === 'resume'
+    ? await agents.resume({
+        resumeSessionId: SessionId(start.sessionId),
+        agentOptions: { provider: config.provider, model: config.model },
+        setup,
+      })
+    : await agents.create({
+        sessionId: SessionId(config.sessionId ?? 'mini'),
+        meta: { cwd: process.cwd() },
+        agentOptions: { provider: config.provider, model: config.model },
+        setup,
+      })
+  const wake = start.kind === 'fresh'
+    ? { kind: 'user', text: start.task }
+    : JSON.parse(config.wake) as { kind: 'empty' | 'user'; text?: string }
   const grader = JSON.parse(config.grader === undefined || config.grader === '' ? '{}' : config.grader) as GraderSpec
   const firstSeq = agent.session.seq
   // Stop-at: the moment the retry criterion passes (checked one tick after

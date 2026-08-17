@@ -246,10 +246,14 @@ export function buildEvalFixtures(root = EVAL_FIXTURES): string[] {
   // gate's regeneration stays byte-identical. Full-session prefixes are
   // committed zstd-compressed (session-prefix.jsonl.zstd) and decompressed
   // deterministically into the built corpus.
-  const srcRoot = join(ROOT, 'packages', 'dsh-tool-retry', 'tests', 'eval-fixtures-src', 'real')
-  for (const name of readdirSync(srcRoot).sort()) {
-    const src = join(srcRoot, name)
-    if (!statSync(src).isDirectory()) continue
+  // Real corpus (crop-produced) + hand-authored MINIMAL live scenarios
+  // (fresh-start, no session prefix) share the same verbatim-copy contract.
+  const srcRoots = ['real', 'mini'].map(kind => join(ROOT, 'packages', 'dsh-tool-retry', 'tests', 'eval-fixtures-src', kind))
+  const names = [...new Set(srcRoots.flatMap(srcRoot => readdirSync(srcRoot).sort()))]
+  for (const name of names) {
+    const srcCandidates = srcRoots.map(srcRoot => join(srcRoot, name)).filter(src => existsSync(src))
+    const src = srcCandidates[0] ?? ''
+    if (src === '' || !statSync(src).isDirectory()) continue
     const dir = join(root, name)
     mkdirSync(dir, { recursive: true })
     copyFileSync(join(src, 'scenario.json'), join(dir, 'scenario.json'))
@@ -258,10 +262,10 @@ export function buildEvalFixtures(root = EVAL_FIXTURES): string[] {
     const plain = join(dir, 'session-prefix.jsonl')
     if (existsSync(compressed)) {
       writeFileSync(plain, execFileSync('zstd', ['-dc', compressed], { maxBuffer: 512 * 1024 * 1024 }))
-    } else {
+    } else if (existsSync(join(src, 'session-prefix.jsonl'))) {
       copyFileSync(join(src, 'session-prefix.jsonl'), plain)
+      written.push(plain)
     }
-    written.push(plain)
   }
   return written
 }

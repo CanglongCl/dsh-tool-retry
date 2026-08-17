@@ -172,8 +172,13 @@ function runOne(queued: Queued): Promise<RunRecord> {
   const workspaceDir = stageWorkspace(loaded)
   const sessionsRoot = join(liveRoot, 'sessions')
   const runDir = join(OUT_DIR, 'runs', stamp, name, mode, arm, `r${rep}`)
-  seedSession(loaded, sessionsRoot, sessionId, workspaceDir)
-  if (arm === 'on') seedCheckpoints(loaded, sessionId)
+  if (loaded.scenario.fresh === true) {
+    // Minimal live scenarios: no recorded prefix to seed; the driver creates
+    // the session and the failure happens inside this run.
+  } else {
+    seedSession(loaded, sessionsRoot, sessionId, workspaceDir)
+    if (arm === 'on') seedCheckpoints(loaded, sessionId)
+  }
   const dshHome = join(liveRoot, 'dsh-home')
   mkdirSync(dshHome, { recursive: true })
   // Profile-local dev aliases (the same loading model as the dev profile).
@@ -191,6 +196,10 @@ function runOne(queued: Queued): Promise<RunRecord> {
     sessionId, arm, mode, provider: model.provider, model: model.model,
     reasoningEffort: REASONING, wake,
     grader: { kind: scenario.kind, mode, checks: scenario.successChecks ?? [] },
+    start: loaded.scenario.fresh === true
+      ? { kind: 'fresh', task: loaded.scenario.task ?? '' }
+      : { kind: 'resume', sessionId },
+    targetTool: loaded.scenario.targetTool === true,
   }, sessionsRoot)
   const bin = resolveHarnessCli()
   return spawnRun(bin, workspaceDir, overlayPath, dshHome, mode, DEADLINE_MS + 30_000).then((outcome) => {

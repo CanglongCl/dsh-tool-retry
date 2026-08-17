@@ -98,6 +98,8 @@ const overlayPath = writeOverlay(liveRoot, {
   wake: { kind: 'empty' },
   mockScript: script,
   grader: { kind: scenario.kind, mode: 'native', checks: scenario.successChecks ?? [] },
+  start: { kind: 'resume', sessionId },
+  targetTool: false,
 }, sessionsRoot)
 
 const harnessRoot = process.env.DSH_HARNESS
