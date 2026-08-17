@@ -241,26 +241,113 @@ export function buildReplayFixtures(root = FIXTURES): string[] {
 /* §6 eval corpus: resumable breakpoint prefixes                        */
 /* ------------------------------------------------------------------ */
 
-/** One resumable breakpoint snapshot (plan §6 scenario). */
-interface EvalScenario {
-  name: string
-  createdAt: number
-  mode: 'native' | 'code'
-  /** The breakpoint call identity (the notice and checkpoint store key). */
+/** One failing tool-call block of the breakpoint round. */
+interface EvalBlock {
   callId: string
   tool: string
   /** The raw argument string byte-identical to what the model sent. */
   rawArguments: string
   /** The recorded failure text the tool/result carries. */
   errorText: string
+  /** The ON-arm notice for this block (the `__CHECKPOINT_DIR__` token is
+   * patched by the driver at load time). */
+  notice: string
+}
+
+/** The tool family one scenario's runner composition must mount. */
+type EvalKind = 'deploy' | 'boom' | 'fs' | 'plan'
+
+/** Post-run workspace-state checks (behavioral retry-success evidence). */
+interface EvalSuccessCheck {
+  kind: 'fileExists' | 'fileContains'
+  path: string
+  fragment?: string
+}
+
+/** One resumable breakpoint snapshot (plan §6 scenario). */
+interface EvalScenario {
+  name: string
+  createdAt: number
+  mode: 'native' | 'code'
+  kind: EvalKind
+  /** The breakpoint round's failing blocks, in model order. */
+  blocks: EvalBlock[]
   /** The original user task (prefix history). */
   task: string
   /** The mode-neutral continuation instruction the eval feeds post-break. */
   continuation: string
-  /** The ON-arm notice text (recorded at the end of the prefix; the
-   * `__CHECKPOINT_DIR__` token is patched by the driver at load time). */
-  notice: string
+  /** Workspace files pre-created before resume (fs scenarios). */
+  workspaceFiles?: { path: string; content: string }[]
+  /** Post-run workspace-state checks that prove the retry succeeded. */
+  successChecks?: EvalSuccessCheck[]
 }
+
+/** The long text both fs-tool blocks carry (the regeneration cost). */
+const LONG_BODY = [
+  '# 迁移与回滚指南',
+  '',
+  '本节说明缓存层的迁移顺序与回滚路径，内容较长，修改时请保持完整性：',
+  '1. 迁移前置：冻结旧接口的写入开关 feature.legacy-write，灰度比例 0%。',
+  '2. 双写阶段：新写入同时落旧存储与缓存层，读路径仍走旧存储，持续 3 个观察窗口。',
+  '3. 切换阶段：读路径切到缓存层，旧存储保留为冷备，回滚开关 feature.read-fallback 保持开启。',
+  '4. 收敛阶段：关闭双写，旧存储进入只读归档；回滚时按 3→2→1 逆序执行。',
+  '关键指标：命中率 ≥ 95%，p99 延迟 ≤ 12ms，错误率增幅 ≤ 0.1%。',
+  '负责人：平台组值班同学；演练窗口：每周四 02:00-04:00。',
+  '回滚预案：任一步骤触发 SLO 告警即冻结灰度并执行逆序回退，回退预计 5 分钟内完成。',
+].join('\n')
+
+/** The current on-disk notes.md (version B) — the breakpoint edit's stale
+ * old_string predates it. */
+const NOTES_V2 = [
+  '// notes.md — 当前版本（v2）',
+  '// v2: 开头段落已改为新的格式说明，下方正文保持不变。',
+  '',
+  LONG_BODY,
+  '',
+  '// 附录：本文件由评测场景自动生成，供长文本 edit 重试使用。',
+].join('\n')
+
+/** A fragment of v1 the breakpoint edit still references — v2 dropped it,
+ * so the live file no longer contains it (the failure premise). */
+const NOTES_STALE_FRAGMENT = '// notes.md — 初始版本（v1）'
+
+/** The long replacement text the breakpoint edit wanted to insert. */
+const LONG_NEW_STRING = [
+  '缓存层迁移手册（修订版）',
+  '',
+  '本手册描述缓存层迁移的完整流程，补充了如下内容：',
+  '- 迁移前的容量评估与压测基线（基线 p99 与吞吐记录表）；',
+  '- 双写阶段的数据一致性校验（对账任务 cron 与偏差告警阈值）；',
+  '- 切换阶段的灰度策略与自动熔断规则；',
+  '- 收敛阶段后的归档保留期（180 天）与审计要求。',
+  '其余章节与旧版一致，见正文。',
+].join('\n')
+
+/** The long implementation plan the exit_plan_mode block presents. */
+const LONG_PLAN = [
+  '# 缓存改造实施计划',
+  '',
+  '## 1. 背景与目标',
+  '为读多写少的核心查询路径引入独立缓存层，目标：命中率 ≥ 95%，p99 延迟下降 40%。',
+  '',
+  '## 2. 实施方案',
+  '直接改造现有模块：在 service 层内联缓存读写，沿用现有连接池，改动范围集中在 3 个文件。',
+  '',
+  '## 3. 灰度与验收',
+  '灰度 1% → 10% → 100%，每档观察 1 天；验收标准：SLO 无回退、命中率达标。',
+  '',
+  '## 4. 风险与回滚',
+  '风险：连接池争用；回滚：关闭开关即回退到直连。',
+  '',
+  '## 5. 监控与告警',
+  '新增命中率、p99 延迟、错误率三块看板，阈值告警接入值班。',
+].join('\n')
+
+const PLAN_REJECTION_FEEDBACK = [
+  'exit_plan_mode rejected — user feedback:',
+  '第 2 节不要直接改造现有模块，改为新增独立缓存层服务；',
+  '删除第 5 节「监控与告警」，其余保留。',
+].join('\n')
 
 /** The long native config WITHOUT the required `kind` field (INVALID_ARGS). */
 function deployArgsMissingKind(label: string): object {
@@ -272,58 +359,112 @@ function deployArgsMissingKind(label: string): object {
 /** A truncated (invalid) JSON argument string for the invalid-JSON scenario. */
 const BROKEN_DEPLOY_JSON = '{"config": {"kind": "valid", "label": "payments", "replicas": 3, "template": "kind: Deployment\\n"'
 
+const nativeNotice = (callId: string): string => [
+  "Your failed call's arguments were saved.",
+  `- call id: ${callId}`,
+  'To apply a small fix and re-run the call, use `editPreviousToolCalling`',
+  `(with call_id "${callId}" — it stays valid).`,
+].join('\n')
+
 const EVAL_SCENARIOS: EvalScenario[] = [
   {
     name: 'native-invalid-args',
     createdAt: 11,
     mode: 'native',
-    callId: 'break_1',
-    tool: 'deploy',
-    rawArguments: JSON.stringify(deployArgsMissingKind('payments')),
-    errorText: 'invalid arguments for deploy: required field config.kind is missing',
+    kind: 'deploy',
+    blocks: [{
+      callId: 'break_1',
+      tool: 'deploy',
+      rawArguments: JSON.stringify(deployArgsMissingKind('payments')),
+      errorText: 'invalid arguments for deploy: required field config.kind is missing',
+      notice: nativeNotice('break_1'),
+    }],
     task: 'Deploy the payments service with a long configuration (you forgot the config.kind field).',
     continuation: 'That deploy call failed. Retry it with the smallest possible change and report the outcome.',
-    notice: [
-      "Your failed call's arguments were saved.",
-      '- call id: break_1',
-      'To apply a small fix and re-run the call, use `editPreviousToolCalling`',
-      '(with call_id "break_1" — it stays valid).',
-    ].join('\n'),
   },
   {
     name: 'native-invalid-json',
     createdAt: 12,
     mode: 'native',
-    callId: 'break_2',
-    tool: 'deploy',
-    rawArguments: BROKEN_DEPLOY_JSON,
-    errorText: 'tool call arguments are not valid JSON: unexpected end of input',
+    kind: 'deploy',
+    blocks: [{
+      callId: 'break_2',
+      tool: 'deploy',
+      rawArguments: BROKEN_DEPLOY_JSON,
+      errorText: 'tool call arguments are not valid JSON: unexpected end of input',
+      notice: nativeNotice('break_2'),
+    }],
     task: 'Deploy the payments service with a long configuration.',
     continuation: 'That deploy call failed. Retry it with the smallest possible change and report the outcome.',
-    notice: [
-      "Your failed call's arguments were saved.",
-      '- call id: break_2',
-      'To apply a small fix and re-run the call, use `editPreviousToolCalling`',
-      '(with call_id "break_2" — it stays valid).',
-    ].join('\n'),
   },
   {
     name: 'ptc-program-error',
     createdAt: 13,
     mode: 'code',
-    callId: 'break_rc',
-    tool: 'run_code',
-    rawArguments: JSON.stringify({ code: PTC_ORIGINAL, description: 'run the failing program' }),
-    errorText: 'code run failed (exception): boom failed on v1-marker',
+    kind: 'boom',
+    blocks: [{
+      callId: 'break_rc',
+      tool: 'run_code',
+      rawArguments: JSON.stringify({ code: PTC_ORIGINAL, description: 'run the failing program' }),
+      errorText: 'code run failed (exception): boom failed on v1-marker',
+      notice: [
+        'Your failed `run_code` program was saved.',
+        '- path: __CHECKPOINT_DIR__/by-id/break_rc.json',
+        'To apply a small fix, read and JSON.parse it in a new `run_code`',
+        'program, replace the fragment, and run the corrected program with the',
+        'AsyncFunction constructor.',
+      ].join('\n'),
+    }],
     task: 'Write one run_code program that calls tools.boom({ value: "v1-marker" }) and returns its value.',
     continuation: 'That program failed. Fix it with the smallest change, run the corrected program, and report the result.',
-    notice: [
-      'Your failed `run_code` program was saved.',
-      '- path: __CHECKPOINT_DIR__/by-id/break_rc.json',
-      'To apply a small fix, read and JSON.parse it in a new `run_code`',
-      'program, replace the fragment, and run the corrected program with the',
-      'AsyncFunction constructor.',
-    ].join('\n'),
+  },
+  {
+    name: 'native-long-fs-write-edit',
+    createdAt: 14,
+    mode: 'native',
+    kind: 'fs',
+    blocks: [
+      {
+        callId: 'break_fs_w',
+        tool: 'write',
+        rawArguments: JSON.stringify({ content: LONG_BODY }),
+        errorText: 'invalid arguments for write: required field file_path is missing',
+        notice: nativeNotice('break_fs_w'),
+      },
+      {
+        callId: 'break_fs_e',
+        tool: 'edit',
+        rawArguments: JSON.stringify({
+          file_path: 'notes.md',
+          old_string: NOTES_STALE_FRAGMENT,
+          new_string: LONG_NEW_STRING,
+        }),
+        errorText: 'edit failed: old_string not found in notes.md (the file has changed)',
+        notice: nativeNotice('break_fs_e'),
+      },
+    ],
+    task: 'Update notes.md (replace the migration-guide section with a longer revised handbook) and also write the new handbook to report.md.',
+    continuation: "Both tool calls failed (the write lacked a required field; the edit's old_string no longer matches the file). Fix each one with the smallest change and retry, then report the outcome.",
+    workspaceFiles: [{ path: 'notes.md', content: NOTES_V2 }],
+    successChecks: [
+      { kind: 'fileExists', path: 'report.md' },
+      { kind: 'fileContains', path: 'notes.md', fragment: '缓存层迁移手册（修订版）' },
+    ],
+  },
+  {
+    name: 'native-plan-rejected',
+    createdAt: 15,
+    mode: 'native',
+    kind: 'plan',
+    blocks: [{
+      callId: 'break_plan',
+      tool: 'exit_plan_mode',
+      rawArguments: JSON.stringify({ plan: LONG_PLAN }),
+      errorText: PLAN_REJECTION_FEEDBACK,
+      notice: nativeNotice('break_plan'),
+    }],
+    task: 'Write an implementation plan for the caching refactor and submit it for review via exit_plan_mode.',
+    continuation: 'Your plan was rejected — the user feedback is in the failure result. Revise the plan accordingly and re-submit it through exit_plan_mode with the smallest change, then report the outcome.',
   },
 ]
 
@@ -333,8 +474,8 @@ function evalPrefix(scenario: EvalScenario): string {
     type: 'session', version: 0, id: `${scenario.name}-prefix`, createdAt: scenario.createdAt,
     cwd: '/workspace', delegationDepth: 0,
   })]
-  const events: { type: string; data: unknown; surfaceOp?: 'append' }[] = [
-    { type: 'turn/start', data: { turn: 1 } },
+  const events: { type: string; data: unknown; surfaceOp: 'append' | undefined }[] = [
+    { type: 'turn/start', surfaceOp: undefined, data: { turn: 1 } },
     {
       type: 'user/message',
       data: {
@@ -345,7 +486,7 @@ function evalPrefix(scenario: EvalScenario): string {
       },
       surfaceOp: 'append',
     },
-    { type: 'step/start', data: { turn: 1, step: 1 } },
+    { type: 'step/start', surfaceOp: undefined, data: { turn: 1, step: 1 } },
     {
       type: 'assistant/message',
       data: {
@@ -353,35 +494,42 @@ function evalPrefix(scenario: EvalScenario): string {
         step: 1,
         message: {
           role: 'assistant',
-          content: [{ type: 'tool-call', id: scenario.callId, name: scenario.tool, arguments: scenario.rawArguments }],
+          content: scenario.blocks.map(block => ({ type: 'tool-call', id: block.callId, name: block.tool, arguments: block.rawArguments })),
           source: { kind: 'model', provider: 'deepseek-official', model: 'deepseek-v4-flash' },
           id: 'prefix-assistant-message',
         },
-        usage: { inputTokens: 400, outputTokens: scenario.rawArguments.length, cacheReadTokens: 0, reasoningTokens: 0 },
-      },
-      surfaceOp: 'append',
-    },
-    { type: 'tool/call', data: { turn: 1, step: 1, callId: scenario.callId, name: scenario.tool, arguments: scenario.rawArguments } },
-    {
-      type: 'tool/result',
-      data: {
-        turn: 1,
-        step: 1,
-        message: {
-          source: { kind: 'tool', callId: scenario.callId },
-          content: [{
-            type: 'tool-result',
-            toolCallId: scenario.callId,
-            content: [{ type: 'text', text: scenario.errorText }],
-            isError: true,
-          }],
-          role: 'user',
-          id: 'prefix-tool-result-message',
+        usage: {
+          inputTokens: 400,
+          outputTokens: scenario.blocks.reduce((sum, block) => sum + block.rawArguments.length, 0),
+          cacheReadTokens: 0,
+          reasoningTokens: 0,
         },
       },
       surfaceOp: 'append',
     },
-    { type: 'step/end', data: { turn: 1, step: 1 } },
+    ...scenario.blocks.flatMap((block): { type: string; data: unknown; surfaceOp: 'append' | undefined }[] => [
+      { type: 'tool/call', surfaceOp: undefined, data: { turn: 1, step: 1, callId: block.callId, name: block.tool, arguments: block.rawArguments } },
+      {
+        type: 'tool/result',
+        data: {
+          turn: 1,
+          step: 1,
+          message: {
+            source: { kind: 'tool', callId: block.callId },
+            content: [{
+              type: 'tool-result',
+              toolCallId: block.callId,
+              content: [{ type: 'text', text: block.errorText }],
+              isError: true,
+            }],
+            role: 'user',
+            id: `prefix-tool-result-${block.callId}`,
+          },
+        },
+        surfaceOp: 'append' as const,
+      },
+    ]),
+    { type: 'step/end', surfaceOp: undefined, data: { turn: 1, step: 1 } },
   ]
   let seq = 0
   let time = scenario.createdAt
@@ -409,10 +557,11 @@ export function buildEvalFixtures(root = EVAL_FIXTURES): string[] {
     writeFileSync(join(dir, 'scenario.json'), `${JSON.stringify({
       name: scenario.name,
       mode: scenario.mode,
-      callId: scenario.callId,
-      tool: scenario.tool,
+      kind: scenario.kind,
+      blocks: scenario.blocks,
       continuation: scenario.continuation,
-      notice: scenario.notice,
+      ...scenario.workspaceFiles === undefined ? {} : { workspaceFiles: scenario.workspaceFiles },
+      ...scenario.successChecks === undefined ? {} : { successChecks: scenario.successChecks },
     }, null, 2)}\n`)
     written.push(join(dir, 'scenario.json'))
   }

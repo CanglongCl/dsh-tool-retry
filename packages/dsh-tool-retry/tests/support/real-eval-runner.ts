@@ -30,7 +30,7 @@ import { SESSION_FORMAT_VERSION, SessionId } from '@deepseek-ai/dsh-session'
 import SessionPersistenceJsonl from '@deepseek-ai/dsh-session-persistence-jsonl'
 import * as ToolFs from '@deepseek-ai/dsh-tool-fs'
 import { defineTool } from '@deepseek-ai/dsh-tools'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import * as ToolRetry from '../../src/index.ts'
@@ -41,10 +41,15 @@ import { waitForIdle } from './real-e2e-runner.ts'
 export interface EvalFixture {
   name: string
   mode: 'native' | 'code'
-  callId: string
-  tool: string
+  /** The tool family the runner composition must mount. */
+  kind: 'deploy' | 'boom' | 'fs' | 'plan'
+  /** The breakpoint round's failing blocks, in model order. */
+  blocks: { callId: string; tool: string; rawArguments: string; errorText: string; notice: string }[]
   continuation: string
-  notice: string
+  /** Workspace files pre-created before resume (fs scenarios). */
+  workspaceFiles?: { path: string; content: string }[]
+  /** Post-run workspace-state checks (fs scenarios' retry-success evidence). */
+  successChecks?: { kind: 'fileExists' | 'fileContains'; path: string; fragment?: string }[]
   /** Parsed prefix events (header id/createdAt + session events). */
   header: { id: string; createdAt: number }
   events: unknown[]
@@ -52,14 +57,7 @@ export interface EvalFixture {
 
 /** Parse one committed eval fixture directory into a runnable snapshot. */
 export function loadEvalFixture(dir: string): EvalFixture {
-  const scenario = JSON.parse(readFileSync(join(dir, 'scenario.json'), 'utf8')) as {
-    name: string
-    mode: 'native' | 'code'
-    callId: string
-    tool: string
-    continuation: string
-    notice: string
-  }
+  const scenario = JSON.parse(readFileSync(join(dir, 'scenario.json'), 'utf8')) as EvalFixture
   const lines = readFileSync(join(dir, 'session-prefix.jsonl'), 'utf8').split('\n').filter(line => line.trim().length > 0)
   const header = JSON.parse(lines[0]!) as { id: string; createdAt: number }
   const events = lines.slice(1).map(line => JSON.parse(line) as unknown)
@@ -133,7 +131,7 @@ export async function runEvalScenario(options: EvalRunOptions): Promise<EvalRunS
       systemPrompt: { persona: 'dsh-tool-retry evaluation agent' },
     })
     if (fixture.mode === 'code') await ctx.plugin(InlineRuntime)
-    if (fixture.mode === 'native') {
+    if (fixture.kind === 'deploy') {
       ctx.tools.register(defineTool({
         name: 'deploy',
         description: 'deploy a service configuration',
@@ -152,7 +150,7 @@ export async function runEvalScenario(options: EvalRunOptions): Promise<EvalRunS
           return { ok: true }
         },
       }))
-    } else {
+    } else if (fixture.kind === 'boom') {
       ctx.tools.register(defineTool({
         name: 'boom',
         description: 'fails when value is "v1-marker"',
@@ -171,10 +169,33 @@ export async function runEvalScenario(options: EvalRunOptions): Promise<EvalRunS
           return { ok: true }
         },
       }))
+    } else if (fixture.kind === 'plan') {
+      // The plan-review exit tool: the recorded breakpoint carries the user
+      // rejection + feedback; live submissions succeed (re-submission after
+      // revision is the retry behavior under test).
+      ctx.tools.register(defineTool({
+        name: 'exit_plan_mode',
+        description: 'Present your plan for the user\'s review; on approval, leave plan mode.',
+        parameters: { plan: { type: 'string', required: true, description: 'The complete plan as markdown' } },
+        output: {
+          schema: {
+            type: 'object', additionalProperties: false,
+            properties: { accepted: { type: 'boolean', required: true } },
+          },
+          render: (_args, value) => [{ type: 'text', text: `plan accepted: ${String(value.accepted)}` }],
+        },
+        async execute() {
+          return { accepted: true }
+        },
+      }))
     }
     await ctx.plugin(LocalFileSystem, { cwd: workspace })
     await ctx.plugin(FsPolicy)
-    if (fixture.mode === 'code') await ctx.plugin(ToolFs)
+    if (fixture.kind === 'fs' || fixture.mode === 'code') await ctx.plugin(ToolFs)
+    // fs scenarios: pre-create the workspace files the retry edits against.
+    for (const file of fixture.workspaceFiles ?? []) {
+      writeFileSync(join(workspace, file.path), file.content)
+    }
     if (options.arm === 'on') await ctx.plugin(ToolRetry)
     await ctx.plugin(AgentLoop, { agents: [] })
     await ctx.plugin(SessionPersistenceJsonl, { root })
@@ -192,30 +213,35 @@ export async function runEvalScenario(options: EvalRunOptions): Promise<EvalRunS
     if (options.arm === 'on') {
       mkdirSync(join(checkpointDir, 'by-id'), { recursive: true })
       mkdirSync(join(checkpointDir, 'previous'), { recursive: true })
-      const callEvent = fixture.events.find(event =>
-        (event as { type?: string }).type === 'tool/call') as { data: { arguments: string } } | undefined
-      const rawArguments = callEvent?.data.arguments ?? ''
-      writeFileSync(join(checkpointDir, 'by-id', `${sanitizeId(fixture.callId)}.json`), rawArguments)
-      writeFileSync(join(checkpointDir, 'history.jsonl'),
-        `${JSON.stringify({ id: fixture.callId, tool: fixture.tool, turn: 1, step: 1, ordinal: 1 })}\n`)
-      symlinkSync(`../by-id/${sanitizeId(fixture.callId)}.json`, join(checkpointDir, 'previous', '1.json'))
+      let history = ''
+      fixture.blocks.forEach((block, index) => {
+        writeFileSync(join(checkpointDir, 'by-id', `${sanitizeId(block.callId)}.json`), block.rawArguments)
+        history += `${JSON.stringify({ id: block.callId, tool: block.tool, turn: 1, step: 1, ordinal: index + 1 })}\n`
+        symlinkSync(`../by-id/${sanitizeId(block.callId)}.json`, join(checkpointDir, 'previous', `${index + 1}.json`))
+      })
+      writeFileSync(join(checkpointDir, 'history.jsonl'), history)
     }
 
     // Persist the prefix; the ON arm appends the recorded failure notice.
     const prefixEvents = [...fixture.events]
     if (options.arm === 'on') {
-      const noticeText = fixture.notice.replaceAll('__CHECKPOINT_DIR__', checkpointDir)
-      prefixEvents.push({
-        type: 'user/message',
-        seq: 7,
-        time: fixture.header.createdAt + 8,
-        data: {
-          content: [{ type: 'text', text: noticeText }],
-          source: { kind: 'plugin', plugin: PLUGIN_ID, form: 'notice', summary: 'Failed call saved' },
-          role: 'user',
-          id: 'prefix-notice-message',
-        },
-        surfaceOp: 'append',
+      const lastSeq = prefixEvents.reduce((max: number, event: unknown) =>
+        Math.max(max, (event as { seq?: number }).seq ?? 0), 0)
+      let seq = lastSeq + 1
+      fixture.blocks.forEach((block, index) => {
+        const noticeText = block.notice.replaceAll('__CHECKPOINT_DIR__', checkpointDir)
+        prefixEvents.push({
+          type: 'user/message',
+          seq: seq++,
+          time: fixture.header.createdAt + 8 + index,
+          data: {
+            content: [{ type: 'text', text: noticeText }],
+            source: { kind: 'plugin', plugin: PLUGIN_ID, form: 'notice', summary: 'Failed call saved' },
+            role: 'user',
+            id: `prefix-notice-message-${index}`,
+          },
+          surfaceOp: 'append',
+        })
       })
     }
     await ctx.sessionPersistence.create({
@@ -252,13 +278,13 @@ export async function runEvalScenario(options: EvalRunOptions): Promise<EvalRunS
       // restart, so the pre-seeded checkpoint must be re-observed for the
       // resumed session — the exact write-then-emit pattern the plugin uses
       // at checkpoint time (write outcome version, the call's exec actor).
-      const callEvent = fixture.events.find(event =>
-        (event as { type?: string }).type === 'tool/call') as { data: { arguments: string } } | undefined
-      const byIdTarget = await ctx.fs.resolve(join(checkpointDir, 'by-id', `${sanitizeId(fixture.callId)}.json`))
-      const write = await ctx.fs.writeText(byIdTarget, callEvent?.data.arguments ?? '')
-      // The observation actor is the ToolExecution shape ({ agent }), whose
-      // owner the policy derives as actor.agent.session.
-      ctx.emit('fs/observed', byIdTarget, { kind: 'present', version: write.version }, { agent: handle.agent })
+      for (const block of fixture.blocks) {
+        const byIdTarget = await ctx.fs.resolve(join(checkpointDir, 'by-id', `${sanitizeId(block.callId)}.json`))
+        const write = await ctx.fs.writeText(byIdTarget, block.rawArguments)
+        // The observation actor is the ToolExecution shape ({ agent }), whose
+        // owner the policy derives as actor.agent.session.
+        ctx.emit('fs/observed', byIdTarget, { kind: 'present', version: write.version }, { agent: handle.agent })
+      }
     }
     handle.agent.followup(createUserMessage({
       content: [{ type: 'text', text: fixture.continuation }],
@@ -307,11 +333,31 @@ export async function runEvalScenario(options: EvalRunOptions): Promise<EvalRunS
     const callNamesById = new Map(postBreak
       .filter(event => event.type === 'tool/call')
       .map(event => [event.data.callId, event.data.name ?? '']))
-    const retrySuccess = fixture.mode === 'native'
+    const planCriterion = (toolName: string): boolean => postBreak.some(event =>
+      event.type === 'tool/result'
+      && event.data.message?.content?.some(block =>
+        callNamesById.get(block.toolCallId) === toolName && block.isError !== true) === true)
+    const fsChecksPass = (fixture.successChecks ?? []).every((check) => {
+      const path = join(workspace, check.path)
+      if (check.kind === 'fileExists') return existsSync(path)
+      if (check.fragment === undefined) return false
+      try {
+        return readFileSync(path, 'utf8').includes(check.fragment)
+      } catch {
+        return false
+      }
+    })
+    const retrySuccess = fixture.kind === 'deploy'
       ? options.deployCalls?.some(call => call.kind === 'valid') === true
-      : postBreak.some(event => event.type === 'tool/result'
-        && event.data.message?.content?.some(block =>
-          callNamesById.get(block.toolCallId) === 'run_code' && block.isError !== true) === true)
+      : fixture.kind === 'boom'
+        ? planCriterion('run_code')
+        : fixture.kind === 'fs'
+          ? fsChecksPass
+          // plan: a direct re-submission (OFF) succeeds without error, or the
+          // nested replay inside editPreviousToolCalling renders the accepted
+          // outcome (ON).
+          : planCriterion('exit_plan_mode')
+            || resultTexts.some(text => text.includes('plan accepted: true'))
     const adopted = fixture.mode === 'native'
       ? toolCalls.includes('editPreviousToolCalling')
       : toolCallArguments.some(argumentsText =>

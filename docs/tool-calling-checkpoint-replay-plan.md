@@ -333,8 +333,9 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工�
 **显式失败类（isError，主场景）**：
   1. **参数 schema 校验失败**：缺必填字段/类型错/枚举非法 → `INVALID_ARGS`（checkpoint 存原始串，正是可编辑修复的对象）；
   2. **参数 JSON 格式非法**：工具参数不是合法 JSON（raw 串落盘）；
-  3. **长文本编辑失配**：`edit` 的 `old_string` 在文件中不存在（文件已变）、`old_string` 为空、`old==new`——长 `new_string` 场景按参数长度分层统计（本特性的核心价值场景）；
+  3. **长文本编辑失配**：`edit` 的 `old_string` 在文件中不存在（文件已变）、`old_string` 为空、`old==new`——长 `new_string` 场景按参数长度分层统计（本特性的核心价值场景）；评测语料已含 `native-long-fs-write-edit`（并行双失败：长内容 `write` 缺必填字段 + 长 `new_string` 的 `edit` 命中已变更文件，重试成功按工作区状态行为校验）；
   4. **路径/资源笔误**：`file_path` 打错（ENOENT/`FS_NOT_FOUND`）、未读先改（`FS_NOT_OBSERVED`）；
+  4b. **计划被拒**（plan 模式特有，评测语料 `native-plan-rejected`）：`exit_plan_mode` 提交的长计划被用户拒绝、反馈随失败结果返回，模型按反馈修改 checkpoint 中的计划后重新提交；
   5. **权限/沙箱拒绝**：只读模式写入（`FS_SANDBOX_DENIED`）、命令权限错误；
   6. **PTC 专属**：`run_code` 程序语法错误、SDK 里工具名打错（`UNKNOWN_TOOL`）、未捕获异常、返回值不合 output schema。
 

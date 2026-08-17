@@ -1,8 +1,15 @@
 {
   "name": "native-invalid-json",
   "mode": "native",
-  "callId": "break_2",
-  "tool": "deploy",
-  "continuation": "That deploy call failed. Retry it with the smallest possible change and report the outcome.",
-  "notice": "Your failed call's arguments were saved.\n- call id: break_2\nTo apply a small fix and re-run the call, use `editPreviousToolCalling`\n(with call_id \"break_2\" — it stays valid)."
+  "kind": "deploy",
+  "blocks": [
+    {
+      "callId": "break_2",
+      "tool": "deploy",
+      "rawArguments": "{\"config\": {\"kind\": \"valid\", \"label\": \"payments\", \"replicas\": 3, \"template\": \"kind: Deployment\\n\"",
+      "errorText": "tool call arguments are not valid JSON: unexpected end of input",
+      "notice": "Your failed call's arguments were saved.\n- call id: break_2\nTo apply a small fix and re-run the call, use `editPreviousToolCalling`\n(with call_id \"break_2\" — it stays valid)."
+    }
+  ],
+  "continuation": "That deploy call failed. Retry it with the smallest possible change and report the outcome."
 }

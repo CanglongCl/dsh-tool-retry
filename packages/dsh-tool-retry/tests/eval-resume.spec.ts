@@ -142,3 +142,115 @@ describe('eval resume mechanics (keyless smoke)', () => {
     expect(off.retrySuccess).toBe(true)
   })
 })
+
+/* ------------------------------------------------------------------ */
+/* §6 scenario additions: long-text fs write+edit, plan-mode rejection  */
+/* ------------------------------------------------------------------ */
+
+/** One scripted response carrying SEVERAL tool-call blocks (model order). */
+function parallelCalls(blocks: { rawCallId: string; name: string; args: object }[]): ReturnType<typeof toolCallResponse> {
+  const chunks: { type: string; index: number; [key: string]: unknown }[] = []
+  blocks.forEach(({ rawCallId, name, args }, index) => {
+    const json = JSON.stringify(args)
+    chunks.push(
+      { type: 'block-start', index, blockType: 'tool-call' },
+      { type: 'tool-call-delta', index, id: rawCallId, name, argumentsDelta: json.slice(0, 8) },
+      { type: 'tool-call-delta', index, id: rawCallId, name, argumentsDelta: json.slice(8) },
+      { type: 'block-end', index, block: { type: 'tool-call', id: rawCallId, name, arguments: json } },
+    )
+  })
+  chunks.push(
+    { type: 'usage', index: 0, usage: { inputTokens: 10, outputTokens: 5 } },
+    { type: 'finish', index: 0, reason: { kind: 'tool-calls' } },
+  )
+  return chunks as never
+}
+
+it('resumes native-long-fs-write-edit: ON replays both blocks, OFF regenerates', async () => {
+  const fixture = loadEvalFixture(join(EVAL_FIXTURES, 'native-long-fs-write-edit'))
+  // The scripted model reads notes.md first (records the observation the
+  // real edit tool needs), then fixes both checkpoints in one parallel round.
+  const on = await runEvalScenario({
+    fixture,
+    arm: 'on',
+    model: 'mock',
+    deadlineMs: DEADLINE_MS,
+    deployCalls: [],
+    adapter: new MockAdapter([
+      toolCallResponse('sm_read', 'read', { file_path: 'notes.md' }),
+      parallelCalls([
+        {
+          rawCallId: 'sm_fix_w', name: 'editPreviousToolCalling',
+          args: { call_id: 'break_fs_w', old_string: '{"content"', new_string: '{"file_path":"report.md","content"' },
+        },
+        {
+          rawCallId: 'sm_fix_e', name: 'editPreviousToolCalling',
+          // Fix the checkpoint's stale old_string to a line the CURRENT file
+          // really contains; the replay then replaces that line with the
+          // long revised handbook (the successCheck fragment).
+          args: { call_id: 'break_fs_e', old_string: '// notes.md — 初始版本（v1）', new_string: '// 附录：本文件由评测场景自动生成，供长文本 edit 重试使用。' },
+        },
+      ]),
+      textResponse('done'),
+    ]),
+  })
+  expect(on.completed).toBe(true)
+  expect(on.adopted).toBe(true)
+  expect(on.retrySuccess).toBe(true)
+  expect(on.noticeCount).toBe(0)
+
+  const off = await runEvalScenario({
+    fixture,
+    arm: 'off',
+    model: 'mock',
+    deadlineMs: DEADLINE_MS,
+    deployCalls: [],
+    adapter: new MockAdapter([
+      toolCallResponse('sm_read2', 'read', { file_path: 'notes.md' }),
+      parallelCalls([
+        { rawCallId: 'sm_w2', name: 'write', args: { file_path: 'report.md', content: 'ok' } },
+        { rawCallId: 'sm_e2', name: 'edit', args: { file_path: 'notes.md', old_string: '// 附录：本文件由评测场景自动生成，供长文本 edit 重试使用。', new_string: '缓存层迁移手册（修订版）' } },
+      ]),
+      textResponse('done'),
+    ]),
+  })
+  expect(off.adopted).toBe(false)
+  expect(off.retrySuccess).toBe(true)
+})
+
+it('resumes native-plan-rejected: ON edits the checkpointed plan, OFF resubmits fresh', async () => {
+  const fixture = loadEvalFixture(join(EVAL_FIXTURES, 'native-plan-rejected'))
+  const on = await runEvalScenario({
+    fixture,
+    arm: 'on',
+    model: 'mock',
+    deadlineMs: DEADLINE_MS,
+    deployCalls: [],
+    adapter: new MockAdapter([
+      toolCallResponse('sm_plan_e', 'editPreviousToolCalling', {
+        call_id: 'break_plan',
+        old_string: '直接改造现有模块',
+        new_string: '新增独立缓存层服务',
+      }),
+      textResponse('done'),
+    ]),
+  })
+  expect(on.completed).toBe(true)
+  expect(on.adopted).toBe(true)
+  expect(on.retrySuccess).toBe(true)
+  expect(on.noticeCount).toBe(0)
+
+  const off = await runEvalScenario({
+    fixture,
+    arm: 'off',
+    model: 'mock',
+    deadlineMs: DEADLINE_MS,
+    deployCalls: [],
+    adapter: new MockAdapter([
+      toolCallResponse('sm_plan_f', 'exit_plan_mode', { plan: '# 缓存改造实施计划\n\n修订版：新增独立缓存层服务。' }),
+      textResponse('done'),
+    ]),
+  })
+  expect(off.adopted).toBe(false)
+  expect(off.retrySuccess).toBe(true)
+})
