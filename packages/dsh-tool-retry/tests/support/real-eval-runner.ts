@@ -212,9 +212,13 @@ function computeRetrySuccess(
 /**
  * stopAt='retry-success' gate: settle the moment the retry criterion flips
  * true (evaluated on the tick after each tool result, so the loop's commit
- * has landed), falling back to idle when the deadline expires or the turn
- * completes without a success.
+ * has landed), falling back to idle when the turn completes without a
+ * success, and cutting off at the deadline OR after maxSteps post-break
+ * assistant steps (a run that keeps stepping — failed retries — is bounded
+ * instead of drifting; the design intent is ONE retry round).
  */
+const MAX_POST_BREAK_STEPS = 6
+
 async function waitForStopAt(
   ctx: Context,
   handle: AgentHandle,
@@ -234,10 +238,9 @@ async function waitForStopAt(
       disposeStatus()
       resolve(outcome)
     }
-    const evaluate = (): boolean => {
-      const events = handle.agent.session.events as unknown as RunRow[]
-      return computeRetrySuccess(fixture, events.slice(prefixLength), workspace, options)
-    }
+    const postBreak = (): RunRow[] =>
+      (handle.agent.session.events as unknown as RunRow[]).slice(prefixLength)
+    const evaluate = (): boolean => computeRetrySuccess(fixture, postBreak(), workspace, options)
     const timer = setTimeout(() => finish('timeout'), deadlineMs)
     const disposeStatus = ctx.on('agent/status', ({ agent, status }) => {
       if (agent === handle.agent && status === 'idle') finish('idle')
@@ -246,11 +249,17 @@ async function waitForStopAt(
     // the loop appends its tool/result commit right around this emit, so the
     // evaluation defers one tick and then checks the REAL retry criterion —
     // never a blanket "replay tool succeeded" fast path (a landed replay can
-    // still miss the criterion, and stopping early would mask it).
+    // still miss the criterion, and stopping early would mask it). The step
+    // cap bounds failed-retry runs to a few model rounds.
     const disposeResult = ctx.on('tools/result', (exec, _result) => {
       if ((exec as { parent?: unknown }).parent !== undefined) return
       setImmediate(() => {
-        if (evaluate()) finish('cutoff')
+        if (evaluate()) {
+          finish('cutoff')
+          return
+        }
+        const steps = postBreak().filter(event => event.type === 'assistant/message').length
+        if (steps >= MAX_POST_BREAK_STEPS) finish('cutoff')
       })
     })
   })

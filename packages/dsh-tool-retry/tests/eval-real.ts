@@ -49,12 +49,16 @@ if (STOP_AT !== 'idle' && STOP_AT !== 'retry-success') {
 // web-review parity: runs are configurable, 1 repeat per scenario by default,
 // and the queue drains over a bounded worker pool (DSH_EVAL_CONCURRENCY).
 const REPEATS = Number(flagValue('repeat', process.env.DSH_EVAL_REPEATS ?? '1'))
-const CONCURRENCY = Number(flagValue('concurrency', process.env.DSH_EVAL_CONCURRENCY ?? '4'))
+const CONCURRENCY = Number(flagValue('concurrency', process.env.DSH_EVAL_CONCURRENCY ?? '6'))
 if (!Number.isInteger(REPEATS) || REPEATS < 1 || !Number.isInteger(CONCURRENCY) || CONCURRENCY < 1) {
   console.error(`eval:real — --repeat/--concurrency (or DSH_EVAL_REPEATS/DSH_EVAL_CONCURRENCY) must be positive integers, got ${JSON.stringify({ repeat: REPEATS, concurrency: CONCURRENCY })}`)
   process.exit(1)
 }
-const DEADLINE_MS = Number(process.env.DSH_EVAL_TIMEOUT_MS ?? 15 * 60 * 1000)
+// Per-run wall-clock bound: each run resumes one breakpoint and is supposed
+// to converge within a couple of model steps — a run that keeps stepping
+// (failed retries) is cut at this deadline instead of drifting to the old
+// 15-minute backstop. The runner additionally caps post-break steps.
+const DEADLINE_MS = Number(process.env.DSH_EVAL_TIMEOUT_MS ?? 3 * 60 * 1000)
 
 // Provider-key gate over the layered credential chain (nothing is printed).
 if (!loadLayeredEnv()) {
