@@ -274,6 +274,7 @@ writeFileSync(join(OUT_DIR, 'batch.json'), `${JSON.stringify({
   startedAt: batchStarted,
   finishedAt: new Date().toISOString(),
   scenarios,
+  packages: {},
 }, null, 2)}\n`)
 console.log(`\nrecords: ${join(OUT_DIR, 'results.jsonl')} (stamp ${stamp})`)
 console.log('next: pnpm eval:report')

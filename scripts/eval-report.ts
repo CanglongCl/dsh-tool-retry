@@ -688,7 +688,7 @@ function renderReport(number: number, batch: BatchMeta, rows: ScenarioRow[]): st
   const offContent = median(offRows.map(contentTokensForRecord))
   const contentSavings = offContent > 0 ? Math.round((1 - onContent / offContent) * 1000) / 10 : 0
   const adoption = rate(onRows.map(run => run.summary.adopted))
-  const packages = Object.entries(batch.packages)
+  const packages = Object.entries(batch.packages ?? {})
     .map(([name, version]) => `<li class="text-xs"><code class="rounded bg-muted px-1 py-0.5">${escapeHtml(name)}</code> <span class="text-muted-foreground">${escapeHtml(version)}</span></li>`)
     .join('')
 

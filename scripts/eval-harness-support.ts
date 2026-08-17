@@ -341,6 +341,8 @@ export function computeRetrySuccess(scenario: ScenarioMeta, mode: 'native' | 'co
       return mode === 'native' ? fsChecksPass : directOk('run_code') && fsChecksPass
     case 'plan':
       return mode === 'native'
+        // A re-submission lands as a pending review (no headless user can
+        // accept it) — landing without error IS the successful retry.
         ? directOk('exit_plan_mode') || resultTexts.some(text => text.includes('plan accepted: true'))
         : directOk('run_code')
   }
