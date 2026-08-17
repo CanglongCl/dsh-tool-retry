@@ -265,9 +265,9 @@ if (FAILURES.length > 0) {
 
 writeFileSync(join(OUT_DIR, 'batch.json'), `${JSON.stringify({
   stamp,
-  model: 'per-scenario (real request/header)',
+  model: 'deepseek-v4-flash',
   provider: 'deepseek-official',
-  reasoning: 'per-scenario',
+  reasoning: REASONING,
   stopAt: 'idle',
   repeats: REPEATS,
   repoHead: repoHead(),

@@ -235,7 +235,7 @@ function buildScenarioRows(records: RunRecord[]): ScenarioRow[] {
     list.push(record)
     byScenario.set(`${record.scenario}/${record.mode}`, list)
   }
-  return [...byScenario.entries()].map(([scenario, runs]) => {
+  return [...byScenario.entries()].map(([_key, runs]) => {
     const on = runs.filter(run => run.arm === 'on')
     const off = runs.filter(run => run.arm === 'off')
     const onTokens = median(on.map(run => run.summary.retryStepOutputTokens))
@@ -243,7 +243,7 @@ function buildScenarioRows(records: RunRecord[]): ScenarioRow[] {
     const onContentTokens = median(on.map(contentTokensForRecord))
     const offContentTokens = median(off.map(contentTokensForRecord))
     return {
-      scenario,
+      scenario: runs[0]!.scenario,
       mode: runs[0]!.mode,
       onTokens,
       offTokens,
