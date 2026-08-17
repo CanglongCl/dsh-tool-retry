@@ -81,6 +81,10 @@ interface SessionLine {
     content?: { type?: string; text?: string }[]
     source?: { kind?: string; plugin?: string; form?: string }
     usage?: { inputTokens?: number; outputTokens?: number; reasoningTokens?: number }
+    header?: { system?: string; tools?: { name?: string }[] }
+    provider?: string
+    model?: string
+    contextWindow?: number
     message?: { content?: { type?: string; text?: string; name?: string; arguments?: string; toolCallId?: string; content?: { type?: string; text?: string }[]; isError?: boolean }[] }
   }
 }
@@ -492,9 +496,25 @@ function renderSessionFriendly(record: RunRecord): string {
     (content ?? []).filter(block => block.type === 'text').map(block => block.text ?? '').join('\n')
   const pre = (value: string, max = 'max-h-56'): string =>
     value === '' ? '' : `<pre class="rounded-md bg-muted p-2.5 text-xs font-mono whitespace-pre-wrap break-all ${max} overflow-auto">${escapeHtml(value)}</pre>`
-  const items = lines.map((line, index) => {
+  const items = lines.map((line) => {
     const data = line.data ?? {}
     const type = line.type ?? 'unknown'
+    if (type === 'request/header') {
+      // The assembled request context: system prompt + tool catalog.
+      const header = data.header as { system?: string; tools?: { name?: string }[] } | undefined
+      const tools = (header?.tools ?? []).map(tool => `<span class="rounded bg-muted px-1.5 py-0.5 text-[11px]">${escapeHtml(tool.name ?? '')}</span>`).join(' ')
+      return [
+        '<div class="rounded-md border bg-card px-2.5 py-1.5">',
+        '<div class="flex items-center gap-2"><span class="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">请求上下文（system prompt）</span></div>',
+        header?.system === undefined ? '' : pre(header.system, 'max-h-96'),
+        tools === '' ? '' : `<div class="flex flex-wrap gap-1 pt-1">${tools}</div>`,
+        '</div>',
+      ].join('\n')
+    }
+    if (type === 'request/context') {
+      const ctx = data as { provider?: string; model?: string; contextWindow?: number }
+      return `<div class="px-2.5 text-[11px] text-muted-foreground">request/context · ${escapeHtml(ctx.provider ?? '?')}/${escapeHtml(ctx.model ?? '?')} · contextWindow ${ctx.contextWindow ?? '?'}</div>`
+    }
     if (type === 'turn/start') {
       return `<div class="rounded-md border bg-card px-2.5 py-1.5 text-xs font-semibold">↳ Turn ${(data as { turn?: number }).turn ?? '?'} 开始</div>`
     }
@@ -504,7 +524,9 @@ function renderSessionFriendly(record: RunRecord): string {
     if (type === 'user/message') {
       const text = textOf(data.content as { type?: string; text?: string }[] | undefined)
       const source = (data.source as { kind?: string; plugin?: string; form?: string } | undefined)
-      const label = source?.plugin !== undefined ? `plugin ${source.plugin} · ${source.form ?? ''}` : source?.kind ?? 'user'
+      const label = source?.plugin !== undefined
+        ? `plugin ${source.plugin} · ${source.form ?? ''}`
+        : `${source?.kind ?? 'user'}${source?.form !== undefined ? ` · ${source.form}` : ''}`
       return [
         '<div class="rounded-md border bg-card px-2.5 py-1.5">',
         `<div class="flex items-center gap-2"><span class="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">用户消息</span><span class="text-[11px] text-muted-foreground">${escapeHtml(label)}</span></div>`,
@@ -530,7 +552,10 @@ function renderSessionFriendly(record: RunRecord): string {
         `<span class="text-[11px] text-muted-foreground">Turn ${(data as { turn?: number }).turn ?? '?'} · Step ${(data as { step?: number }).step ?? '?'}</span>`,
         usage === undefined ? '' : `<span class="text-[11px] text-muted-foreground">in ${usage.inputTokens ?? 0} · out ${usage.outputTokens ?? 0} · reasoning ${usage.reasoningTokens ?? 0}</span>`,
         '</div>',
-        reasoning === '' ? '' : `<details class="mt-1"><summary class="cursor-pointer text-[11px] text-muted-foreground">思考过程（${reasoning.length} 字符）</summary>${pre(reasoning, 'max-h-40')}</details>`,
+        reasoning === '' ? '' : [
+          `<div class="mt-1 text-[11px] font-medium text-muted-foreground">思考（thinking · ${reasoning.length} 字符）</div>`,
+          pre(reasoning, 'max-h-96'),
+        ].join('\n'),
         text === '' ? '' : pre(text, 'max-h-40'),
         calls,
         '</div>',
@@ -554,7 +579,13 @@ function renderSessionFriendly(record: RunRecord): string {
         '</div>',
       ].join('\n')
     }
-    return `<div class="px-2.5 text-[11px] text-muted-foreground">#${index + 1} ${escapeHtml(type)}</div>`
+    const detail = JSON.stringify(data)
+    return [
+      '<div class="rounded-md border bg-card px-2.5 py-1.5">',
+      `<div class="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">${escapeHtml(type)}</div>`,
+      pre(detail.length > 2000 ? `${detail.slice(0, 2000)}…` : detail, 'max-h-48'),
+      '</div>',
+    ].join('\n')
   })
   return [
     '<div class="rounded-lg border bg-muted/30">',
