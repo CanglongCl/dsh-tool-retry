@@ -17,16 +17,23 @@
  *      DSH_EVAL_REASONING (default high; off|high|max),
  *      DSH_EVAL_STOP_AT (default retry-success; idle = full convergence),
  *      DSH_EVAL_REPEATS (default 1; also --repeat N),
- *      DSH_EVAL_CONCURRENCY (default 4; also --concurrency N),
- *      DSH_EVAL_TIMEOUT_MS (per-arm deadline, default 15 min).
+ *      DSH_EVAL_CONCURRENCY (default 6; also --concurrency N),
+ *      DSH_EVAL_TIMEOUT_MS (per-run model deadline, default 3 min; the
+ *      parent additionally kills a hung child at deadline + 2 min).
+ *
+ * Parallelism follows the dsh-web-review batch pattern: a bounded worker
+ * pool where EACH run is a separate child process (tests/eval-run.ts) — true
+ * process isolation per run (one Context/workspace/session per process), the
+ * child prints its record JSON to stdout and the parent appends it to
+ * results.jsonl.
  */
 
-import { execFileSync } from 'node:child_process'
+import { execFileSync, spawn } from 'node:child_process'
 import { appendFileSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { loadLayeredEnv } from './support/credential-env.ts'
-import { loadEvalFixture, runEvalScenario, type EvalRunSummary } from './support/real-eval-runner.ts'
+import { loadEvalFixture, type EvalRunSummary } from './support/real-eval-runner.ts'
 
 const EVAL_FIXTURES = fileURLToPath(new URL('./eval-fixtures', import.meta.url))
 const OUT_DIR = fileURLToPath(new URL('../../../.artifacts/eval', import.meta.url))
@@ -170,9 +177,104 @@ const queue: Queued[] = scenarios.flatMap(name =>
 console.log(`eval:real ${queue.length} run(s) queued, ${CONCURRENCY} concurrent`)
 
 // Bounded worker pool over a shared cursor (the dsh-web-review batch
-// pattern): each worker claims the next unit until the queue drains. Every
-// run owns an independent temp root, a suffixed session id, and its own
-// checkpoint dir, so same-scenario runs execute safely in parallel.
+// pattern): each worker claims the next unit and runs it in a SEPARATE
+// child process — one Context/workspace/session/checkpoint store per
+// process, so same-scenario runs execute safely in parallel with real
+// isolation. The child prints its record JSON to stdout; the parent appends
+// it to results.jsonl and records orchestration failures as error records.
+const CHILD_ENTRY = fileURLToPath(new URL('./eval-run.ts', import.meta.url))
+const CHILD_KILL_MS = DEADLINE_MS + 2 * 60 * 1000
+
+interface ChildOutcome {
+  record: RunRecord
+  status: string
+}
+
+function spawnRun(queued: Queued, runDir: string): Promise<ChildOutcome> {
+  const { name, arm, rep } = queued
+  const fixture = loadEvalFixture(join(EVAL_FIXTURES, name))
+  const startedAt = new Date().toISOString()
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, ['--import', 'tsx', CHILD_ENTRY], {
+      cwd: fileURLToPath(new URL('.', import.meta.url)),
+      env: {
+        ...process.env,
+        DSH_EVAL_CHILD_SCENARIO: name,
+        DSH_EVAL_CHILD_ARM: arm,
+        DSH_EVAL_CHILD_REP: String(rep),
+        DSH_EVAL_CHILD_MODEL: MODEL,
+        DSH_EVAL_CHILD_REASONING: REASONING,
+        DSH_EVAL_CHILD_STOP_AT: STOP_AT,
+        DSH_EVAL_CHILD_DEADLINE_MS: String(DEADLINE_MS),
+        DSH_EVAL_CHILD_STAMP: stamp,
+        DSH_EVAL_CHILD_REPO_HEAD: repoHead(),
+        DSH_EVAL_CHILD_RUN_DIR: runDir,
+      },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    })
+    let stdout = ''
+    let timedOut = false
+    child.stderr.on('data', (chunk: Buffer) => process.stderr.write(chunk))
+    child.stdout.on('data', (chunk: Buffer) => { stdout += chunk.toString('utf8') })
+    const timer = setTimeout(() => {
+      timedOut = true
+      child.kill('SIGTERM')
+      setTimeout(() => child.kill('SIGKILL'), 10_000).unref()
+    }, CHILD_KILL_MS)
+    child.once('exit', (code) => {
+      clearTimeout(timer)
+      if (timedOut || code !== 0) {
+        const summary: EvalRunSummary = {
+          scenario: name, arm, mode: fixture.mode, sessionId: `${fixture.header.id}-${arm}-r${rep}`,
+          prefixEventCount: 0, retryStepOutputTokens: 0, retryStepReasoningTokens: 0,
+          postBreakInputTokens: 0, retrySuccess: false, adopted: false,
+          noticeCount: 0, noticeBytes: 0, toolCalls: [], toolCallArguments: [],
+          completed: false, stoppedEarly: false, status: 'error',
+          grader: { criterion: `${fixture.kind}/${fixture.mode}`, checks: [] },
+          revisions: { scenario: 'unknown', grader: 'unknown', execution: 'unknown', experiment: 'unknown' },
+          resultTexts: [],
+        }
+        resolve({
+          status: 'error',
+          record: {
+            stamp, scenario: name, arm, mode: fixture.mode, repetition: rep, model: MODEL,
+            provider: 'deepseek-official', reasoning: REASONING,
+            runDir: join('runs', stamp, name, arm, `r${rep}`),
+            startedAt, finishedAt: new Date().toISOString(), summary,
+          },
+        })
+        return
+      }
+      const line = stdout.split('\n').map(item => item.trim()).filter(item => item !== '').at(-1) ?? ''
+      try {
+        const record = JSON.parse(line) as RunRecord
+        resolve({ record, status: record.summary.status })
+      } catch {
+        process.stderr.write(`eval:real ${name}/${arm}/r${rep}: unparsable child record\n`)
+        resolve({
+          status: 'error',
+          record: {
+            stamp, scenario: name, arm, mode: fixture.mode, repetition: rep, model: MODEL,
+            provider: 'deepseek-official', reasoning: REASONING,
+            runDir: join('runs', stamp, name, arm, `r${rep}`),
+            startedAt, finishedAt: new Date().toISOString(),
+            summary: {
+              scenario: name, arm, mode: fixture.mode, sessionId: `${fixture.header.id}-${arm}-r${rep}`,
+              prefixEventCount: 0, retryStepOutputTokens: 0, retryStepReasoningTokens: 0,
+              postBreakInputTokens: 0, retrySuccess: false, adopted: false,
+              noticeCount: 0, noticeBytes: 0, toolCalls: [], toolCallArguments: [],
+              completed: false, stoppedEarly: false, status: 'error',
+              grader: { criterion: `${fixture.kind}/${fixture.mode}`, checks: [] },
+              revisions: { scenario: 'unknown', grader: 'unknown', execution: 'unknown', experiment: 'unknown' },
+              resultTexts: [],
+            },
+          },
+        })
+      }
+    })
+  })
+}
+
 let cursor = 0
 const workers = Array.from({ length: CONCURRENCY }, async () => {
   while (true) {
@@ -181,24 +283,10 @@ const workers = Array.from({ length: CONCURRENCY }, async () => {
     const queued = queue[index]
     if (queued === undefined) return
     const { name, arm, rep } = queued
-    const fixture = loadEvalFixture(join(EVAL_FIXTURES, name))
-    const startedAt = new Date().toISOString()
     const runDir = join(OUT_DIR, 'runs', stamp, name, arm, `r${rep}`)
-    const summary = await runEvalScenario({
-      fixture, arm, model: MODEL, reasoningEffort: REASONING, deadlineMs: DEADLINE_MS,
-      stopAt: STOP_AT, deployCalls: [], boomCalls: [], runDir,
-      revision: { repetition: rep, repoHead: repoHead() },
-      sessionIdSuffix: `-${arm}-r${rep}`,
-    })
-    const record: RunRecord = {
-      stamp, scenario: name, arm, mode: fixture.mode, repetition: rep, model: MODEL, provider: 'deepseek-official',
-      reasoning: REASONING, runDir: join('runs', stamp, name, arm, `r${rep}`),
-      startedAt, finishedAt: new Date().toISOString(), summary,
-    }
+    const { record } = await spawnRun(queued, runDir)
     records.push(record)
-    writeFileSync(join(runDir, 'record.json'), `${JSON.stringify(record, null, 2)}\n`)
     appendFileSync(join(OUT_DIR, 'results.jsonl'), `${JSON.stringify(record)}\n`)
-    console.log(`eval:real ${name} arm=${arm} repeat=${rep}/${REPEATS} done (${summary.status})`)
   }
 })
 await Promise.all(workers)

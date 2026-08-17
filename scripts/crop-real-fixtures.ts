@@ -120,7 +120,7 @@ const CASES: RealCase[] = [
     title: '未读先写被拒（真实）',
     description: {
       input: '模型在未读取的情况下覆盖已存在的 README.md（FS_NOT_OBSERVED）。',
-      expected: '先读取再写入（README.md 包含新内容片段）。',
+      expected: '先读取再写入（断点后成功 write README.md）。',
     },
     stripPrefix: '/Users/canglong/program/abc-db/',
     workspaceSnapshot: [{ path: '/Users/canglong/program/abc-db/README.md', rel: 'README.md' }],
@@ -284,7 +284,7 @@ function cropOne(caseDef: RealCase): void {
   // first reverse the session's OWN later successful edit on the same file
   // (its new_string → old_string), then fall back to reversing the recorded
   // failed call itself; anything unrecoverable throws (re-crop required).
-  let successChecks: { kind: 'fileContains'; path: string; fragment: string }[] = []
+  let successChecks: { kind: 'fileContains' | 'writeSucceeded'; path: string; fragment?: string }[] = []
   if (caseDef.kind === 'fs' && workspaceFiles.length > 0) {
     let parsed: { new_string?: string; old_string?: string; content?: string; file_path?: string }
     try {
@@ -295,9 +295,13 @@ function cropOne(caseDef: RealCase): void {
     const intended = parsed.new_string ?? parsed.content ?? ''
     const target = workspaceFiles.find(file => file.path === caseDef.workspaceSnapshot[0]?.rel)
     if (target === undefined || intended === '') throw new Error(`fs case ${caseDef.name} missing workspace target or intended content`)
-
-    // Reverse the session's later successful edit/write on the same file, if any.
     const failedPath = parsed.file_path ?? ''
+    // WRITE scenarios grade the BEHAVIOR, not the bytes: the real session's
+    // fix was read-then-write (the retry's content even preserved the
+    // existing text) — the criterion is a successful post-break write on the
+    // target. Content fragments only apply to edit scenarios, whose ground
+    // truth is the session's own eventual fix below.
+    const isWrite = parsed.new_string === undefined && parsed.old_string === undefined
     // The ground truth is the session's OWN eventual fix: every later
     // successful edit/write on the failed file. Reverse ALL later edits (in
     // reverse order) to reach the failure-time bytes the model actually saw,
@@ -363,17 +367,24 @@ function cropOne(caseDef: RealCase): void {
       }
     }
     target.content = failureState
-    // Pick the first 60-char window of the ground-truth content that the
-    // failure-time file does NOT already contain (the shared heading can
-    // make the first window degenerate, e.g. a README rewrite).
-    let fragment = groundTruth.slice(0, 60)
-    for (let offset = 60; offset < groundTruth.length && failureState.includes(fragment); offset += 60) {
-      fragment = groundTruth.slice(offset, offset + 60)
+    if (isWrite) {
+      // Behavior-grade: the fix is "read, then write succeeds" — the real
+      // session's retry preserved the existing text, so no content fragment
+      // can represent it without demanding a superseded draft.
+      successChecks = [{ kind: 'writeSucceeded', path: target.path }]
+    } else {
+      // Pick the first 60-char window of the ground-truth content that the
+      // failure-time file does NOT already contain (the shared heading can
+      // make the first window degenerate, e.g. a README rewrite).
+      let fragment = groundTruth.slice(0, 60)
+      for (let offset = 60; offset < groundTruth.length && failureState.includes(fragment); offset += 60) {
+        fragment = groundTruth.slice(offset, offset + 60)
+      }
+      if (failureState.includes(fragment)) {
+        throw new Error(`degenerate success check for ${caseDef.name}: every 60-char window of the ground-truth content is already present`)
+      }
+      successChecks = [{ kind: 'fileContains', path: target.path, fragment }]
     }
-    if (failureState.includes(fragment)) {
-      throw new Error(`degenerate success check for ${caseDef.name}: every 60-char window of the ground-truth content is already present`)
-    }
-    successChecks = [{ kind: 'fileContains', path: target.path, fragment }]
   }
   writeFileSync(join(dir, 'scenario.json'), `${JSON.stringify({
     name: caseDef.name,

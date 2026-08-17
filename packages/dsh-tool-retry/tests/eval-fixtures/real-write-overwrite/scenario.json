@@ -5,7 +5,7 @@
   "title": "未读先写被拒（真实）",
   "description": {
     "input": "模型在未读取的情况下覆盖已存在的 README.md（FS_NOT_OBSERVED）。",
-    "expected": "先读取再写入（README.md 包含新内容片段）。"
+    "expected": "先读取再写入（断点后成功 write README.md）。"
   },
   "blocks": [
     {
@@ -26,9 +26,8 @@
   ],
   "successChecks": [
     {
-      "kind": "fileContains",
-      "path": "README.md",
-      "fragment": "lookup <hash>             # 13 语文案查询\n```\n\n## 文档索引\n\n- `docs/2"
+      "kind": "writeSucceeded",
+      "path": "README.md"
     }
   ]
 }

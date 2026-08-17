@@ -52,7 +52,7 @@ export interface EvalFixture {
   /** Workspace files pre-created before resume (fs scenarios). */
   workspaceFiles?: { path: string; content: string }[]
   /** Post-run workspace-state checks (fs scenarios' retry-success evidence). */
-  successChecks?: { kind: 'fileExists' | 'fileContains'; path: string; fragment?: string }[]
+  successChecks?: { kind: 'fileExists' | 'fileContains' | 'writeSucceeded'; path: string; fragment?: string }[]
   /** Parsed prefix events (header id/createdAt + session events). */
   header: { id: string; createdAt: number }
   events: unknown[]
@@ -180,6 +180,20 @@ function computeRetrySuccess(
   const fsChecksPass = (fixture.successChecks ?? []).every((check) => {
     const path = join(workspace, check.path)
     if (check.kind === 'fileExists') return existsSync(path)
+    if (check.kind === 'writeSucceeded') {
+      // The fix for a blocked write is behavior-level: a successful
+      // post-break write on the target (direct, or the nested replay inside
+      // editPreviousToolCalling whose rendered result rides the outer call).
+      const writeCallIds = postBreak
+        .filter(event => event.type === 'tool/call' && event.data.name === 'write'
+          && (event.data.arguments ?? '').includes(`"${check.path}"`))
+        .map(event => event.data.callId)
+      return postBreak.some(event =>
+        event.type === 'tool/result'
+        && event.data.message?.content?.some(block =>
+          writeCallIds.includes(block.toolCallId) && block.isError !== true) === true)
+        || resultTexts.some(text => text.includes('Replayed write'))
+    }
     if (check.fragment === undefined) return false
     try {
       return readFileSync(path, 'utf8').includes(check.fragment)
@@ -636,6 +650,9 @@ export async function runEvalScenario(options: EvalRunOptions): Promise<EvalRunS
       if (fixture.kind === 'fs') {
         const checks = (fixture.successChecks ?? []).map((check) => {
           const path = join(workspace, check.path)
+          if (check.kind === 'writeSucceeded') {
+            return { name: `writeSucceeded ${check.path} (successful post-break write)`, pass: retrySuccess }
+          }
           const pass = check.kind === 'fileExists'
             ? existsSync(path)
             : check.fragment !== undefined && (() => {
