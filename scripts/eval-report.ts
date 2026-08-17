@@ -229,9 +229,11 @@ interface ScenarioRow {
 function buildScenarioRows(records: RunRecord[]): ScenarioRow[] {
   const byScenario = new Map<string, RunRecord[]>()
   for (const record of records) {
-    const list = byScenario.get(record.scenario) ?? []
+    // Mode parity: the same scenario name runs under BOTH compositions —
+    // each (scenario, mode) pair is its own A/B row.
+    const list = byScenario.get(`${record.scenario}/${record.mode}`) ?? []
     list.push(record)
-    byScenario.set(record.scenario, list)
+    byScenario.set(`${record.scenario}/${record.mode}`, list)
   }
   return [...byScenario.entries()].map(([scenario, runs]) => {
     const on = runs.filter(run => run.arm === 'on')

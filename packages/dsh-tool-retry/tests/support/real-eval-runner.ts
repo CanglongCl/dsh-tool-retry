@@ -77,6 +77,9 @@ export type StopAt = 'idle' | 'retry-success'
 export interface EvalRunOptions {
   fixture: EvalFixture
   arm: 'on' | 'off'
+  /** Resume the same breakpoint under a different composition (mode parity:
+   * every real scenario runs in BOTH native and PTC mode). */
+  modeOverride?: 'native' | 'code'
   /** Stop the run the moment the retry succeeds (the criterion the summary
    * reports) instead of waiting for the turn to converge; halves per-run
    * wall time and output tokens, at the cost of the post-retry steps. */
@@ -367,8 +370,13 @@ function processStats(events: RunRow[], summary: EvalRunSummary): Record<string,
  * per-run and disposed inside).
  */
 export async function runEvalScenario(options: EvalRunOptions): Promise<EvalRunSummary> {
-  const fixture = options.fixture
-  const sessionId = `${fixture.header.id}${options.sessionIdSuffix ?? ''}`
+  // Mode parity: the same real breakpoint can resume under EITHER composition
+  // (native or PTC) — the recorded history is identical, only the resumed
+  // toolset differs, which is exactly the PTC retry path under test.
+  const fixture = options.modeOverride === undefined
+    ? options.fixture
+    : { ...options.fixture, mode: options.modeOverride }
+  const sessionId = `${fixture.header.id}-${fixture.mode}${options.sessionIdSuffix ?? ''}`
   const checkpointDir = join(CHECKPOINT_ROOT, sessionId)
   rmSync(checkpointDir, { recursive: true, force: true })
   const root = mkdtempSync(join(tmpdir(), 'dsh-tool-retry-eval-'))

@@ -16,6 +16,7 @@ const EVAL_FIXTURES = fileURLToPath(new URL('./eval-fixtures', import.meta.url))
 
 const SCENARIO = process.env.DSH_EVAL_CHILD_SCENARIO ?? ''
 const ARM = process.env.DSH_EVAL_CHILD_ARM as 'on' | 'off' | undefined
+const MODE = (process.env.DSH_EVAL_CHILD_MODE ?? 'native') as 'native' | 'code'
 const REP = Number(process.env.DSH_EVAL_CHILD_REP ?? '1')
 const MODEL = process.env.DSH_EVAL_CHILD_MODEL ?? 'deepseek-v4-flash'
 const REASONING = (process.env.DSH_EVAL_CHILD_REASONING ?? 'high') as 'off' | 'high' | 'max'
@@ -35,6 +36,7 @@ const startedAt = new Date().toISOString()
 const summary = await runEvalScenario({
   fixture,
   arm: ARM,
+  modeOverride: MODE,
   model: MODEL,
   reasoningEffort: REASONING,
   deadlineMs: DEADLINE_MS,
@@ -49,7 +51,7 @@ const record = {
   stamp: STAMP,
   scenario: SCENARIO,
   arm: ARM,
-  mode: fixture.mode,
+  mode: MODE,
   repetition: REP,
   model: MODEL,
   provider: 'deepseek-official',
@@ -57,7 +59,7 @@ const record = {
   // RELATIVE to .artifacts/eval — the report generator joins it against
   // EVAL_DIR (an absolute runDir would survive path.join and point at a
   // nonexistent path; the absolute form only serves the write below).
-  runDir: join('runs', STAMP, SCENARIO, ARM, `r${REP}`),
+  runDir: join('runs', STAMP, SCENARIO, MODE, ARM, `r${REP}`),
   startedAt,
   finishedAt: new Date().toISOString(),
   summary,

@@ -154,7 +154,7 @@ describe('eval resume mechanics (keyless smoke, REAL corpus)', { timeout: 120_00
 
   it('real-run-code-missing-desc: ON reads the checkpoint and resubmits with a description', async () => {
     const fixture = loadEvalFixture(join(EVAL_FIXTURES, 'real-run-code-missing-desc'))
-    const checkpointDir = join(CHECKPOINT_ROOT, fixture.header.id)
+    const checkpointDir = join(CHECKPOINT_ROOT, `${fixture.header.id}-${fixture.mode}`)
     const loader = [
       'const text = (await tools.read({ file_path: "<CP>/previous/1.json" }))',
       '  .lines.map((line) => line.text).join("\\n")',

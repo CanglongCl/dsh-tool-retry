@@ -168,12 +168,17 @@ const reports: ScenarioReport[] = []
 // One queued unit of work: a scenario × arm × repetition triple.
 interface Queued {
   name: string
+  mode: 'native' | 'code'
   arm: 'on' | 'off'
   rep: number
 }
+// Mode parity: EVERY real scenario runs in BOTH compositions (native and
+// PTC) with the same breakpoint history — the resumed toolset differs,
+// which is exactly the PTC retry path under test.
 const queue: Queued[] = scenarios.flatMap(name =>
-  (['on', 'off'] as const).flatMap(arm =>
-    Array.from({ length: REPEATS }, (_, index) => ({ name, arm, rep: index + 1 }))))
+  (['native', 'code'] as const).flatMap(mode =>
+    (['on', 'off'] as const).flatMap(arm =>
+      Array.from({ length: REPEATS }, (_, index) => ({ name, mode, arm, rep: index + 1 })))))
 console.log(`eval:real ${queue.length} run(s) queued, ${CONCURRENCY} concurrent`)
 
 // Bounded worker pool over a shared cursor (the dsh-web-review batch
@@ -191,7 +196,7 @@ interface ChildOutcome {
 }
 
 function spawnRun(queued: Queued, runDir: string): Promise<ChildOutcome> {
-  const { name, arm, rep } = queued
+  const { name, mode, arm, rep } = queued
   const fixture = loadEvalFixture(join(EVAL_FIXTURES, name))
   const startedAt = new Date().toISOString()
   return new Promise((resolve) => {
@@ -207,6 +212,7 @@ function spawnRun(queued: Queued, runDir: string): Promise<ChildOutcome> {
         DSH_EVAL_CHILD_STOP_AT: STOP_AT,
         DSH_EVAL_CHILD_DEADLINE_MS: String(DEADLINE_MS),
         DSH_EVAL_CHILD_STAMP: stamp,
+        DSH_EVAL_CHILD_MODE: mode,
         DSH_EVAL_CHILD_REPO_HEAD: repoHead(),
         DSH_EVAL_CHILD_RUN_DIR: runDir,
       },
@@ -225,7 +231,7 @@ function spawnRun(queued: Queued, runDir: string): Promise<ChildOutcome> {
       clearTimeout(timer)
       if (timedOut || code !== 0) {
         const summary: EvalRunSummary = {
-          scenario: name, arm, mode: fixture.mode, sessionId: `${fixture.header.id}-${arm}-r${rep}`,
+          scenario: name, arm, mode, sessionId: `${fixture.header.id}-${mode}-${arm}-r${rep}`,
           prefixEventCount: 0, retryStepOutputTokens: 0, retryStepReasoningTokens: 0,
           postBreakInputTokens: 0, retrySuccess: false, adopted: false,
           noticeCount: 0, noticeBytes: 0, toolCalls: [], toolCallArguments: [],
@@ -237,9 +243,9 @@ function spawnRun(queued: Queued, runDir: string): Promise<ChildOutcome> {
         resolve({
           status: 'error',
           record: {
-            stamp, scenario: name, arm, mode: fixture.mode, repetition: rep, model: MODEL,
+            stamp, scenario: name, arm, mode, repetition: rep, model: MODEL,
             provider: 'deepseek-official', reasoning: REASONING,
-            runDir: join('runs', stamp, name, arm, `r${rep}`),
+            runDir: join('runs', stamp, name, mode, arm, `r${rep}`),
             startedAt, finishedAt: new Date().toISOString(), summary,
           },
         })
@@ -254,12 +260,12 @@ function spawnRun(queued: Queued, runDir: string): Promise<ChildOutcome> {
         resolve({
           status: 'error',
           record: {
-            stamp, scenario: name, arm, mode: fixture.mode, repetition: rep, model: MODEL,
+            stamp, scenario: name, arm, mode, repetition: rep, model: MODEL,
             provider: 'deepseek-official', reasoning: REASONING,
-            runDir: join('runs', stamp, name, arm, `r${rep}`),
+            runDir: join('runs', stamp, name, mode, arm, `r${rep}`),
             startedAt, finishedAt: new Date().toISOString(),
             summary: {
-              scenario: name, arm, mode: fixture.mode, sessionId: `${fixture.header.id}-${arm}-r${rep}`,
+              scenario: name, arm, mode, sessionId: `${fixture.header.id}-${mode}-${arm}-r${rep}`,
               prefixEventCount: 0, retryStepOutputTokens: 0, retryStepReasoningTokens: 0,
               postBreakInputTokens: 0, retrySuccess: false, adopted: false,
               noticeCount: 0, noticeBytes: 0, toolCalls: [], toolCallArguments: [],
@@ -282,8 +288,8 @@ const workers = Array.from({ length: CONCURRENCY }, async () => {
     cursor += 1
     const queued = queue[index]
     if (queued === undefined) return
-    const { name, arm, rep } = queued
-    const runDir = join(OUT_DIR, 'runs', stamp, name, arm, `r${rep}`)
+    const { name, mode, arm, rep } = queued
+    const runDir = join(OUT_DIR, 'runs', stamp, name, mode, arm, `r${rep}`)
     // One automatic retry for transient failures (provider TRANSPORT blips,
     // child crashes) — such runs are not observations of model behavior.
     let attempt = 0
@@ -292,7 +298,7 @@ const workers = Array.from({ length: CONCURRENCY }, async () => {
       attempt += 1
       ;({ record } = await spawnRun(queued, runDir))
       if (record.summary.status !== 'error' || attempt >= 2) break
-      console.log(`eval:real ${name} arm=${arm} repeat=${rep}/${REPEATS} attempt ${attempt} errored — retrying once`)
+      console.log(`eval:real ${name}/${mode} arm=${arm} repeat=${rep}/${REPEATS} attempt ${attempt} errored — retrying once`)
     }
     records.push(record)
     appendFileSync(join(OUT_DIR, 'results.jsonl'), `${JSON.stringify(record)}\n`)
@@ -301,9 +307,9 @@ const workers = Array.from({ length: CONCURRENCY }, async () => {
 await Promise.all(workers)
 
 for (const name of scenarios) {
-  const fixture = loadEvalFixture(join(EVAL_FIXTURES, name))
-  const on = records.filter(record => record.scenario === name && record.arm === 'on').map(record => record.summary)
-  const off = records.filter(record => record.scenario === name && record.arm === 'off').map(record => record.summary)
+  for (const mode of ['native', 'code'] as const) {
+  const on = records.filter(record => record.scenario === name && record.mode === mode && record.arm === 'on').map(record => record.summary)
+  const off = records.filter(record => record.scenario === name && record.mode === mode && record.arm === 'off').map(record => record.summary)
   const median = (values: number[]): number => {
     const sorted = [...values].sort((a, b) => a - b)
     return sorted[Math.floor(sorted.length / 2)] ?? 0
@@ -312,7 +318,7 @@ for (const name of scenarios) {
   const offTokens = median(off.map(run => run.retryStepOutputTokens))
   reports.push({
     scenario: name,
-    mode: fixture.mode,
+    mode,
     model: MODEL,
     repeats: REPEATS,
     arms: { on, off },
@@ -327,6 +333,7 @@ for (const name of scenarios) {
       noticeBytes: median(on.map(run => run.noticeBytes)),
     },
   })
+  }
 }
 
 // Durable inputs for the report generator: the batch identity with the
