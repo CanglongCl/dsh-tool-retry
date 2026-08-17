@@ -535,30 +535,31 @@ function renderRunDetails(record: RunRecord): string {
   ].join('\n')).join('\n')
 }
 
-/** Per-run DETAILS, separated from the statistics table: one standalone
- * accordion card per run (arm/rep/status + meta + grader + per-step tokens +
- * tool calls + trace). */
-function runDetailCards(rows: ScenarioRow[]): string {
-  return rows.map((row) => {
-    const cards = row.runs.map((run) => [
-      '<details class="group rounded-lg border bg-card text-card-foreground">',
-      '<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">',
-      CHEVRON,
-      `<span>${run.arm === 'on' ? 'ON' : 'OFF'} r${run.repetition}</span>`,
-      statusBadge(run.summary.status ?? (run.summary.completed ? 'completed' : 'error')),
-      `<span class="text-xs font-normal text-muted-foreground">工具：${escapeHtml(run.summary.toolCalls.join(', ') || '—')}</span>`,
-      '</summary>',
-      `<div class="border-t px-3 py-3 space-y-2">${renderRunMeta(run)}${renderRunDetails(run)}${renderRunTrace(run)}</div>`,
-      '</details>',
-    ].join('\n')).join('\n')
-    const meta = loadScenarioMeta(row.scenario)
-    return [
-      `<section class="space-y-3">`,
-      `<h3 class="text-base font-semibold tracking-tight">${escapeHtml(meta?.title ?? row.scenario)} · 每次运行详情</h3>`,
-      `<div class="space-y-2">${cards}</div>`,
-      `</section>`,
-    ].join('\n')
-  }).join('\n')
+/** Per-run DETAILS as a right-hand column next to its scenario's statistics
+ * table (one standalone accordion card per run; ON runs first, then OFF). */
+function runDetailColumn(row: ScenarioRow): string {
+  const ordered = [...row.runs.filter(run => run.arm === 'on'), ...row.runs.filter(run => run.arm === 'off')]
+  const cards = ordered.map((run) => [
+    '<details class="group rounded-lg border bg-card text-card-foreground">',
+    '<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">',
+    CHEVRON,
+    `<span>${run.arm === 'on' ? 'ON' : 'OFF'} r${run.repetition}</span>`,
+    statusBadge(run.summary.status ?? (run.summary.completed ? 'completed' : 'error')),
+    '</summary>',
+    `<div class="space-y-2 border-t px-3 py-3">`,
+    `<div class="text-xs text-muted-foreground">工具：${escapeHtml(run.summary.toolCalls.join(', ') || '—')}</div>`,
+    renderRunMeta(run),
+    renderRunDetails(run),
+    renderRunTrace(run),
+    '</div>',
+    '</details>',
+  ].join('\n')).join('\n')
+  return [
+    '<aside class="space-y-2 lg:max-h-[70rem] lg:overflow-y-auto lg:pr-1">',
+    '<h4 class="text-xs font-medium uppercase tracking-wide text-muted-foreground">运行详情</h4>',
+    cards,
+    '</aside>',
+  ].join('\n')
 }
 
 /** Minimal tabs: vanilla toggling, no framework (shadcn Tabs look). */
@@ -567,12 +568,18 @@ function tabPanels(rows: ScenarioRow[]): string {
   const panels = (['native', 'code'] as const).map((mode) => {
     const group = rows.filter(row => row.mode === mode)
     if (group.length === 0) return ''
-    const tables = group.map(abDiffTable).join('\n')
-    const details = runDetailCards(group)
+    // Each scenario: statistics table on the left, its per-run detail column
+    // glued to the right (stacks on narrow viewports).
+    const blocks = group.map(row => [
+      '<div class="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">',
+      abDiffTable(row),
+      runDetailColumn(row),
+      '</div>',
+    ].join('\n')).join('\n')
     // The first present panel is visible on load; the tab handler toggles
     // the rest (and re-hides/shows this one when switching).
     const initial = mode === presentModes[0] ? 'space-y-6' : 'hidden space-y-6'
-    return `<div data-panel="${mode}" class="${initial}">${tables}<section class="space-y-6 pt-2">${details}</section></div>`
+    return `<div data-panel="${mode}" class="${initial}">${blocks}</div>`
   })
   const tabs = (['native', 'code'] as const)
     .filter(mode => rows.some(row => row.mode === mode))
@@ -635,7 +642,7 @@ addEventListener('DOMContentLoaded', () => {
 <style id="tailwind"></style>
 </head>
 <body class="min-h-screen bg-background font-sans antialiased">
-<div class="mx-auto max-w-6xl space-y-8 px-6 py-10">
+<div class="mx-auto max-w-7xl space-y-8 px-6 py-10">
 
 <header class="space-y-3">
   <div class="flex flex-wrap items-center gap-3">
