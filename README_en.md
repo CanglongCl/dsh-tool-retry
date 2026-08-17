@@ -97,7 +97,7 @@ pnpm test              # unit + integration + code-mode integration + keyless A/
 pnpm build:fixtures    # regenerate the breakpoint corpora (replay-fixtures/ + eval-fixtures/; check verifies idempotence)
 pnpm e2e:real          # real-API e2e (native + PTC; needs DEEPSEEK_API_KEY, auto-skips without it)
 pnpm eval:real         # real-model evaluation (plan §6: per scenario x arm x N; key via env -> repo .env -> ~/.dsh/.env chain)
-pnpm eval:report        # render the HTML report, persisted to reports/NNN-...html with git hash/model/token metadata
+pnpm eval:report        # render the HTML report, persisted to reports/NNN-...html (git hash/model/reasoning/token metadata, click-to-expand full tool calls per run)
 pnpm check             # repo gate: typecheck + tests + fixture/gen-config idempotence + official allowlist
 pnpm package:official  # assemble the publishable official tarball under dist/
 ```

@@ -100,7 +100,7 @@ pnpm test              # 单测 + 集成 + 代码模式集成 + keyless A/B + ev
 pnpm build:fixtures    # 重新生成断点语料（replay-fixtures/ + eval-fixtures/，check 校验幂等）
 pnpm e2e:real          # 真实 API e2e（native + PTC，需 DEEPSEEK_API_KEY，无 key 自动跳过）
 pnpm eval:real         # 真实模型评测（§6：每场景 × 臂 × N 次；key 走 环境→仓库 .env→~/.dsh/.env 凭据链）
-pnpm eval:report        # 生成 HTML 评测报告并持久化到仓库 reports/NNN-….html（含 git hash/模型/token 元数据）
+pnpm eval:report        # 生成 HTML 评测报告并持久化到仓库 reports/NNN-….html（含 git hash/模型/推理强度/token 元数据，每次运行可点击展开完整工具调用）
 pnpm check             # 仓库门禁：typecheck + 单测 + 语料/gen-config 幂等 + 官方包 allowlist
 pnpm package:official  # 组装可发布的官方 tarball 到 dist/
 ```
