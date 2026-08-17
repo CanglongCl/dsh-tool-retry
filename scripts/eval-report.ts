@@ -17,7 +17,7 @@
 
 import { spawnSync } from 'node:child_process'
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { dirname, isAbsolute, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
@@ -146,11 +146,24 @@ function numberForBatch(stamp: string): number {
   return (numbers.length === 0 ? 0 : Math.max(...numbers)) + 1
 }
 
+/**
+ * Resolve one run artifact under .artifacts/eval. Older/error records carry
+ * RELATIVE runDir values ('runs/<stamp>/...'); one child-runner build wrote
+ * ABSOLUTE paths — both resolve here (an absolute segment would otherwise
+ * survive path.join and point at a nonexistent nested path).
+ */
+function runArtifactPath(record: RunRecord, file: string): string {
+  const runDir = record.runDir ?? ''
+  return isAbsolute(runDir)
+    ? join(runDir, file)
+    : join(EVAL_DIR, runDir, file)
+}
+
 /** Read one run's persisted full session log (the drill-down evidence). */
 function readRunSession(record: RunRecord): SessionLine[] | undefined {
   if (record.runDir === undefined) return undefined
   try {
-    return readFileSync(join(EVAL_DIR, record.runDir, 'session.jsonl'), 'utf8')
+    return readFileSync(runArtifactPath(record, 'session.jsonl'), 'utf8')
       .split('\n').filter(line => line.trim() !== '')
       .map(line => JSON.parse(line) as SessionLine)
   } catch {
@@ -486,7 +499,7 @@ function renderRunMeta(record: RunRecord): string {
 function readRunProcess(record: RunRecord): { perStepTokens?: { step: number; input: number; output: number; reasoning: number }[] } | undefined {
   if (record.runDir === undefined) return undefined
   try {
-    return JSON.parse(readFileSync(join(EVAL_DIR, record.runDir, 'process.json'), 'utf8')) as never
+    return JSON.parse(readFileSync(runArtifactPath(record, 'process.json'), 'utf8')) as never
   } catch {
     return undefined
   }

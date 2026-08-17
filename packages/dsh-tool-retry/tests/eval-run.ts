@@ -54,7 +54,10 @@ const record = {
   model: MODEL,
   provider: 'deepseek-official',
   reasoning: REASONING,
-  runDir: RUN_DIR,
+  // RELATIVE to .artifacts/eval — the report generator joins it against
+  // EVAL_DIR (an absolute runDir would survive path.join and point at a
+  // nonexistent path; the absolute form only serves the write below).
+  runDir: join('runs', STAMP, SCENARIO, ARM, `r${REP}`),
   startedAt,
   finishedAt: new Date().toISOString(),
   summary,
