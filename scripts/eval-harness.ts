@@ -14,7 +14,7 @@
  */
 
 import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
@@ -22,8 +22,6 @@ import { fileURLToPath } from 'node:url'
 // is inherited by every child CLI process and never printed.
 function loadLayeredEnv(): boolean {
   if ((process.env.DEEPSEEK_API_KEY ?? '').trim() !== '') return true
-  const { readFileSync } = require('node:fs') as typeof import('node:fs')
-  const { homedir } = require('node:os') as typeof import('node:os')
   for (const path of [join(ROOT, '.env'), join(homedir(), '.dsh', '.env')]) {
     try {
       for (const line of readFileSync(path, 'utf8').split('\n')) {
@@ -66,7 +64,9 @@ function flagValue(name: string, envDefault: string): string {
 }
 const REPEATS = Number(flagValue('repeat', process.env.DSH_EVAL_REPEATS ?? '1'))
 const CONCURRENCY = Number(flagValue('concurrency', process.env.DSH_EVAL_CONCURRENCY ?? '6'))
-const DEADLINE_MS = Number(process.env.DSH_EVAL_TIMEOUT_MS ?? 3 * 60 * 1000)
+// Stop-at cuts successful retries in a few steps; the deadline only guards
+// wandering/failed retries (a few slow max-reasoning steps).
+const DEADLINE_MS = Number(process.env.DSH_EVAL_TIMEOUT_MS ?? 4 * 60 * 1000)
 if (!Number.isInteger(REPEATS) || REPEATS < 1 || !Number.isInteger(CONCURRENCY) || CONCURRENCY < 1) {
   console.error('eval:real — --repeat/--concurrency must be positive integers')
   process.exit(1)
@@ -95,9 +95,11 @@ if (!loadLayeredEnv()) {
   process.exit(0)
 }
 
+const scenarioFilter = flagValue('scenario', '')
 const scenarios = readdirSync(EVAL_FIXTURES, { withFileTypes: true })
   .filter(entry => entry.isDirectory())
   .map(entry => entry.name)
+  .filter(name => scenarioFilter === '' || name === scenarioFilter)
   .sort()
 const loadedByName = new Map<string, LoadedScenario>(
   scenarios.map(name => [name, loadScenario(join(EVAL_FIXTURES, name))]))
@@ -148,10 +150,10 @@ function runOne(queued: Queued): Promise<RunRecord> {
   mkdirSync(dshHome, { recursive: true })
   // Profile-local dev aliases (the same loading model as the dev profile).
   const aliasDir = join(dshHome, 'profiles', 'headless', 'node_modules')
-  mkdirSync(join(aliasDir, ...DRIVER_ALIAS.split('/')), { recursive: true })
+  mkdirSync(dirname(join(aliasDir, ...DRIVER_ALIAS.split('/'))), { recursive: true })
   symlinkSync(DRIVER_PKG, join(aliasDir, ...DRIVER_ALIAS.split('/')), 'dir')
   if (arm === 'on') {
-    mkdirSync(join(aliasDir, ...PLUGIN_ALIAS.split('/')), { recursive: true })
+    mkdirSync(dirname(join(aliasDir, ...PLUGIN_ALIAS.split('/'))), { recursive: true })
     symlinkSync(PLUGIN_PKG, join(aliasDir, ...PLUGIN_ALIAS.split('/')), 'dir')
   }
   const wake = scenario.continuation.trim() === ''
@@ -160,18 +162,20 @@ function runOne(queued: Queued): Promise<RunRecord> {
   const overlayPath = writeOverlay(liveRoot, {
     sessionId, arm, mode, provider: model.provider, model: model.model,
     reasoningEffort: model.reasoningEffort, wake,
+    grader: { kind: scenario.kind, mode, checks: scenario.successChecks ?? [] },
   }, sessionsRoot)
   const bin = resolveHarnessCli()
   return spawnRun(bin, workspaceDir, overlayPath, dshHome, mode, DEADLINE_MS + 30_000).then((outcome) => {
     collectArtifacts(sessionsRoot, workspaceDir, sessionId, runDir)
-    let status: 'completed' | 'timeout' | 'error' = 'completed'
+    let status: 'completed' | 'cutoff' | 'timeout' | 'error' = 'completed'
     if (outcome.timedOut) status = 'timeout'
     else if (outcome.exitCode !== 0) status = 'error'
+    else if (outcome.stdout.includes('STOP-AT-SUCCESS')) status = 'cutoff'
     const events = existsSync(join(runDir, 'session.jsonl'))
       ? readFileSync(join(runDir, 'session.jsonl'), 'utf8').split('\n').filter(line => line.trim() !== '')
         .map(line => JSON.parse(line) as never)
       : []
-    const summary = buildSummary(loaded, mode, arm, sessionId, events, workspaceDir, status, { repetition: rep, repoHead: repoHead() })
+    const summary = buildSummary(loaded, mode, arm, sessionId, events, workspaceDir, status as 'completed' | 'timeout' | 'error', { repetition: rep, repoHead: repoHead() })
     if (outcome.exitCode !== 0 && outcome.exitCode !== null) {
       writeFileSync(join(runDir, 'stdout.txt'), outcome.stdout)
       writeFileSync(join(runDir, 'stderr.txt'), outcome.stderr)

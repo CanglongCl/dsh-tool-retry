@@ -11,6 +11,8 @@
 
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
+import { existsSync, readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { installModelSelection, type ModelSelectionRef } from '@deepseek-ai/dsh-agent'
 import { createUserMessage } from '@deepseek-ai/dsh-llm/message'
 import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
@@ -36,6 +38,10 @@ export interface Config {
   reasoningEffort?: string
   /** JSON chunk-array script for the keyless smoke's mock adapter. */
   mock?: string
+  /** JSON retry-success criterion { kind, mode, checks } — the driver cuts
+   * the run the moment it passes (stop-at), so successful retries end in a
+   * few steps instead of waiting for the turn to converge. */
+  grader: string
 }
 
 export const Config: z<Config> = z.object({
@@ -45,6 +51,7 @@ export const Config: z<Config> = z.object({
   model: z.string(),
   reasoningEffort: z.string(),
   mock: z.string(),
+  grader: z.string(),
 })
 
 /** Process-facing effects of one run (mirrors the headless bundle). */
@@ -57,6 +64,75 @@ interface RunnerIo {
 function fail(io: RunnerIo, message: string): void {
   io.stderr.write(`dsh-tool-retry-eval: ${message}\n`)
   io.exit(1)
+}
+
+interface GraderSpec {
+  kind: 'deploy' | 'boom' | 'fs' | 'plan'
+  mode: 'native' | 'code'
+  checks: { kind: 'fileExists' | 'fileContains' | 'writeSucceeded'; path: string; fragment?: string }[]
+}
+
+/** The retry-success criterion over post-break events + the live workspace
+ * (ported from the parent grader; fs checks run against process.cwd(), the
+ * staged workspace the child was spawned in). */
+function evaluateRetrySuccess(agent: { session: { events: readonly unknown[] } }, firstSeq: number, spec: GraderSpec): boolean {
+  interface Row {
+    seq: number
+    type: string
+    data: {
+      callId?: string
+      name?: string
+      arguments?: string
+      message?: { content?: { toolCallId?: string; content?: { type?: string; text?: string }[]; isError?: boolean }[] }
+    }
+  }
+  const postBreak = agent.session.events.filter(event => (event as Row).seq > firstSeq) as unknown as Row[]
+  const callNamesById = new Map(postBreak
+    .filter(event => event.type === 'tool/call')
+    .map(event => [event.data.callId, event.data.name ?? '']))
+  const directOk = (toolName: string): boolean => postBreak.some(event =>
+    event.type === 'tool/result'
+    && event.data.message?.content?.some(block =>
+      callNamesById.get(block.toolCallId) === toolName && block.isError !== true) === true)
+  const resultTexts = postBreak
+    .filter(event => event.type === 'tool/result')
+    .map(event => (event.data.message?.content?.[0]?.content ?? [])
+      .filter(block => block.type === 'text')
+      .map(block => block.text ?? '')
+      .join('\n'))
+  const fsChecksPass = spec.checks.every((check) => {
+    const path = join(process.cwd(), check.path)
+    if (check.kind === 'fileExists') return existsSync(path)
+    if (check.kind === 'writeSucceeded') {
+      const writeCallIds = postBreak
+        .filter(event => event.type === 'tool/call' && event.data.name === 'write'
+          && (event.data.arguments ?? '').includes(`"${check.path}"`))
+        .map(event => event.data.callId)
+      return postBreak.some(event =>
+        event.type === 'tool/result'
+        && event.data.message?.content?.some(block =>
+          writeCallIds.includes(block.toolCallId) && block.isError !== true) === true)
+        || resultTexts.some(text => text.includes('Replayed write'))
+    }
+    if (check.fragment === undefined) return false
+    try {
+      return readFileSync(path, 'utf8').includes(check.fragment)
+    } catch {
+      return false
+    }
+  })
+  switch (spec.kind) {
+    case 'deploy':
+      return false
+    case 'boom':
+      return spec.mode === 'native' ? false : directOk('run_code')
+    case 'fs':
+      return spec.mode === 'native' ? fsChecksPass : directOk('run_code') && fsChecksPass
+    case 'plan':
+      return spec.mode === 'native'
+        ? directOk('exit_plan_mode') || resultTexts.some(text => text.includes('plan accepted: true'))
+        : directOk('run_code')
+  }
 }
 
 /** The last turn's outcome (only 'completed' exits 0). */
@@ -100,10 +176,29 @@ async function run(ctx: Context, config: Config, io: RunnerIo): Promise<void> {
     },
   })
   const wake = JSON.parse(config.wake) as { kind: 'empty' | 'user'; text?: string }
+  const grader = JSON.parse(config.grader === undefined || config.grader === '' ? '{}' : config.grader) as GraderSpec
+  const firstSeq = agent.session.seq
+  // Stop-at: the moment the retry criterion passes (checked one tick after
+  // each direct tool result commits), flush and exit successfully — a
+  // successful retry ends in a few steps instead of waiting for the turn.
+  const disposeStopAt = grader.kind === undefined ? undefined : ctx.on('tools/result', (exec) => {
+    if ((exec as { parent?: unknown }).parent !== undefined) return
+    setImmediate(() => {
+      if (evaluateRetrySuccess(agent, firstSeq, grader)) {
+        disposeStopAt?.()
+        void (async () => {
+          await sessions.flush(agent.session)
+          io.stdout.write('STOP-AT-SUCCESS\n')
+          io.exit(0)
+        })()
+      }
+    })
+  })
   agent.followup(createUserMessage(wake.kind === 'user'
     ? { content: [{ type: 'text', text: wake.text ?? '' }], source: { kind: 'user' } }
     : { content: [], source: { kind: 'plugin', plugin: 'dsh-tool-retry-eval' } }))
   await agent.whenIdle()
+  disposeStopAt?.()
   await sessions.flush(agent.session)
   const reason = lastReason(agent.session as never)
   io.exit(reason === 'completed' ? 0 : 1)

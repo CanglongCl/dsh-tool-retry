@@ -97,6 +97,7 @@ const overlayPath = writeOverlay(liveRoot, {
   reasoningEffort: '',
   wake: { kind: 'empty' },
   mockScript: script,
+  grader: { kind: scenario.kind, mode: 'native', checks: scenario.successChecks ?? [] },
 }, sessionsRoot)
 
 const harnessRoot = process.env.DSH_HARNESS
@@ -133,7 +134,7 @@ console.log(JSON.stringify({
   stderrTail: outcome.stderr.slice(-300),
 }, null, 2))
 
-const failed = outcome.exitCode !== 0
+const failed = outcome.exitCode !== 0 || !outcome.stdout.includes('STOP-AT-SUCCESS')
   || events.length === 0
   || !retrySuccess
   || !toolNames.includes('editPreviousToolCalling')

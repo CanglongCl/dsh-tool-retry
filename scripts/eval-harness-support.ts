@@ -140,10 +140,19 @@ export function stageWorkspace(loaded: LoadedScenario): string {
   return workspace
 }
 
-/** Seed the verbatim prefix as the session store file the child resumes. */
+/** Seed the verbatim prefix as the session store file the child resumes.
+ * The scrubbed history still names the real repository as ~<sub> (the
+ * machine-path neutralization turned /Users/<user>/... into ~/...); the
+ * model echoes those paths in its own commands, so the seed REWRITES them
+ * to the staged workspace — the resumed run then works inside the eval's
+ * workspace root exactly like the real session worked inside its repo. */
 export function seedSession(loaded: LoadedScenario, sessionsRoot: string, sessionId: string, workspaceDir: string): string {
   const header = { ...loaded.header, id: sessionId, cwd: workspaceDir }
-  const text = `${JSON.stringify(header)}\n${loaded.rows.map(row => JSON.stringify(row)).join('\n')}\n`
+  const repoSub = loaded.scenario.workspaceRepo === undefined
+    ? ''
+    : loaded.scenario.workspaceRepo.path.replace(/^\/Users\/[^/]+\//u, '')
+  const rewrite = (text: string): string => repoSub === '' ? text : text.replaceAll(`~/${repoSub}`, workspaceDir)
+  const text = `${JSON.stringify(header)}\n${loaded.rows.map(row => rewrite(JSON.stringify(row))).join('\n')}\n`
   const path = sessionLogPath(sessionsRoot, workspaceDir, sessionId)
   mkdirSync(dirname(path), { recursive: true })
   writeFileSync(path, text)
@@ -190,6 +199,8 @@ export interface RunConfig {
   reasoningEffort: string
   wake: { kind: 'empty' } | { kind: 'user'; text: string }
   mockScript?: unknown[]
+  /** Retry-success criterion JSON — the driver stop-at cut. */
+  grader: { kind: 'deploy' | 'boom' | 'fs' | 'plan'; mode: 'native' | 'code'; checks: { kind: string; path: string; fragment?: string }[] }
 }
 
 /** Write the per-run cordis overlay (the dsh-web-review writeOverlay port). */
@@ -207,6 +218,7 @@ export function writeOverlay(runDir: string, config: RunConfig, sessionsRoot: st
     `        model: ${config.model}`,
     ...(config.reasoningEffort === '' ? [] : [`        reasoningEffort: ${config.reasoningEffort}`]),
     ...(config.mockScript === undefined ? [] : [`        mock: '${JSON.stringify(config.mockScript).replaceAll("'", "''")}'`]),
+    `        grader: '${JSON.stringify(config.grader).replaceAll("'", "''")}'`,
   ]
   if (config.arm === 'on') {
     rows.push('    - id: tool-retry', `      name: '${PLUGIN_ALIAS}'`)
