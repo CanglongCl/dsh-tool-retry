@@ -232,7 +232,9 @@ for (const mode of ['native', 'code'] as const) {
 }
 console.log(`\nrecords: ${join(OUT_DIR, 'results.jsonl')} (stamp ${stamp})`)
 console.log('next: pnpm eval:report')
-// The eval reports model behavior; exit non-zero only on runner-level failure
-// (every run reached completion). Adoption/retry metrics are observations.
-const allCompleted = reports.every(report => [...report.arms.on, ...report.arms.off].every(run => run.completed))
-process.exit(allCompleted ? 0 : 1)
+// The eval reports model behavior; exit non-zero only on runner-level
+// failure (a timeout or errored run). Cutoff runs are the stop-at design;
+// adoption/retry metrics are observations either way.
+const mechanismOk = reports.every(report => [...report.arms.on, ...report.arms.off]
+  .every(run => run.status === 'completed' || run.status === 'cutoff'))
+process.exit(mechanismOk ? 0 : 1)
