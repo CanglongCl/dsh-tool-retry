@@ -213,19 +213,33 @@ export class SessionCheckpoint {
         calls.push({ ...candidate.data })
       }
     }
-    const last = calls.at(-1)
-    if (last === undefined) return
-    const group = calls.filter(call => call.turn === last.turn && call.step === last.step)
-    const ordinals = new Map<number, RoundOrdinal>()
-    let size = 0
-    for (const call of group) {
-      const idTarget = await io.fs.resolve(join(this.byIdDir, `${sanitizeId(call.callId)}.json`))
-      if (await io.fs.stat(idTarget) === undefined) continue
-      size += 1
-      ordinals.set(size, { callId: call.callId, tool: call.name })
+    // Walk the (turn, step) groups from NEWEST to oldest and take the first
+    // group with at least one persisted by-id file. The newest group usually
+    // contains the in-flight call itself (its by-id file does not exist yet —
+    // it is being written NOW), so stopping at the last group would miss the
+    // previous round entirely; the backward walk recovers it.
+    const groups = new Map<string, ToolCallData[]>()
+    for (const call of calls) {
+      const key = `${call.turn}/${call.step}`
+      const group = groups.get(key)
+      if (group === undefined) groups.set(key, [call])
+      else group.push(call)
     }
-    if (size === 0) return // nothing persisted for this round: treat as fresh
-    this.round = { turn: last.turn, step: last.step, ordinals, size }
+    for (const key of [...groups.keys()].reverse()) {
+      const group = groups.get(key)!
+      const ordinals = new Map<number, RoundOrdinal>()
+      let size = 0
+      for (const call of group) {
+        const idTarget = await io.fs.resolve(join(this.byIdDir, `${sanitizeId(call.callId)}.json`))
+        if (await io.fs.stat(idTarget) === undefined) continue
+        size += 1
+        ordinals.set(size, { callId: call.callId, tool: call.name })
+      }
+      if (size === 0) continue
+      const head = group[0]!
+      this.round = { turn: head.turn, step: head.step, ordinals, size }
+      return
+    }
   }
 
   /** Switch to a new round: drop every old alias, then start fresh. */

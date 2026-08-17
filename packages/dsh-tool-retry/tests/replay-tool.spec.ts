@@ -279,7 +279,7 @@ describe('restart recovery', () => {
       previous_ordinal: 1,
       old_string: '"tex":"hi"',
       new_string: '"text":"hi"',
-    }, agent)
+    }, agent, { turn: 2, step: 1 })
     if (replay.isError) throw new Error(`expected resume replay success: ${textOf(replay.content)}`)
     expect(textOf(replay.content)).toContain('Replayed echo with the edited arguments')
     expect(textOf(replay.content)).toContain('echoed: hi')
