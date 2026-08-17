@@ -119,6 +119,7 @@ for (const pkg of [DRIVER_PKG, PLUGIN_PKG]) {
 }
 
 const stamp = new Date().toISOString().replaceAll(':', '-')
+console.log(`eval:real batch stamp ${stamp}`)
 const batchStarted = new Date().toISOString()
 const records: Record<string, unknown>[] = []
 const FAILURES: string[] = []

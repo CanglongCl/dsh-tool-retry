@@ -23,7 +23,8 @@
     "eval:real": "tsx scripts/eval.ts",
     "eval:report": "tsx scripts/eval-report.ts",
     "crop:real": "tsx scripts/crop-real-fixtures.ts",
-    "eval:smoke": "tsx scripts/eval-harness-smoke.ts"
+    "eval:smoke": "tsx scripts/eval-harness-smoke.ts",
+    "eval:web": "tsx scripts/eval-web.ts"
   },
   "devDependencies": {
     "@tailwindcss/cli": "^4.3.3",
