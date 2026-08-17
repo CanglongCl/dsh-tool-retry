@@ -1,0 +1,62 @@
+{
+  "scenario": "ptc-run-code",
+  "arm": "on",
+  "mode": "code",
+  "checkpoint": {
+    "exists": true,
+    "history": [
+      {
+        "id": "rc_1",
+        "tool": "run_code",
+        "turn": 1,
+        "step": 1,
+        "ordinal": 1
+      },
+      {
+        "id": "rc_2",
+        "tool": "run_code",
+        "turn": 1,
+        "step": 2,
+        "ordinal": 1
+      }
+    ],
+    "byId": {
+      "rc_1.json": "{\"code\":\"// RETRY-TARGET\\nreturn await tools.boom({ value: \\\"v1-marker\\\" })\",\"description\":\"run the failing program\"}",
+      "rc_2.json": "{\"code\":\"// RETRY-GUARD\\nconst text = (await tools.read({ file_path: \\\"<checkpoint>/previous/1.json\\\" }))\\n  .lines.map(line => line.text).join(\\\"\\\\n\\\")\\nconst prev = JSON.parse(text)\\nif (prev.code.includes(\\\"RETRY-GUARD\\\")) return { selfRead: true }\\nconst AsyncFunction = (async () => {}).constructor\\nconst fixed = prev.code.replace(\\\"v1-\\\" + \\\"marker\\\", \\\"v2-good\\\")\\nreturn await new AsyncFunction(\\\"tools\\\", \\\"console\\\", \\\"'use strict';\\\\n\\\" + fixed)(tools, console)\",\"description\":\"retry with a small correction\"}"
+    },
+    "aliases": {
+      "previous/1.json": "../by-id/rc_2.json"
+    }
+  },
+  "notices": [
+    {
+      "id": "rc_1",
+      "afterItsOwnResult": true,
+      "beforeNextAssistantMessage": true,
+      "text": "Your failed `run_code` program was saved.\n- path: <checkpoint>/by-id/rc_1.json\nTo apply a small fix, read and JSON.parse it in a new `run_code`\nprogram, replace the fragment, and run the corrected program with the\nAsyncFunction constructor."
+    }
+  ],
+  "replay": {
+    "edits": [
+      {
+        "callId": "rc_2",
+        "succeeded": true,
+        "text": "{\n  \"ok\": true\n}"
+      }
+    ],
+    "boomCalls": [
+      {
+        "value": "v1-marker"
+      },
+      {
+        "value": "v2-good"
+      }
+    ]
+  },
+  "tokens": {
+    "scriptedRetryOutputTokens": 610,
+    "fullRegenerationOutputTokens": 117,
+    "savingsPercent": -421.4,
+    "noticeOutputTokens": 324
+  }
+}

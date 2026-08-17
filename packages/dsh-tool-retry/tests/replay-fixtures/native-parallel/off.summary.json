@@ -1,0 +1,39 @@
+{
+  "scenario": "native-parallel",
+  "arm": "off",
+  "mode": "native",
+  "checkpoint": {
+    "exists": false
+  },
+  "notices": [],
+  "replay": {
+    "edits": [
+      {
+        "callId": "edit_1",
+        "succeeded": false,
+        "text": "Error: unknown tool \"editPreviousToolCalling\""
+      },
+      {
+        "callId": "edit_2",
+        "succeeded": false,
+        "text": "Error: unknown tool \"editPreviousToolCalling\""
+      }
+    ],
+    "deployCalls": [
+      {
+        "label": "billing",
+        "kind": "invalid"
+      },
+      {
+        "label": "ledger",
+        "kind": "invalid"
+      }
+    ]
+  },
+  "tokens": {
+    "scriptedRetryOutputTokens": 188,
+    "fullRegenerationOutputTokens": 889,
+    "savingsPercent": 78.9,
+    "noticeOutputTokens": 0
+  }
+}

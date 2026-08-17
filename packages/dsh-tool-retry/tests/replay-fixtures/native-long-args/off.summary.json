@@ -1,0 +1,30 @@
+{
+  "scenario": "native-long-args",
+  "arm": "off",
+  "mode": "native",
+  "checkpoint": {
+    "exists": false
+  },
+  "notices": [],
+  "replay": {
+    "edits": [
+      {
+        "callId": "edit_1",
+        "succeeded": false,
+        "text": "Error: unknown tool \"editPreviousToolCalling\""
+      }
+    ],
+    "deployCalls": [
+      {
+        "label": "payments",
+        "kind": "invalid"
+      }
+    ]
+  },
+  "tokens": {
+    "scriptedRetryOutputTokens": 97,
+    "fullRegenerationOutputTokens": 890,
+    "savingsPercent": 89.1,
+    "noticeOutputTokens": 0
+  }
+}

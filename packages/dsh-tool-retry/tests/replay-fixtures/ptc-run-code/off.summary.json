@@ -1,0 +1,29 @@
+{
+  "scenario": "ptc-run-code",
+  "arm": "off",
+  "mode": "code",
+  "checkpoint": {
+    "exists": false
+  },
+  "notices": [],
+  "replay": {
+    "edits": [
+      {
+        "callId": "rc_2",
+        "succeeded": false,
+        "text": "Error: code run failed (exception): cannot read \"<checkpoint>/previous/1.json\": not found"
+      }
+    ],
+    "boomCalls": [
+      {
+        "value": "v1-marker"
+      }
+    ]
+  },
+  "tokens": {
+    "scriptedRetryOutputTokens": 611,
+    "fullRegenerationOutputTokens": 117,
+    "savingsPercent": -422.2,
+    "noticeOutputTokens": 0
+  }
+}

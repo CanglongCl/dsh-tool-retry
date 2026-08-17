@@ -1,0 +1,132 @@
+[
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "tool-call-delta",
+        "index": 0,
+        "id": "rc_1",
+        "name": "run_code",
+        "argumentsDelta": "{\"code\":\"// "
+      },
+      {
+        "type": "tool-call-delta",
+        "index": 0,
+        "id": "rc_1",
+        "name": "run_code",
+        "argumentsDelta": "RETRY-TARGET\\nreturn await tools.boom({ value: \\\"v1-marker\\\" })\",\"description\":\"run the failing program\"}"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "rc_1",
+          "name": "run_code",
+          "arguments": "{\"code\":\"// RETRY-TARGET\\nreturn await tools.boom({ value: \\\"v1-marker\\\" })\",\"description\":\"run the failing program\"}"
+        }
+      },
+      {
+        "type": "usage",
+        "usage": {
+          "inputTokens": 100,
+          "outputTokens": 200
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "tool-call"
+      },
+      {
+        "type": "tool-call-delta",
+        "index": 0,
+        "id": "rc_2",
+        "name": "run_code",
+        "argumentsDelta": "{\"code\":\"// "
+      },
+      {
+        "type": "tool-call-delta",
+        "index": 0,
+        "id": "rc_2",
+        "name": "run_code",
+        "argumentsDelta": "RETRY-GUARD\\nconst text = (await tools.read({ file_path: \\\"__CHECKPOINT_DIR__/previous/1.json\\\" }))\\n  .lines.map(line => line.text).join(\\\"\\\\n\\\")\\nconst prev = JSON.parse(text)\\nif (prev.code.includes(\\\"RETRY-GUARD\\\")) return { selfRead: true }\\nconst AsyncFunction = (async () => {}).constructor\\nconst fixed = prev.code.replace(\\\"v1-\\\" + \\\"marker\\\", \\\"v2-good\\\")\\nreturn await new AsyncFunction(\\\"tools\\\", \\\"console\\\", \\\"'use strict';\\\\n\\\" + fixed)(tools, console)\",\"description\":\"retry with a small correction\"}"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "tool-call",
+          "id": "rc_2",
+          "name": "run_code",
+          "arguments": "{\"code\":\"// RETRY-GUARD\\nconst text = (await tools.read({ file_path: \\\"__CHECKPOINT_DIR__/previous/1.json\\\" }))\\n  .lines.map(line => line.text).join(\\\"\\\\n\\\")\\nconst prev = JSON.parse(text)\\nif (prev.code.includes(\\\"RETRY-GUARD\\\")) return { selfRead: true }\\nconst AsyncFunction = (async () => {}).constructor\\nconst fixed = prev.code.replace(\\\"v1-\\\" + \\\"marker\\\", \\\"v2-good\\\")\\nreturn await new AsyncFunction(\\\"tools\\\", \\\"console\\\", \\\"'use strict';\\\\n\\\" + fixed)(tools, console)\",\"description\":\"retry with a small correction\"}"
+        }
+      },
+      {
+        "type": "usage",
+        "usage": {
+          "inputTokens": 100,
+          "outputTokens": 200
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "tool-calls"
+        }
+      }
+    ]
+  },
+  {
+    "kind": "chunks",
+    "chunks": [
+      {
+        "type": "block-start",
+        "index": 0,
+        "blockType": "text"
+      },
+      {
+        "type": "text-delta",
+        "index": 0,
+        "text": "fixed"
+      },
+      {
+        "type": "block-end",
+        "index": 0,
+        "block": {
+          "type": "text",
+          "text": "fixed"
+        }
+      },
+      {
+        "type": "usage",
+        "usage": {
+          "inputTokens": 100,
+          "outputTokens": 150
+        }
+      },
+      {
+        "type": "finish",
+        "reason": {
+          "kind": "stop"
+        }
+      }
+    ]
+  }
+]

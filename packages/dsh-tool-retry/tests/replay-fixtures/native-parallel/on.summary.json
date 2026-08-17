@@ -1,0 +1,100 @@
+{
+  "scenario": "native-parallel",
+  "arm": "on",
+  "mode": "native",
+  "checkpoint": {
+    "exists": true,
+    "history": [
+      {
+        "id": "deploy_1",
+        "tool": "deploy",
+        "turn": 1,
+        "step": 1,
+        "ordinal": 1
+      },
+      {
+        "id": "deploy_2",
+        "tool": "deploy",
+        "turn": 1,
+        "step": 1,
+        "ordinal": 2
+      },
+      {
+        "id": "edit_1",
+        "tool": "editPreviousToolCalling",
+        "turn": 1,
+        "step": 2,
+        "ordinal": 1
+      },
+      {
+        "id": "edit_2",
+        "tool": "editPreviousToolCalling",
+        "turn": 1,
+        "step": 2,
+        "ordinal": 2
+      }
+    ],
+    "byId": {
+      "deploy_1.json": "{\"config\":{\"kind\":\"valid\",\"label\":\"billing\",\"replicas\":3,\"region\":\"cn-east-1\",\"image\":\"registry.example.com/app:2026.08.01-rc7\",\"env\":{\"LOG_LEVEL\":\"debug\",\"FEATURE_FLAGS\":{\"retry\":true,\"tracing\":true,\"canary\":false}},\"resources\":{\"cpu\":\"2\",\"memory\":\"4Gi\",\"gpu\":null},\"template\":\"kind: Deployment\\napiVersion: apps/v1\\nmetadata:\\n  name: {name}\\nspec:\\n  replicas: {replicas}\\n  selector:\\n    matchLabels:\\n      app: {name}\\n  template:\\n    metadata:\\n      labels:\\n        app: {name}\\n    spec:\\n      containers:\\n      - name: app\\n        image: {image}\\n        ports:\\n        - containerPort: 8080\\n        env:\\n        - name: LOG_LEVEL\\n          value: \\\"{loglevel}\\\"\\n        resources:\\n          limits:\\n            cpu: \\\"2\\\"\\n            memory: \\\"4Gi\\\"\\n          requests:\\n            cpu: \\\"500m\\\"\\n            memory: \\\"512Mi\\\"\\n      restartPolicy: Always\\n\"}}",
+      "deploy_2.json": "{\"config\":{\"kind\":\"valid\",\"label\":\"ledger\",\"replicas\":3,\"region\":\"cn-east-1\",\"image\":\"registry.example.com/app:2026.08.01-rc7\",\"env\":{\"LOG_LEVEL\":\"debug\",\"FEATURE_FLAGS\":{\"retry\":true,\"tracing\":true,\"canary\":false}},\"resources\":{\"cpu\":\"2\",\"memory\":\"4Gi\",\"gpu\":null},\"template\":\"kind: Deployment\\napiVersion: apps/v1\\nmetadata:\\n  name: {name}\\nspec:\\n  replicas: {replicas}\\n  selector:\\n    matchLabels:\\n      app: {name}\\n  template:\\n    metadata:\\n      labels:\\n        app: {name}\\n    spec:\\n      containers:\\n      - name: app\\n        image: {image}\\n        ports:\\n        - containerPort: 8080\\n        env:\\n        - name: LOG_LEVEL\\n          value: \\\"{loglevel}\\\"\\n        resources:\\n          limits:\\n            cpu: \\\"2\\\"\\n            memory: \\\"4Gi\\\"\\n          requests:\\n            cpu: \\\"500m\\\"\\n            memory: \\\"512Mi\\\"\\n      restartPolicy: Always\\n\"}}",
+      "edit_1.json": "{\"previous_ordinal\":1,\"old_string\":\"\\\"kind\\\":\\\"invalid\\\"\",\"new_string\":\"\\\"kind\\\":\\\"valid\\\"\"}",
+      "edit_2.json": "{\"call_id\":\"deploy_2\",\"old_string\":\"\\\"kind\\\":\\\"invalid\\\"\",\"new_string\":\"\\\"kind\\\":\\\"valid\\\"\"}"
+    },
+    "aliases": {
+      "previous/1.json": "../by-id/edit_1.json",
+      "previous/2.json": "../by-id/edit_2.json"
+    }
+  },
+  "notices": [
+    {
+      "id": "deploy_1",
+      "afterItsOwnResult": true,
+      "beforeNextAssistantMessage": true,
+      "text": "Your failed call's arguments were saved.\n- call id: deploy_1\nTo apply a small fix and re-run the call, use `editPreviousToolCalling`\n(with call_id \"deploy_1\" — it stays valid)."
+    },
+    {
+      "id": "deploy_2",
+      "afterItsOwnResult": true,
+      "beforeNextAssistantMessage": true,
+      "text": "Your failed call's arguments were saved.\n- call id: deploy_2\nTo apply a small fix and re-run the call, use `editPreviousToolCalling`\n(with call_id \"deploy_2\" — it stays valid)."
+    }
+  ],
+  "replay": {
+    "edits": [
+      {
+        "callId": "edit_1",
+        "succeeded": true,
+        "text": "Replayed deploy with the edited arguments (call deploy_1:replay):\ndeployed true"
+      },
+      {
+        "callId": "edit_2",
+        "succeeded": true,
+        "text": "Replayed deploy with the edited arguments (call deploy_2:replay):\ndeployed true"
+      }
+    ],
+    "deployCalls": [
+      {
+        "label": "billing",
+        "kind": "invalid"
+      },
+      {
+        "label": "ledger",
+        "kind": "invalid"
+      },
+      {
+        "label": "billing",
+        "kind": "valid"
+      },
+      {
+        "label": "ledger",
+        "kind": "valid"
+      }
+    ]
+  },
+  "tokens": {
+    "scriptedRetryOutputTokens": 188,
+    "fullRegenerationOutputTokens": 889,
+    "savingsPercent": 78.9,
+    "noticeOutputTokens": 352
+  }
+}
