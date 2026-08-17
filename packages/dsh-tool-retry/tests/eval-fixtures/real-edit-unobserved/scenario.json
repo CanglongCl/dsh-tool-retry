@@ -18,6 +18,15 @@
     }
   ],
   "continuation": "",
+  "workspaceRepo": {
+    "path": "/Users/canglong/program/abc-db",
+    "commit": "d300d611d5cc3c472a58524d75e9c7e79efcae19"
+  },
+  "model": {
+    "provider": "deepseek-official",
+    "model": "deepseek-v4-flash",
+    "reasoningEffort": "max"
+  },
   "workspaceFiles": [
     {
       "path": "python/examples/extract_trainers.py",

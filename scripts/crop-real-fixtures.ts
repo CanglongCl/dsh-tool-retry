@@ -62,6 +62,9 @@ interface RealCase {
    * the user's own words ARE the next instruction). */
   continuation: string
   nextUserMessageAsContinuation?: boolean
+  /** The real repository the session worked in (staged per run at the
+   * session's own commit). */
+  repoPath?: string
 }
 
 const CASES: RealCase[] = [
@@ -77,6 +80,7 @@ const CASES: RealCase[] = [
       expected: '按用户发言修订计划后重新提交 exit_plan_mode 成功。',
     },
     stripPrefix: '/Users/canglong/program/abc-db/',
+    repoPath: '/Users/canglong/program/abc-db',
     workspaceSnapshot: [],
     continuation: 'Your plan was dismissed — the user wants to speak instead. Wait for the user\'s message and respond appropriately.',
     nextUserMessageAsContinuation: true,
@@ -93,6 +97,7 @@ const CASES: RealCase[] = [
       expected: '以最小改动修正 old_string 后编辑成功（文件包含 new_string 片段）。',
     },
     stripPrefix: '/Users/canglong/program/abc-db/',
+    repoPath: '/Users/canglong/program/abc-db',
     workspaceSnapshot: [{ path: '/Users/canglong/program/abc-db/python/src/abc_db/gen_protos.py', rel: 'src/abc_db/gen_protos.py' }],
     continuation: '',
   },
@@ -108,6 +113,7 @@ const CASES: RealCase[] = [
       expected: '先读取文件再完成编辑（文件包含 new_string 片段）。',
     },
     stripPrefix: '/Users/canglong/program/abc-db/',
+    repoPath: '/Users/canglong/program/abc-db',
     workspaceSnapshot: [{ path: '/Users/canglong/program/abc-db/python/examples/extract_trainers.py', rel: 'python/examples/extract_trainers.py' }],
     continuation: '',
   },
@@ -123,6 +129,7 @@ const CASES: RealCase[] = [
       expected: '先读取再写入（断点后成功 write README.md）。',
     },
     stripPrefix: '/Users/canglong/program/abc-db/',
+    repoPath: '/Users/canglong/program/abc-db',
     workspaceSnapshot: [{ path: '/Users/canglong/program/abc-db/README.md', rel: 'README.md' }],
     continuation: '',
   },
@@ -138,6 +145,7 @@ const CASES: RealCase[] = [
       expected: '修正后的程序无 error 完成。',
     },
     stripPrefix: '/Users/canglong/program/dsh-web-review/',
+    repoPath: '/Users/canglong/program/dsh-web-review',
     workspaceSnapshot: [],
     continuation: '',
   },
@@ -252,7 +260,9 @@ function cropOne(caseDef: RealCase): void {
   mkdirSync(dir, { recursive: true })
   // The committed prefix is zstd-compressed (full sessions are large); the
   // fixture builder decompresses it deterministically.
-  const prefixText = `{"type":"session","version":0,"id":"${caseDef.name}-prefix","createdAt":1,"cwd":"/workspace","delegationDepth":0}\n`
+  const realHeader = events[0] as { createdAt?: number } | undefined
+  const createdAt = realHeader?.createdAt ?? 1
+  const prefixText = `{"type":"session","version":0,"id":"${caseDef.name}-prefix","createdAt":${createdAt},"cwd":"/workspace","delegationDepth":0}\n`
     + `${prefix.map(event => JSON.stringify(event)).join('\n')}\n`
   writeFileSync(join(dir, 'session-prefix.jsonl.zstd'),
     execFileSync('zstd', ['-19', '-q', '-c'], { input: prefixText, maxBuffer: 512 * 1024 * 1024 }))
@@ -374,6 +384,30 @@ function cropOne(caseDef: RealCase): void {
       successChecks = [{ kind: 'fileContains', path: target.path, fragment }]
     }
   }
+  // Workspace repo identity: the real repository + its commit AT THE SESSION
+  // START (the harness eval stages the repo at this commit per run, then
+  // applies the failure-time file reconstructions above on top).
+  let workspaceRepo: { path: string; commit: string } | undefined
+  if (caseDef.repoPath !== undefined) {
+    try {
+      // The commit at the session start; sessions often predate the repo's
+      // first commit (the session's own work WAS the first commit) — fall
+      // back to the ROOT commit, the closest historical snapshot that
+      // exists. The failure-time file reconstructions above still capture
+      // the target files' true bytes.
+      let commit = execFileSync('git', ['-C', caseDef.repoPath, 'rev-list', '-1', '--before', new Date(createdAt).toISOString(), 'HEAD'], { encoding: 'utf8' }).trim()
+      if (commit === '') {
+        commit = execFileSync('git', ['-C', caseDef.repoPath, 'rev-list', '--max-parents=0', 'HEAD'], { encoding: 'utf8' }).split('\n')[0]?.trim() ?? ''
+      }
+      if (commit !== '') workspaceRepo = { path: caseDef.repoPath, commit }
+    } catch { /* keep undefined; the eval falls back to HEAD */ }
+  }
+  // The REAL model config active at the breakpoint (the last request/header
+  // before the cut) — the eval runs each scenario with the real config.
+  const activeHeader = [...prefix].reverse()
+    .find(event => event.type === 'request/header')?.data as
+    { header?: { config?: { provider?: string; model?: string; reasoningEffort?: string } } } | undefined
+  const modelConfig = activeHeader?.header?.config
   writeFileSync(join(dir, 'scenario.json'), `${JSON.stringify({
     name: caseDef.name,
     mode: caseDef.mode,
@@ -389,6 +423,8 @@ function cropOne(caseDef: RealCase): void {
       errorText: String(scrub(errorText, caseDef.stripPrefix)),
     }],
     continuation,
+    ...workspaceRepo !== undefined ? { workspaceRepo } : {},
+    ...modelConfig !== undefined ? { model: { provider: modelConfig.provider ?? 'deepseek-official', model: modelConfig.model ?? 'deepseek-v4-flash', reasoningEffort: modelConfig.reasoningEffort ?? 'high' } } : {},
     ...workspaceFiles.length > 0 ? { workspaceFiles } : {},
     ...successChecks.length > 0 ? { successChecks } : {},
   }, null, 2)}\n`)

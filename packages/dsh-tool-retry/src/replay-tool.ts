@@ -193,8 +193,15 @@ export function registerReplayTool(ctx: Context, io: CheckpointIo, lookup: Store
         throw new Error(`checkpoint file does not exist: ${fileTarget.displayPath}`)
       }
 
-      // 3. Literal edit through the same intent slot as the fs edit tool
-      // (the checkpoint was pre-observed, so the policy passes without a read).
+      // 3. Literal edit through the same intent slot as the fs edit tool.
+      // The observation table is in-memory and does NOT survive a process
+      // restart/resume — a checkpoint written by an earlier process would
+      // otherwise fail the policy as FS_NOT_OBSERVED. Re-observe first with
+      // the plugin's own write-then-emit pattern (same content, this call's
+      // exec actor), exactly like checkpoint() records it.
+      const existing = await ctx.fs.readText(fileTarget, exec.signal)
+      const rewrite = await ctx.fs.writeText(fileTarget, existing, undefined, exec.signal)
+      ctx.emit('fs/observed', fileTarget, { kind: 'present', version: rewrite.version }, exec)
       const intent = await ctx.waterfall('fs/edit-intent', fileTarget, exec, () => undefined)
       const outcome = await ctx.fs.editText(
         fileTarget,

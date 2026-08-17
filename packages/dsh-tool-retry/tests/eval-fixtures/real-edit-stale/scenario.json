@@ -18,6 +18,15 @@
     }
   ],
   "continuation": "",
+  "workspaceRepo": {
+    "path": "/Users/canglong/program/abc-db",
+    "commit": "e36da23ac105e018dd4534639c6874dc92be79c1"
+  },
+  "model": {
+    "provider": "deepseek-official",
+    "model": "deepseek-v4-flash",
+    "reasoningEffort": "max"
+  },
   "workspaceFiles": [
     {
       "path": "src/abc_db/gen_protos.py",

@@ -17,5 +17,14 @@
       "errorText": "Error: The user dismissed the plan review to speak instead; stay in plan mode, stop here, and wait for their message."
     }
   ],
-  "continuation": "proto是否有外部词法parser处理，而不是自己手写？"
+  "continuation": "proto是否有外部词法parser处理，而不是自己手写？",
+  "workspaceRepo": {
+    "path": "/Users/canglong/program/abc-db",
+    "commit": "d300d611d5cc3c472a58524d75e9c7e79efcae19"
+  },
+  "model": {
+    "provider": "deepseek-official",
+    "model": "deepseek-v4-flash",
+    "reasoningEffort": "max"
+  }
 }

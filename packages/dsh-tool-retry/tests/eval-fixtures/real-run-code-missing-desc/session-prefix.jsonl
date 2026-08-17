@@ -1,4 +1,4 @@
-{"type":"session","version":0,"id":"real-run-code-missing-desc-prefix","createdAt":1,"cwd":"/workspace","delegationDepth":0}
+{"type":"session","version":0,"id":"real-run-code-missing-desc-prefix","createdAt":1786944455501,"cwd":"/workspace","delegationDepth":0}
 {"type":"permission/preset","seq":0,"time":1786944455505,"data":{"preset":"workspace-write"}}
 {"type":"sandbox/mode","seq":1,"time":1786944455505,"data":{"mode":"workspace-write"}}
 {"type":"approval/policy","seq":2,"time":1786944455505,"data":{"policy":"ask"}}

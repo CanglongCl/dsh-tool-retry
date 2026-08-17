@@ -17,5 +17,14 @@
       "errorText": "Error: invalid arguments: missing required property \"description\""
     }
   ],
-  "continuation": ""
+  "continuation": "",
+  "workspaceRepo": {
+    "path": "/Users/canglong/program/dsh-web-review",
+    "commit": "6765e07347f5925a61eeca7a2abe8db6270c42ab"
+  },
+  "model": {
+    "provider": "deepseek-official",
+    "model": "deepseek-v4-flash",
+    "reasoningEffort": "high"
+  }
 }
