@@ -1,0 +1,467 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dsh-tool-retry 评测报告 007</title>
+<script>
+document.documentElement.classList.toggle('dark', window.matchMedia('(prefers-color-scheme: dark)').matches);
+addEventListener('DOMContentLoaded', () => {
+  for (const tab of document.querySelectorAll('[data-tab]')) {
+    tab.addEventListener('click', () => {
+      for (const other of document.querySelectorAll('[data-tab]')) {
+        const active = other === tab;
+        other.setAttribute('aria-pressed', String(active));
+        other.className = active
+          ? 'inline-flex items-center justify-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors bg-background text-foreground shadow-xs'
+          : 'inline-flex items-center justify-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors text-muted-foreground hover:text-foreground';
+      }
+      for (const panel of document.querySelectorAll('[data-panel]')) {
+        panel.classList.toggle('hidden', panel.getAttribute('data-panel') !== tab.getAttribute('data-tab'));
+      }
+    });
+  }
+  // Call-detail modal: open from per-run buttons, close via ✕/backdrop/Esc.
+  const modal = document.getElementById('call-modal');
+  const modalTitle = document.getElementById('call-modal-title');
+  const modalBody = document.getElementById('call-modal-body');
+  const openModal = (button) => {
+    const template = document.querySelector(button.getAttribute('data-open-modal'));
+    if (!template) return;
+    modalTitle.textContent = button.getAttribute('data-run-label') || '调用详情';
+    modalBody.innerHTML = template.innerHTML;
+    modal.classList.remove('hidden');
+  };
+  const closeModal = () => modal.classList.add('hidden');
+  for (const button of document.querySelectorAll('[data-open-modal]')) {
+    button.addEventListener('click', () => openModal(button));
+  }
+  for (const closer of document.querySelectorAll('[data-modal-close]')) {
+    closer.addEventListener('click', closeModal);
+  }
+  addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !modal.classList.contains('hidden')) closeModal();
+  });
+});
+</script>
+<style id="tailwind">
+/*! tailwindcss v4.3.3 | MIT License | https://tailwindcss.com */
+@layer properties{@supports (((-webkit-hyphens:none)) and (not (margin-trim:inline))) or ((-moz-orient:inline) and (not (color:rgb(from red r g b)))){*,:before,:after,::backdrop{--tw-translate-x:0;--tw-translate-y:0;--tw-translate-z:0;--tw-rotate-x:initial;--tw-rotate-y:initial;--tw-rotate-z:initial;--tw-skew-x:initial;--tw-skew-y:initial;--tw-space-y-reverse:0;--tw-border-style:solid;--tw-font-weight:initial;--tw-tracking:initial;--tw-ordinal:initial;--tw-slashed-zero:initial;--tw-numeric-figure:initial;--tw-numeric-spacing:initial;--tw-numeric-fraction:initial;--tw-shadow:0 0 #0000;--tw-shadow-color:initial;--tw-shadow-alpha:100%;--tw-inset-shadow:0 0 #0000;--tw-inset-shadow-color:initial;--tw-inset-shadow-alpha:100%;--tw-ring-color:initial;--tw-ring-shadow:0 0 #0000;--tw-inset-ring-color:initial;--tw-inset-ring-shadow:0 0 #0000;--tw-ring-inset:initial;--tw-ring-offset-width:0px;--tw-ring-offset-color:#fff;--tw-ring-offset-shadow:0 0 #0000;--tw-blur:initial;--tw-brightness:initial;--tw-contrast:initial;--tw-grayscale:initial;--tw-hue-rotate:initial;--tw-invert:initial;--tw-opacity:initial;--tw-saturate:initial;--tw-sepia:initial;--tw-drop-shadow:initial;--tw-drop-shadow-color:initial;--tw-drop-shadow-alpha:100%;--tw-drop-shadow-size:initial}}}@layer theme{:root,:host{--font-sans:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";--font-mono:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;--color-emerald-400:oklch(76.5% .177 163.223);--color-emerald-500:oklch(69.6% .17 162.48);--color-emerald-700:oklch(50.8% .118 165.612);--color-black:#000;--spacing:.25rem;--container-3xl:48rem;--container-6xl:72rem;--container-7xl:80rem;--text-xs:.75rem;--text-xs--line-height:calc(1 / .75);--text-sm:.875rem;--text-sm--line-height:calc(1.25 / .875);--text-base:1rem;--text-base--line-height:calc(1.5 / 1);--text-lg:1.125rem;--text-lg--line-height:calc(1.75 / 1.125);--text-2xl:1.5rem;--text-2xl--line-height:calc(2 / 1.5);--text-3xl:1.875rem;--text-3xl--line-height:calc(2.25 / 1.875);--font-weight-normal:400;--font-weight-medium:500;--font-weight-semibold:600;--tracking-tight:-.025em;--tracking-wide:.025em;--default-transition-duration:.15s;--default-transition-timing-function:cubic-bezier(.4, 0, .2, 1);--default-font-family:var(--font-sans);--default-mono-font-family:var(--font-mono)}}@layer base{*,:after,:before,::backdrop{box-sizing:border-box;border:0 solid;margin:0;padding:0}::file-selector-button{box-sizing:border-box;border:0 solid;margin:0;padding:0}html,:host{-webkit-text-size-adjust:100%;tab-size:4;line-height:1.5;font-family:var(--default-font-family,-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", "Noto Sans", Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji");font-feature-settings:var(--default-font-feature-settings,normal);font-variation-settings:var(--default-font-variation-settings,normal);-webkit-tap-highlight-color:transparent}hr{height:0;color:inherit;border-top-width:1px}abbr:where([title]){-webkit-text-decoration:underline dotted;text-decoration:underline dotted}h1,h2,h3,h4,h5,h6{font-size:inherit;font-weight:inherit}a{color:inherit;-webkit-text-decoration:inherit;-webkit-text-decoration:inherit;-webkit-text-decoration:inherit;text-decoration:inherit}b,strong{font-weight:bolder}code,kbd,samp,pre{font-family:var(--default-mono-font-family,ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace);font-feature-settings:var(--default-mono-font-feature-settings,normal);font-variation-settings:var(--default-mono-font-variation-settings,normal);font-size:1em}small{font-size:80%}sub,sup{vertical-align:baseline;font-size:75%;line-height:0;position:relative}sub{bottom:-.25em}sup{top:-.5em}table{text-indent:0;border-color:inherit;border-collapse:collapse}:-moz-focusring:where(:not(iframe)){outline:auto}progress{vertical-align:baseline}summary{display:list-item}ol,ul,menu{list-style:none}img,svg,video,canvas,audio,iframe,embed,object{vertical-align:middle;display:block}img,video{max-width:100%;height:auto}button,input,select,optgroup,textarea{font:inherit;font-feature-settings:inherit;font-variation-settings:inherit;letter-spacing:inherit;color:inherit;opacity:1;background-color:#0000;border-radius:0}::file-selector-button{font:inherit;font-feature-settings:inherit;font-variation-settings:inherit;letter-spacing:inherit;color:inherit;opacity:1;background-color:#0000;border-radius:0}:where(select:is([multiple],[size])) optgroup{font-weight:bolder}:where(select:is([multiple],[size])) optgroup option{padding-inline-start:20px}::file-selector-button{margin-inline-end:4px}::placeholder{opacity:1}@supports (not ((-webkit-appearance:-apple-pay-button))) or (contain-intrinsic-size:1px){::placeholder{color:currentColor}@supports (color:color-mix(in lab, red, red)){::placeholder{color:color-mix(in oklab, currentcolor 50%, transparent)}}}textarea{resize:vertical}::-webkit-search-decoration{-webkit-appearance:none}::-webkit-date-and-time-value{min-height:1lh;text-align:inherit}::-webkit-datetime-edit{display:inline-flex}::-webkit-datetime-edit-fields-wrapper{padding:0}::-webkit-datetime-edit{padding-block:0}::-webkit-datetime-edit-year-field{padding-block:0}::-webkit-datetime-edit-month-field{padding-block:0}::-webkit-datetime-edit-day-field{padding-block:0}::-webkit-datetime-edit-hour-field{padding-block:0}::-webkit-datetime-edit-minute-field{padding-block:0}::-webkit-datetime-edit-second-field{padding-block:0}::-webkit-datetime-edit-millisecond-field{padding-block:0}::-webkit-datetime-edit-meridiem-field{padding-block:0}::-webkit-calendar-picker-indicator{line-height:1}:-moz-ui-invalid{box-shadow:none}button,input:where([type=button],[type=reset],[type=submit]){appearance:button}::file-selector-button{appearance:button}::-webkit-inner-spin-button{height:auto}::-webkit-outer-spin-button{height:auto}[hidden]:where(:not([hidden=until-found])){display:none!important}*{border-color:var(--border);outline-color:var(--ring)}@supports (color:color-mix(in lab, red, red)){*{outline-color:color-mix(in oklab, var(--ring) 50%, transparent)}}body{background-color:var(--background);color:var(--foreground);-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}}@layer components;@layer utilities{.invisible{visibility:hidden}.visible{visibility:visible}.absolute{position:absolute}.fixed{position:fixed}.relative{position:relative}.static{position:static}.inset-0{inset:0}.inset-x-4{inset-inline:calc(var(--spacing) * 4)}.top-1{top:var(--spacing)}.top-1\/2{top:50%}.isolate{isolation:isolate}.z-50{z-index:50}.col-span-3{grid-column:span 3/span 3}.container{width:100%}@media (min-width:40rem){.container{max-width:40rem}}@media (min-width:48rem){.container{max-width:48rem}}@media (min-width:64rem){.container{max-width:64rem}}@media (min-width:80rem){.container{max-width:80rem}}@media (min-width:96rem){.container{max-width:96rem}}.mx-auto{margin-inline:auto}.mt-1{margin-top:var(--spacing)}.ml-auto{margin-left:auto}.block{display:block}.contents{display:contents}.contents\!{display:contents!important}.flex{display:flex}.grid{display:grid}.hidden{display:none}.inline{display:inline}.inline-flex{display:inline-flex}.table{display:table}.table\!{display:table!important}.size-3{width:calc(var(--spacing) * 3);height:calc(var(--spacing) * 3)}.size-3\.5{width:calc(var(--spacing) * 3.5);height:calc(var(--spacing) * 3.5)}.size-7{width:calc(var(--spacing) * 7);height:calc(var(--spacing) * 7)}.h-2{height:calc(var(--spacing) * 2)}.h-full{height:100%}.max-h-32{max-height:calc(var(--spacing) * 32)}.max-h-40{max-height:calc(var(--spacing) * 40)}.max-h-48{max-height:calc(var(--spacing) * 48)}.max-h-56{max-height:calc(var(--spacing) * 56)}.max-h-72{max-height:calc(var(--spacing) * 72)}.max-h-96{max-height:calc(var(--spacing) * 96)}.max-h-\[60vh\]{max-height:60vh}.max-h-\[75vh\]{max-height:75vh}.min-h-screen{min-height:100vh}.w-1{width:var(--spacing)}.w-1\/3{width:33.3333%}.w-16{width:calc(var(--spacing) * 16)}.w-24{width:calc(var(--spacing) * 24)}.w-28{width:calc(var(--spacing) * 28)}.w-32{width:calc(var(--spacing) * 32)}.w-56{width:calc(var(--spacing) * 56)}.w-full{width:100%}.max-w-3xl{max-width:var(--container-3xl)}.max-w-6xl{max-width:var(--container-6xl)}.max-w-7xl{max-width:var(--container-7xl)}.max-w-40{max-width:calc(var(--spacing) * 40)}.max-w-64{max-width:calc(var(--spacing) * 64)}.flex-1{flex:1}.shrink-0{flex-shrink:0}.caption-bottom{caption-side:bottom}.-translate-y-1{--tw-translate-y:calc(var(--spacing) * -1);translate:var(--tw-translate-x) var(--tw-translate-y)}.-translate-y-1\/2{--tw-translate-y:calc(calc(1 / 2 * 100%) * -1);translate:var(--tw-translate-x) var(--tw-translate-y)}.transform{transform:var(--tw-rotate-x,) var(--tw-rotate-y,) var(--tw-rotate-z,) var(--tw-skew-x,) var(--tw-skew-y,)}.cursor-pointer{cursor:pointer}.grid-cols-2{grid-template-columns:repeat(2,minmax(0,1fr))}.flex-wrap{flex-wrap:wrap}.items-center{align-items:center}.items-start{align-items:flex-start}.justify-between{justify-content:space-between}.justify-center{justify-content:center}.justify-end{justify-content:flex-end}.gap-1{gap:var(--spacing)}.gap-2{gap:calc(var(--spacing) * 2)}.gap-3{gap:calc(var(--spacing) * 3)}.gap-4{gap:calc(var(--spacing) * 4)}:where(.space-y-0>:not(:last-child)){--tw-space-y-reverse:0;margin-block:0}:where(.space-y-0\.5>:not(:last-child)){--tw-space-y-reverse:0;margin-block-start:calc(calc(var(--spacing) * .5) * var(--tw-space-y-reverse));margin-block-end:calc(calc(var(--spacing) * .5) * calc(1 - var(--tw-space-y-reverse)))}:where(.space-y-1>:not(:last-child)){--tw-space-y-reverse:0;margin-block-start:calc(var(--spacing) * var(--tw-space-y-reverse));margin-block-end:calc(var(--spacing) * calc(1 - var(--tw-space-y-reverse)))}:where(.space-y-1\.5>:not(:last-child)){--tw-space-y-reverse:0;margin-block-start:calc(calc(var(--spacing) * 1.5) * var(--tw-space-y-reverse));margin-block-end:calc(calc(var(--spacing) * 1.5) * calc(1 - var(--tw-space-y-reverse)))}:where(.space-y-2>:not(:last-child)){--tw-space-y-reverse:0;margin-block-start:calc(calc(var(--spacing) * 2) * var(--tw-space-y-reverse));margin-block-end:calc(calc(var(--spacing) * 2) * calc(1 - var(--tw-space-y-reverse)))}:where(.space-y-3>:not(:last-child)){--tw-space-y-reverse:0;margin-block-start:calc(calc(var(--spacing) * 3) * var(--tw-space-y-reverse));margin-block-end:calc(calc(var(--spacing) * 3) * calc(1 - var(--tw-space-y-reverse)))}:where(.space-y-4>:not(:last-child)){--tw-space-y-reverse:0;margin-block-start:calc(calc(var(--spacing) * 4) * var(--tw-space-y-reverse));margin-block-end:calc(calc(var(--spacing) * 4) * calc(1 - var(--tw-space-y-reverse)))}:where(.space-y-6>:not(:last-child)){--tw-space-y-reverse:0;margin-block-start:calc(calc(var(--spacing) * 6) * var(--tw-space-y-reverse));margin-block-end:calc(calc(var(--spacing) * 6) * calc(1 - var(--tw-space-y-reverse)))}:where(.space-y-8>:not(:last-child)){--tw-space-y-reverse:0;margin-block-start:calc(calc(var(--spacing) * 8) * var(--tw-space-y-reverse));margin-block-end:calc(calc(var(--spacing) * 8) * calc(1 - var(--tw-space-y-reverse)))}.gap-x-8{column-gap:calc(var(--spacing) * 8)}.gap-y-4{row-gap:calc(var(--spacing) * 4)}.truncate{text-overflow:ellipsis;white-space:nowrap;overflow:hidden}.overflow-auto{overflow:auto}.overflow-hidden{overflow:hidden}.overflow-x-auto{overflow-x:auto}.overflow-y-auto{overflow-y:auto}.rounded{border-radius:.25rem}.rounded-full{border-radius:3.40282e38px}.rounded-lg{border-radius:var(--radius)}.rounded-md{border-radius:calc(var(--radius) - 2px)}.rounded-xl{border-radius:calc(var(--radius) + 4px)}.border{border-style:var(--tw-border-style);border-width:1px}.border-t{border-top-style:var(--tw-border-style);border-top-width:1px}.border-b{border-bottom-style:var(--tw-border-style);border-bottom-width:1px}.border-b-2{border-bottom-style:var(--tw-border-style);border-bottom-width:2px}.border-border{border-color:var(--border)}.border-destructive,.border-destructive\/30{border-color:var(--destructive)}@supports (color:color-mix(in lab, red, red)){.border-destructive\/30{border-color:color-mix(in oklab, var(--destructive) 30%, transparent)}}.border-emerald-500{border-color:var(--color-emerald-500)}.border-emerald-500\/20{border-color:#00bb7f33}@supports (color:color-mix(in lab, red, red)){.border-emerald-500\/20{border-color:color-mix(in oklab, var(--color-emerald-500) 20%, transparent)}}.bg-background{background-color:var(--background)}.bg-black{background-color:var(--color-black)}.bg-black\/50{background-color:#00000080}@supports (color:color-mix(in lab, red, red)){.bg-black\/50{background-color:color-mix(in oklab, var(--color-black) 50%, transparent)}}.bg-card{background-color:var(--card)}.bg-destructive,.bg-destructive\/10{background-color:var(--destructive)}@supports (color:color-mix(in lab, red, red)){.bg-destructive\/10{background-color:color-mix(in oklab, var(--destructive) 10%, transparent)}}.bg-emerald-500{background-color:var(--color-emerald-500)}.bg-emerald-500\/10{background-color:#00bb7f1a}@supports (color:color-mix(in lab, red, red)){.bg-emerald-500\/10{background-color:color-mix(in oklab, var(--color-emerald-500) 10%, transparent)}}.bg-foreground{background-color:var(--foreground)}.bg-muted{background-color:var(--muted)}.bg-muted-foreground{background-color:var(--muted-foreground)}.bg-muted\/30{background-color:var(--muted)}@supports (color:color-mix(in lab, red, red)){.bg-muted\/30{background-color:color-mix(in oklab, var(--muted) 30%, transparent)}}.bg-muted\/40{background-color:var(--muted)}@supports (color:color-mix(in lab, red, red)){.bg-muted\/40{background-color:color-mix(in oklab, var(--muted) 40%, transparent)}}.bg-muted\/50{background-color:var(--muted)}@supports (color:color-mix(in lab, red, red)){.bg-muted\/50{background-color:color-mix(in oklab, var(--muted) 50%, transparent)}}.p-1{padding:var(--spacing)}.p-2{padding:calc(var(--spacing) * 2)}.p-2\.5{padding:calc(var(--spacing) * 2.5)}.p-3{padding:calc(var(--spacing) * 3)}.p-4{padding:calc(var(--spacing) * 4)}.p-5{padding:calc(var(--spacing) * 5)}.p-6{padding:calc(var(--spacing) * 6)}.px-1{padding-inline:var(--spacing)}.px-1\.5{padding-inline:calc(var(--spacing) * 1.5)}.px-2{padding-inline:calc(var(--spacing) * 2)}.px-2\.5{padding-inline:calc(var(--spacing) * 2.5)}.px-3{padding-inline:calc(var(--spacing) * 3)}.px-4{padding-inline:calc(var(--spacing) * 4)}.px-6{padding-inline:calc(var(--spacing) * 6)}.py-0{padding-block:0}.py-0\.5{padding-block:calc(var(--spacing) * .5)}.py-1{padding-block:var(--spacing)}.py-1\.5{padding-block:calc(var(--spacing) * 1.5)}.py-2{padding-block:calc(var(--spacing) * 2)}.py-2\.5{padding-block:calc(var(--spacing) * 2.5)}.py-3{padding-block:calc(var(--spacing) * 3)}.py-10{padding-block:calc(var(--spacing) * 10)}.pt-1{padding-top:var(--spacing)}.pt-2{padding-top:calc(var(--spacing) * 2)}.pt-3{padding-top:calc(var(--spacing) * 3)}.pt-6{padding-top:calc(var(--spacing) * 6)}.pb-4{padding-bottom:calc(var(--spacing) * 4)}.pl-3{padding-left:calc(var(--spacing) * 3)}.text-center{text-align:center}.text-left{text-align:left}.text-right{text-align:right}.align-middle{vertical-align:middle}.align-top{vertical-align:top}.font-mono{font-family:var(--font-mono)}.font-sans{font-family:var(--font-sans)}.text-2xl{font-size:var(--text-2xl);line-height:var(--tw-leading,var(--text-2xl--line-height))}.text-3xl{font-size:var(--text-3xl);line-height:var(--tw-leading,var(--text-3xl--line-height))}.text-base{font-size:var(--text-base);line-height:var(--tw-leading,var(--text-base--line-height))}.text-lg{font-size:var(--text-lg);line-height:var(--tw-leading,var(--text-lg--line-height))}.text-sm{font-size:var(--text-sm);line-height:var(--tw-leading,var(--text-sm--line-height))}.text-xs{font-size:var(--text-xs);line-height:var(--tw-leading,var(--text-xs--line-height))}.text-\[11px\]{font-size:11px}.font-medium{--tw-font-weight:var(--font-weight-medium);font-weight:var(--font-weight-medium)}.font-normal{--tw-font-weight:var(--font-weight-normal);font-weight:var(--font-weight-normal)}.font-semibold{--tw-font-weight:var(--font-weight-semibold);font-weight:var(--font-weight-semibold)}.tracking-tight{--tw-tracking:var(--tracking-tight);letter-spacing:var(--tracking-tight)}.tracking-wide{--tw-tracking:var(--tracking-wide);letter-spacing:var(--tracking-wide)}.break-all{word-break:break-all}.whitespace-nowrap{white-space:nowrap}.whitespace-pre-wrap{white-space:pre-wrap}.text-card-foreground{color:var(--card-foreground)}.text-destructive{color:var(--destructive)}.text-emerald-700{color:var(--color-emerald-700)}.text-foreground{color:var(--foreground)}.text-muted-foreground{color:var(--muted-foreground)}.lowercase{text-transform:lowercase}.uppercase{text-transform:uppercase}.ordinal{--tw-ordinal:ordinal;font-variant-numeric:var(--tw-ordinal,) var(--tw-slashed-zero,) var(--tw-numeric-figure,) var(--tw-numeric-spacing,) var(--tw-numeric-fraction,)}.tabular-nums{--tw-numeric-spacing:tabular-nums;font-variant-numeric:var(--tw-ordinal,) var(--tw-slashed-zero,) var(--tw-numeric-figure,) var(--tw-numeric-spacing,) var(--tw-numeric-fraction,)}.antialiased{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale}.shadow-lg{--tw-shadow:0 10px 15px -3px var(--tw-shadow-color,#0000001a), 0 4px 6px -4px var(--tw-shadow-color,#0000001a);box-shadow:var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow)}.shadow-xs{--tw-shadow:0 1px 2px 0 var(--tw-shadow-color,#0000000d);box-shadow:var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow)}.filter{filter:var(--tw-blur,) var(--tw-brightness,) var(--tw-contrast,) var(--tw-grayscale,) var(--tw-hue-rotate,) var(--tw-invert,) var(--tw-saturate,) var(--tw-sepia,) var(--tw-drop-shadow,)}.transition-colors{transition-property:color,background-color,border-color,outline-color,text-decoration-color,fill,stroke,--tw-gradient-from,--tw-gradient-via,--tw-gradient-to;transition-timing-function:var(--tw-ease,var(--default-transition-timing-function));transition-duration:var(--tw-duration,var(--default-transition-duration))}.transition-transform{transition-property:transform,translate,scale,rotate;transition-timing-function:var(--tw-ease,var(--default-transition-timing-function));transition-duration:var(--tw-duration,var(--default-transition-duration))}.select-none{-webkit-user-select:none;user-select:none}.group-open\:rotate-90:is(:where(.group):is([open],:popover-open,:open) *){rotate:90deg}@media (hover:hover){.hover\:bg-muted:hover,.hover\:bg-muted\/50:hover{background-color:var(--muted)}@supports (color:color-mix(in lab, red, red)){.hover\:bg-muted\/50:hover{background-color:color-mix(in oklab, var(--muted) 50%, transparent)}}.hover\:bg-muted\/70:hover{background-color:var(--muted)}@supports (color:color-mix(in lab, red, red)){.hover\:bg-muted\/70:hover{background-color:color-mix(in oklab, var(--muted) 70%, transparent)}}.hover\:text-foreground:hover{color:var(--foreground)}}@media (min-width:64rem){.lg\:grid-cols-4{grid-template-columns:repeat(4,minmax(0,1fr))}}.dark\:text-destructive-foreground:where(.dark,.dark *){color:var(--destructive-foreground)}.dark\:text-emerald-400:where(.dark,.dark *){color:var(--color-emerald-400)}.\[\&_th\]\:h-10 th{height:calc(var(--spacing) * 10)}.\[\&_th\]\:px-3 th{padding-inline:calc(var(--spacing) * 3)}.\[\&_th\]\:text-left th{text-align:left}.\[\&_th\]\:align-middle th{vertical-align:middle}.\[\&_th\]\:font-medium th{--tw-font-weight:var(--font-weight-medium);font-weight:var(--font-weight-medium)}.\[\&_th\]\:whitespace-nowrap th{white-space:nowrap}.\[\&_th\]\:text-muted-foreground th{color:var(--muted-foreground)}.\[\&\:\:-webkit-details-marker\]\:hidden::-webkit-details-marker{display:none}.\[\&\:\:marker\]\:hidden::marker{display:none}}:root{--background:oklch(100% 0 0);--foreground:oklch(14.5% 0 0);--card:oklch(100% 0 0);--card-foreground:oklch(14.5% 0 0);--popover:oklch(100% 0 0);--popover-foreground:oklch(14.5% 0 0);--primary:oklch(20.5% 0 0);--primary-foreground:oklch(98.5% 0 0);--secondary:oklch(97% 0 0);--secondary-foreground:oklch(20.5% 0 0);--muted:oklch(97% 0 0);--muted-foreground:oklch(55.6% 0 0);--accent:oklch(97% 0 0);--accent-foreground:oklch(20.5% 0 0);--destructive:oklch(57.7% .245 27.325);--destructive-foreground:oklch(98.5% 0 0);--border:oklch(92.2% 0 0);--input:oklch(92.2% 0 0);--ring:oklch(70.8% 0 0);--radius:.625rem}.dark{--background:oklch(14.5% 0 0);--foreground:oklch(98.5% 0 0);--card:oklch(14.5% 0 0);--card-foreground:oklch(98.5% 0 0);--popover:oklch(14.5% 0 0);--popover-foreground:oklch(98.5% 0 0);--primary:oklch(98.5% 0 0);--primary-foreground:oklch(20.5% 0 0);--secondary:oklch(26.9% 0 0);--secondary-foreground:oklch(98.5% 0 0);--muted:oklch(26.9% 0 0);--muted-foreground:oklch(70.8% 0 0);--accent:oklch(26.9% 0 0);--accent-foreground:oklch(98.5% 0 0);--destructive:oklch(39.6% .141 25.723);--destructive-foreground:oklch(63.7% .237 25.331);--border:oklch(26.9% 0 0);--input:oklch(26.9% 0 0);--ring:oklch(43.9% 0 0)}@property --tw-translate-x{syntax:"*";inherits:false;initial-value:0}@property --tw-translate-y{syntax:"*";inherits:false;initial-value:0}@property --tw-translate-z{syntax:"*";inherits:false;initial-value:0}@property --tw-rotate-x{syntax:"*";inherits:false}@property --tw-rotate-y{syntax:"*";inherits:false}@property --tw-rotate-z{syntax:"*";inherits:false}@property --tw-skew-x{syntax:"*";inherits:false}@property --tw-skew-y{syntax:"*";inherits:false}@property --tw-space-y-reverse{syntax:"*";inherits:false;initial-value:0}@property --tw-border-style{syntax:"*";inherits:false;initial-value:solid}@property --tw-font-weight{syntax:"*";inherits:false}@property --tw-tracking{syntax:"*";inherits:false}@property --tw-ordinal{syntax:"*";inherits:false}@property --tw-slashed-zero{syntax:"*";inherits:false}@property --tw-numeric-figure{syntax:"*";inherits:false}@property --tw-numeric-spacing{syntax:"*";inherits:false}@property --tw-numeric-fraction{syntax:"*";inherits:false}@property --tw-shadow{syntax:"*";inherits:false;initial-value:0 0 #0000}@property --tw-shadow-color{syntax:"*";inherits:false}@property --tw-shadow-alpha{syntax:"<percentage>";inherits:false;initial-value:100%}@property --tw-inset-shadow{syntax:"*";inherits:false;initial-value:0 0 #0000}@property --tw-inset-shadow-color{syntax:"*";inherits:false}@property --tw-inset-shadow-alpha{syntax:"<percentage>";inherits:false;initial-value:100%}@property --tw-ring-color{syntax:"*";inherits:false}@property --tw-ring-shadow{syntax:"*";inherits:false;initial-value:0 0 #0000}@property --tw-inset-ring-color{syntax:"*";inherits:false}@property --tw-inset-ring-shadow{syntax:"*";inherits:false;initial-value:0 0 #0000}@property --tw-ring-inset{syntax:"*";inherits:false}@property --tw-ring-offset-width{syntax:"<length>";inherits:false;initial-value:0}@property --tw-ring-offset-color{syntax:"*";inherits:false;initial-value:#fff}@property --tw-ring-offset-shadow{syntax:"*";inherits:false;initial-value:0 0 #0000}@property --tw-blur{syntax:"*";inherits:false}@property --tw-brightness{syntax:"*";inherits:false}@property --tw-contrast{syntax:"*";inherits:false}@property --tw-grayscale{syntax:"*";inherits:false}@property --tw-hue-rotate{syntax:"*";inherits:false}@property --tw-invert{syntax:"*";inherits:false}@property --tw-opacity{syntax:"*";inherits:false}@property --tw-saturate{syntax:"*";inherits:false}@property --tw-sepia{syntax:"*";inherits:false}@property --tw-drop-shadow{syntax:"*";inherits:false}@property --tw-drop-shadow-color{syntax:"*";inherits:false}@property --tw-drop-shadow-alpha{syntax:"<percentage>";inherits:false;initial-value:100%}@property --tw-drop-shadow-size{syntax:"*";inherits:false}
+</style>
+</head>
+<body class="min-h-screen bg-background font-sans antialiased">
+<div class="mx-auto max-w-7xl space-y-8 px-6 py-10">
+
+<header class="space-y-3">
+  <div class="flex flex-wrap items-center gap-3">
+    <h1 class="text-3xl font-semibold tracking-tight">dsh-tool-retry 评测报告</h1>
+    <span class="inline-flex items-center rounded-md border border-border bg-muted px-2.5 py-1 text-sm font-semibold tabular-nums">№ 007</span>
+  </div>
+  <p class="text-sm text-muted-foreground">工具调用自动暂存/失败通知/局部编辑重放插件的真实模型评测 —— 断点恢复式续跑，ON（挂载插件）vs OFF（基线）双臂对比。</p>
+  <div class="flex flex-wrap items-center gap-2">
+    <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">模型 deepseek-v4-flash</span>
+    <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">provider deepseek-official</span>
+    <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">思考强度 high</span>
+    <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">每场景每臂重复 1 次</span>
+    <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">截断策略 retry-success</span>
+    <span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">git 3be3b7421494</span>
+  </div>
+</header>
+
+<section class="rounded-xl border bg-card text-card-foreground shadow-xs">
+  <div class="grid grid-cols-2 gap-x-8 gap-y-4 p-6 lg:grid-cols-4">
+    <div class="space-y-1"><div class="text-xs font-medium uppercase tracking-wide text-muted-foreground">批次 stamp</div><code class="text-sm">2026-08-17T12-20-12.980Z</code></div>
+    <div class="space-y-1"><div class="text-xs font-medium uppercase tracking-wide text-muted-foreground">运行时间</div><div class="text-sm tabular-nums">2026-08-17T12:20:12.980Z</div><div class="text-xs text-muted-foreground tabular-nums">→ 2026-08-17T12:21:53.161Z</div></div>
+    <div class="space-y-1"><div class="text-xs font-medium uppercase tracking-wide text-muted-foreground">场景</div><div class="text-sm">real-edit-stale、real-edit-unobserved、real-plan-dismissed、real-run-code-missing-desc、real-write-overwrite</div></div>
+    <div class="space-y-1"><div class="text-xs font-medium uppercase tracking-wide text-muted-foreground">运行期依赖版本</div><ul class="space-y-0.5"><li class="text-xs"><code class="rounded bg-muted px-1 py-0.5">@deepseek-ai/dsh-tools</code> <span class="text-muted-foreground">unknown</span></li><li class="text-xs"><code class="rounded bg-muted px-1 py-0.5">@deepseek-ai/dsh-llm</code> <span class="text-muted-foreground">unknown</span></li><li class="text-xs"><code class="rounded bg-muted px-1 py-0.5">@deepseek-ai/dsh-session</code> <span class="text-muted-foreground">unknown</span></li><li class="text-xs"><code class="rounded bg-muted px-1 py-0.5">@deepseek-ai/dsh-agent-loop</code> <span class="text-muted-foreground">unknown</span></li><li class="text-xs"><code class="rounded bg-muted px-1 py-0.5">@deepseek-ai/dsh-session-persistence-jsonl</code> <span class="text-muted-foreground">unknown</span></li></ul></div>
+  </div>
+</section>
+
+<section class="space-y-3">
+  <h2 class="text-lg font-semibold tracking-tight">总体（全部场景合并，中位数）</h2>
+  <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
+    <div class="rounded-xl border bg-card text-card-foreground shadow-xs p-5 space-y-1.5">
+<div class="text-xs font-medium uppercase tracking-wide text-muted-foreground">ON 内容 token</div>
+<div class="flex items-center gap-2"><span class="text-2xl font-semibold tracking-tight tabular-nums">195</span><span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">381 第一步含推理</span></div>
+</div>
+    <div class="rounded-xl border bg-card text-card-foreground shadow-xs p-5 space-y-1.5">
+<div class="text-xs font-medium uppercase tracking-wide text-muted-foreground">OFF 内容 token</div>
+<div class="flex items-center gap-2"><span class="text-2xl font-semibold tracking-tight tabular-nums">95</span><span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">370 第一步含推理</span></div>
+</div>
+    <div class="rounded-xl border bg-card text-card-foreground shadow-xs p-5 space-y-1.5">
+<div class="text-xs font-medium uppercase tracking-wide text-muted-foreground">内容 token 节省</div>
+<div class="flex items-center gap-2"><span class="text-2xl font-semibold tracking-tight tabular-nums">-105.3%</span><span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-destructive/30 bg-destructive/10 text-destructive dark:text-destructive-foreground">-3% 含推理</span></div>
+</div>
+    <div class="rounded-xl border bg-card text-card-foreground shadow-xs p-5 space-y-1.5">
+<div class="text-xs font-medium uppercase tracking-wide text-muted-foreground">采用率</div>
+<div class="flex items-center gap-2"><span class="text-2xl font-semibold tracking-tight tabular-nums">0%</span><span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">80% 重试成功</span></div>
+</div>
+    <div class="rounded-xl border bg-card text-card-foreground shadow-xs p-5 space-y-1.5">
+<div class="text-xs font-medium uppercase tracking-wide text-muted-foreground">全程输出 token（中位）</div>
+<div class="flex items-center gap-2"><span class="text-2xl font-semibold tracking-tight tabular-nums">0</span><span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">OFF 0</span></div>
+</div>
+  </div>
+</section>
+
+<div class="space-y-4">
+<div class="inline-flex items-center rounded-lg bg-muted p-1 text-muted-foreground">
+<button data-tab="native" class="inline-flex items-center justify-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors bg-background text-foreground shadow-xs" aria-pressed="true">native 模式</button>
+<button data-tab="code" class="inline-flex items-center justify-center gap-2 rounded-md px-3 py-1.5 text-sm font-medium transition-colors text-muted-foreground hover:text-foreground" aria-pressed="false">PTC（code）模式</button>
+</div>
+<div data-panel="native" class="space-y-6"><div class="rounded-xl border bg-card text-card-foreground shadow-xs overflow-hidden">
+<div class="flex flex-wrap items-center gap-2 border-b bg-muted/40 px-4 py-3">
+<h3 class="text-sm font-semibold tracking-tight">长文本 edit 失配（真实）</h3>
+<code class="text-xs text-muted-foreground">real-edit-stale</code>
+<span class="text-xs text-muted-foreground">native</span>
+<span class="ml-auto flex items-center gap-2">
+<span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">内容 token 省 11.9%</span>
+<span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">特性优势</span>
+<span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">采用率 0%</span>
+</span>
+</div>
+<div class="space-y-1 px-4 py-2 text-xs text-muted-foreground">
+<div><span class="font-medium">输入：</span>edit 的 old_string 引用了已变化的文件内容（真实 gen_protos.py）。</div>
+<div><span class="font-medium">预期结果：</span>以最小改动修正 old_string 后编辑成功（文件包含 new_string 片段）。</div>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full caption-bottom text-sm">
+<thead class="bg-muted/50 [&_th]:h-10 [&_th]:px-3 [&_th]:text-left [&_th]:align-middle [&_th]:font-medium [&_th]:text-muted-foreground">
+<tr><th class="w-24">eval</th>
+<th class="text-right">内容 token</th><th class="text-right">断点后步数</th><th class="text-right">第一步输出(含推理)</th><th class="text-right">全程输出(含推理)</th><th class="text-right">断点后输入 token</th><th class="text-right">重试成功率</th><th class="text-right">通知条数</th>
+<th class="w-28 text-center">详情</th>
+</tr>
+</thead>
+<tbody><tr>
+<td class="p-2 pl-3 text-right text-xs text-muted-foreground">r1 OFF</td>
+<td class="p-2 text-right align-middle tabular-nums text-muted-foreground">67</td><td class="p-2 text-right align-middle tabular-nums text-muted-foreground">0</td><td class="p-2 text-right align-middle tabular-nums text-muted-foreground">251</td><td class="p-2 text-right align-middle tabular-nums text-muted-foreground">0</td><td class="p-2 text-right align-middle tabular-nums text-muted-foreground">2928</td><td class="p-2 text-right align-middle tabular-nums text-muted-foreground">100%</td><td class="p-2 text-right align-middle tabular-nums text-muted-foreground">0</td>
+<td class="p-2 text-center"><button data-open-modal="#modal-real-edit-stale-off-r1" data-run-label="real-edit-stale · OFF r1" class="inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用</button></td>
+</tr>
+<tr>
+<td class="p-2 pl-3 text-right text-xs font-medium">r1 ON</td>
+<td class="p-2 text-right align-middle tabular-nums ">59</td><td class="p-2 text-right align-middle tabular-nums ">0</td><td class="p-2 text-right align-middle tabular-nums ">97</td><td class="p-2 text-right align-middle tabular-nums ">0</td><td class="p-2 text-right align-middle tabular-nums ">3470</td><td class="p-2 text-right align-middle tabular-nums ">100%</td><td class="p-2 text-right align-middle tabular-nums ">1</td>
+<td class="p-2 text-center"><button data-open-modal="#modal-real-edit-stale-on-r1" data-run-label="real-edit-stale · ON r1" class="inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用</button></td>
+</tr>
+<tr class="border-b-2">
+<td class="p-2 pl-3 text-right text-[11px] font-semibold text-muted-foreground">Δ r1</td>
+<td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">-8 (-11.9%)</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-border bg-muted text-muted-foreground">0 (0×)</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">-154 (-61.4%)</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-border bg-muted text-muted-foreground">0 (0%)</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-destructive/30 bg-destructive/10 text-destructive dark:text-destructive-foreground">+542 (+18.5%)</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-border bg-muted text-muted-foreground">0pp</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-destructive/30 bg-destructive/10 text-destructive dark:text-destructive-foreground">+1</span></td>
+<td class="p-2 text-center"></td>
+</tr><tr>
+<td class="p-2 pl-3 text-right text-xs text-muted-foreground">中位 OFF</td>
+<td class="p-2 text-right align-middle tabular-nums font-semibold">67</td><td class="p-2 text-right align-middle tabular-nums font-semibold">0</td><td class="p-2 text-right align-middle tabular-nums font-semibold">251</td><td class="p-2 text-right align-middle tabular-nums font-semibold">0</td><td class="p-2 text-right align-middle tabular-nums font-semibold">2928</td><td class="p-2 text-right align-middle tabular-nums font-semibold">100%</td><td class="p-2 text-right align-middle tabular-nums font-semibold">0</td>
+<td class="p-2 text-center"></td>
+</tr>
+<tr>
+<td class="p-2 pl-3 text-right text-xs font-medium">中位 ON</td>
+<td class="p-2 text-right align-middle tabular-nums font-semibold">59</td><td class="p-2 text-right align-middle tabular-nums font-semibold">0</td><td class="p-2 text-right align-middle tabular-nums font-semibold">97</td><td class="p-2 text-right align-middle tabular-nums font-semibold">0</td><td class="p-2 text-right align-middle tabular-nums font-semibold">3470</td><td class="p-2 text-right align-middle tabular-nums font-semibold">100%</td><td class="p-2 text-right align-middle tabular-nums font-semibold">1</td>
+<td class="p-2 text-center"></td>
+</tr>
+<tr class="bg-muted/40">
+<td class="p-2 pl-3 text-right text-[11px] font-semibold text-muted-foreground">Δ 中位</td>
+<td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">-8 (-11.9%)</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-border bg-muted text-muted-foreground">0 (0×)</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">-154 (-61.4%)</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-border bg-muted text-muted-foreground">0 (0%)</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-destructive/30 bg-destructive/10 text-destructive dark:text-destructive-foreground">+542 (+18.5%)</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-border bg-muted text-muted-foreground">0pp</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-destructive/30 bg-destructive/10 text-destructive dark:text-destructive-foreground">+1</span></td>
+<td class="p-2 text-center"></td>
+</tr></tbody>
+</table>
+</div>
+<template id="modal-real-edit-stale-on-r1"><div class="text-xs text-muted-foreground">工具：read, bash, edit, edit</div>
+<div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>fs/native</code> · 运行状态 <code>cutoff</code> · 提前停止(stopAt) · 通知 <code>1 条 / 224 字节</code> · experiment <code>60212c7f552274d164d6</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>847eaf0fda43e70587a7</code> · grader <code>68649184bbba58ae5276</code> · execution <code>c884be566184d98c5ad6</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>fileContains src/abc_db/gen_protos.py contains     def repl(match: re.Match[s</span></li></ul></div></div>
+<div class="rounded-lg border bg-muted/30">
+<div class="border-b px-3 py-2 text-xs font-medium text-muted-foreground">完整 session.jsonl（友好视图 · 0 个事件 · 本地文件 /Users/canglong/program/dsh-tool-retry/.artifacts/eval/runs/2026-08-17T12-20-12.980Z/real-edit-stale/on/r1/session.jsonl）</div>
+<div class="max-h-[60vh] space-y-1.5 overflow-y-auto p-3"></div>
+</div></template>
+<template id="modal-real-edit-stale-off-r1"><div class="text-xs text-muted-foreground">工具：read, bash, read, write</div>
+<div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>fs/native</code> · 运行状态 <code>cutoff</code> · 提前停止(stopAt) · 通知 <code>0 条 / 0 字节</code> · experiment <code>ba4e72ecc31ef7f1e5eb</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>847eaf0fda43e70587a7</code> · grader <code>68649184bbba58ae5276</code> · execution <code>c884be566184d98c5ad6</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>fileContains src/abc_db/gen_protos.py contains     def repl(match: re.Match[s</span></li></ul></div></div>
+<div class="rounded-lg border bg-muted/30">
+<div class="border-b px-3 py-2 text-xs font-medium text-muted-foreground">完整 session.jsonl（友好视图 · 0 个事件 · 本地文件 /Users/canglong/program/dsh-tool-retry/.artifacts/eval/runs/2026-08-17T12-20-12.980Z/real-edit-stale/off/r1/session.jsonl）</div>
+<div class="max-h-[60vh] space-y-1.5 overflow-y-auto p-3"></div>
+</div></template>
+</div>
+<div class="rounded-xl border bg-card text-card-foreground shadow-xs overflow-hidden">
+<div class="flex flex-wrap items-center gap-2 border-b bg-muted/40 px-4 py-3">
+<h3 class="text-sm font-semibold tracking-tight">未读先改被拒（真实）</h3>
+<code class="text-xs text-muted-foreground">real-edit-unobserved</code>
+<span class="text-xs text-muted-foreground">native</span>
+<span class="ml-auto flex items-center gap-2">
+<span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-destructive/30 bg-destructive/10 text-destructive dark:text-destructive-foreground">内容 token 多 199.1%</span>
+<span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-destructive/30 bg-destructive/10 text-destructive dark:text-destructive-foreground">特性劣势</span>
+<span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">采用率 0%</span>
+</span>
+</div>
+<div class="space-y-1 px-4 py-2 text-xs text-muted-foreground">
+<div><span class="font-medium">输入：</span>模型在未读取文件的情况下直接 edit（FS_NOT_OBSERVED）。</div>
+<div><span class="font-medium">预期结果：</span>先读取文件再完成编辑（文件包含 new_string 片段）。</div>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full caption-bottom text-sm">
+<thead class="bg-muted/50 [&_th]:h-10 [&_th]:px-3 [&_th]:text-left [&_th]:align-middle [&_th]:font-medium [&_th]:text-muted-foreground">
+<tr><th class="w-24">eval</th>
+<th class="text-right">内容 token</th><th class="text-right">断点后步数</th><th class="text-right">第一步输出(含推理)</th><th class="text-right">全程输出(含推理)</th><th class="text-right">断点后输入 token</th><th class="text-right">重试成功率</th><th class="text-right">通知条数</th>
+<th class="w-28 text-center">详情</th>
+</tr>
+</thead>
+<tbody><tr>
+<td class="p-2 pl-3 text-right text-xs text-muted-foreground">r1 OFF</td>
+<td class="p-2 text-right align-middle tabular-nums text-muted-foreground">115</td><td class="p-2 text-right align-middle tabular-nums text-muted-foreground">0</td><td class="p-2 text-right align-middle tabular-nums text-muted-foreground">370</td><td class="p-2 text-right align-middle tabular-nums text-muted-foreground">0</td><td class="p-2 text-right align-middle tabular-nums text-muted-foreground">3919</td><td class="p-2 text-right align-middle tabular-nums text-muted-foreground">0%</td><td class="p-2 text-right align-middle tabular-nums text-muted-foreground">0</td>
+<td class="p-2 text-center"><button data-open-modal="#modal-real-edit-unobserved-off-r1" data-run-label="real-edit-unobserved · OFF r1" class="inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用</button></td>
+</tr>
+<tr>
+<td class="p-2 pl-3 text-right text-xs font-medium">r1 ON</td>
+<td class="p-2 text-right align-middle tabular-nums ">344</td><td class="p-2 text-right align-middle tabular-nums ">0</td><td class="p-2 text-right align-middle tabular-nums ">381</td><td class="p-2 text-right align-middle tabular-nums ">0</td><td class="p-2 text-right align-middle tabular-nums ">3718</td><td class="p-2 text-right align-middle tabular-nums ">100%</td><td class="p-2 text-right align-middle tabular-nums ">11</td>
+<td class="p-2 text-center"><button data-open-modal="#modal-real-edit-unobserved-on-r1" data-run-label="real-edit-unobserved · ON r1" class="inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用</button></td>
+</tr>
+<tr class="border-b-2">
+<td class="p-2 pl-3 text-right text-[11px] font-semibold text-muted-foreground">Δ r1</td>
+<td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-destructive/30 bg-destructive/10 text-destructive dark:text-destructive-foreground">+229 (+199.1%)</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-border bg-muted text-muted-foreground">0 (0×)</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-destructive/30 bg-destructive/10 text-destructive dark:text-destructive-foreground">+11 (+3%)</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-border bg-muted text-muted-foreground">0 (0%)</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">-201 (-5.1%)</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">+100pp</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-destructive/30 bg-destructive/10 text-destructive dark:text-destructive-foreground">+11</span></td>
+<td class="p-2 text-center"></td>
+</tr><tr>
+<td class="p-2 pl-3 text-right text-xs text-muted-foreground">中位 OFF</td>
+<td class="p-2 text-right align-middle tabular-nums font-semibold">115</td><td class="p-2 text-right align-middle tabular-nums font-semibold">0</td><td class="p-2 text-right align-middle tabular-nums font-semibold">370</td><td class="p-2 text-right align-middle tabular-nums font-semibold">0</td><td class="p-2 text-right align-middle tabular-nums font-semibold">3919</td><td class="p-2 text-right align-middle tabular-nums font-semibold">0%</td><td class="p-2 text-right align-middle tabular-nums font-semibold">0</td>
+<td class="p-2 text-center"></td>
+</tr>
+<tr>
+<td class="p-2 pl-3 text-right text-xs font-medium">中位 ON</td>
+<td class="p-2 text-right align-middle tabular-nums font-semibold">344</td><td class="p-2 text-right align-middle tabular-nums font-semibold">0</td><td class="p-2 text-right align-middle tabular-nums font-semibold">381</td><td class="p-2 text-right align-middle tabular-nums font-semibold">0</td><td class="p-2 text-right align-middle tabular-nums font-semibold">3718</td><td class="p-2 text-right align-middle tabular-nums font-semibold">100%</td><td class="p-2 text-right align-middle tabular-nums font-semibold">11</td>
+<td class="p-2 text-center"></td>
+</tr>
+<tr class="bg-muted/40">
+<td class="p-2 pl-3 text-right text-[11px] font-semibold text-muted-foreground">Δ 中位</td>
+<td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-destructive/30 bg-destructive/10 text-destructive dark:text-destructive-foreground">+229 (+199.1%)</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-border bg-muted text-muted-foreground">0 (0×)</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-destructive/30 bg-destructive/10 text-destructive dark:text-destructive-foreground">+11 (+3%)</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-border bg-muted text-muted-foreground">0 (0%)</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">-201 (-5.1%)</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">+100pp</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-destructive/30 bg-destructive/10 text-destructive dark:text-destructive-foreground">+11</span></td>
+<td class="p-2 text-center"></td>
+</tr></tbody>
+</table>
+</div>
+<template id="modal-real-edit-unobserved-off-r1"><div class="text-xs text-muted-foreground">工具：bash, get_goal, read, read, read, read, read, read, read, read</div>
+<div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>fs/native</code> · 运行状态 <code>cutoff</code> · 提前停止(stopAt) · 通知 <code>0 条 / 0 字节</code> · experiment <code>0f9b14738275eaec75c4</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>689f0480b312b9a7d108</code> · grader <code>6bcf4d7a6eebb452b695</code> · execution <code>c884be566184d98c5ad6</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>❌</span><span>fileContains python/examples/extract_trainers.py contains sys.path.insert(0, str(Path(__</span></li></ul></div></div>
+<div class="rounded-lg border bg-muted/30">
+<div class="border-b px-3 py-2 text-xs font-medium text-muted-foreground">完整 session.jsonl（友好视图 · 0 个事件 · 本地文件 /Users/canglong/program/dsh-tool-retry/.artifacts/eval/runs/2026-08-17T12-20-12.980Z/real-edit-unobserved/off/r1/session.jsonl）</div>
+<div class="max-h-[60vh] space-y-1.5 overflow-y-auto p-3"></div>
+</div></template>
+<template id="modal-real-edit-unobserved-on-r1"><div class="text-xs text-muted-foreground">工具：read, read, read, read, read, read, bash, read, read, read, read, read, read, edit, read, read, read</div>
+<div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>fs/native</code> · 运行状态 <code>cutoff</code> · 提前停止(stopAt) · 通知 <code>11 条 / 2464 字节</code> · experiment <code>235a69f25bd64d2422fe</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>689f0480b312b9a7d108</code> · grader <code>6bcf4d7a6eebb452b695</code> · execution <code>c884be566184d98c5ad6</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>fileContains python/examples/extract_trainers.py contains sys.path.insert(0, str(Path(__</span></li></ul></div></div>
+<div class="rounded-lg border bg-muted/30">
+<div class="border-b px-3 py-2 text-xs font-medium text-muted-foreground">完整 session.jsonl（友好视图 · 0 个事件 · 本地文件 /Users/canglong/program/dsh-tool-retry/.artifacts/eval/runs/2026-08-17T12-20-12.980Z/real-edit-unobserved/on/r1/session.jsonl）</div>
+<div class="max-h-[60vh] space-y-1.5 overflow-y-auto p-3"></div>
+</div></template>
+</div>
+<div class="rounded-xl border bg-card text-card-foreground shadow-xs overflow-hidden">
+<div class="flex flex-wrap items-center gap-2 border-b bg-muted/40 px-4 py-3">
+<h3 class="text-sm font-semibold tracking-tight">未读先写被拒（真实）</h3>
+<code class="text-xs text-muted-foreground">real-write-overwrite</code>
+<span class="text-xs text-muted-foreground">native</span>
+<span class="ml-auto flex items-center gap-2">
+<span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">内容 token 省 0%</span>
+<span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">中性</span>
+<span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">采用率 0%</span>
+</span>
+</div>
+<div class="space-y-1 px-4 py-2 text-xs text-muted-foreground">
+<div><span class="font-medium">输入：</span>模型在未读取的情况下覆盖已存在的 README.md（FS_NOT_OBSERVED）。</div>
+<div><span class="font-medium">预期结果：</span>先读取再写入（断点后成功 write README.md）。</div>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full caption-bottom text-sm">
+<thead class="bg-muted/50 [&_th]:h-10 [&_th]:px-3 [&_th]:text-left [&_th]:align-middle [&_th]:font-medium [&_th]:text-muted-foreground">
+<tr><th class="w-24">eval</th>
+<th class="text-right">内容 token</th><th class="text-right">断点后步数</th><th class="text-right">第一步输出(含推理)</th><th class="text-right">全程输出(含推理)</th><th class="text-right">断点后输入 token</th><th class="text-right">重试成功率</th><th class="text-right">通知条数</th>
+<th class="w-28 text-center">详情</th>
+</tr>
+</thead>
+<tbody><tr>
+<td class="p-2 pl-3 text-right text-xs text-muted-foreground">r1 OFF</td>
+<td class="p-2 text-right align-middle tabular-nums text-muted-foreground">61</td><td class="p-2 text-right align-middle tabular-nums text-muted-foreground">0</td><td class="p-2 text-right align-middle tabular-nums text-muted-foreground">146</td><td class="p-2 text-right align-middle tabular-nums text-muted-foreground">0</td><td class="p-2 text-right align-middle tabular-nums text-muted-foreground">2066</td><td class="p-2 text-right align-middle tabular-nums text-muted-foreground">0%</td><td class="p-2 text-right align-middle tabular-nums text-muted-foreground">0</td>
+<td class="p-2 text-center"><button data-open-modal="#modal-real-write-overwrite-off-r1" data-run-label="real-write-overwrite · OFF r1" class="inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用</button></td>
+</tr>
+<tr>
+<td class="p-2 pl-3 text-right text-xs font-medium">r1 ON</td>
+<td class="p-2 text-right align-middle tabular-nums ">61</td><td class="p-2 text-right align-middle tabular-nums ">0</td><td class="p-2 text-right align-middle tabular-nums ">61</td><td class="p-2 text-right align-middle tabular-nums ">0</td><td class="p-2 text-right align-middle tabular-nums ">2324</td><td class="p-2 text-right align-middle tabular-nums ">0%</td><td class="p-2 text-right align-middle tabular-nums ">4</td>
+<td class="p-2 text-center"><button data-open-modal="#modal-real-write-overwrite-on-r1" data-run-label="real-write-overwrite · ON r1" class="inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用</button></td>
+</tr>
+<tr class="border-b-2">
+<td class="p-2 pl-3 text-right text-[11px] font-semibold text-muted-foreground">Δ r1</td>
+<td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-border bg-muted text-muted-foreground">0 (0%)</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-border bg-muted text-muted-foreground">0 (0×)</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">-85 (-58.2%)</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-border bg-muted text-muted-foreground">0 (0%)</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-destructive/30 bg-destructive/10 text-destructive dark:text-destructive-foreground">+258 (+12.5%)</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-border bg-muted text-muted-foreground">0pp</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-destructive/30 bg-destructive/10 text-destructive dark:text-destructive-foreground">+4</span></td>
+<td class="p-2 text-center"></td>
+</tr><tr>
+<td class="p-2 pl-3 text-right text-xs text-muted-foreground">中位 OFF</td>
+<td class="p-2 text-right align-middle tabular-nums font-semibold">61</td><td class="p-2 text-right align-middle tabular-nums font-semibold">0</td><td class="p-2 text-right align-middle tabular-nums font-semibold">146</td><td class="p-2 text-right align-middle tabular-nums font-semibold">0</td><td class="p-2 text-right align-middle tabular-nums font-semibold">2066</td><td class="p-2 text-right align-middle tabular-nums font-semibold">0%</td><td class="p-2 text-right align-middle tabular-nums font-semibold">0</td>
+<td class="p-2 text-center"></td>
+</tr>
+<tr>
+<td class="p-2 pl-3 text-right text-xs font-medium">中位 ON</td>
+<td class="p-2 text-right align-middle tabular-nums font-semibold">61</td><td class="p-2 text-right align-middle tabular-nums font-semibold">0</td><td class="p-2 text-right align-middle tabular-nums font-semibold">61</td><td class="p-2 text-right align-middle tabular-nums font-semibold">0</td><td class="p-2 text-right align-middle tabular-nums font-semibold">2324</td><td class="p-2 text-right align-middle tabular-nums font-semibold">0%</td><td class="p-2 text-right align-middle tabular-nums font-semibold">4</td>
+<td class="p-2 text-center"></td>
+</tr>
+<tr class="bg-muted/40">
+<td class="p-2 pl-3 text-right text-[11px] font-semibold text-muted-foreground">Δ 中位</td>
+<td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-border bg-muted text-muted-foreground">0 (0%)</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-border bg-muted text-muted-foreground">0 (0×)</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">-85 (-58.2%)</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-border bg-muted text-muted-foreground">0 (0%)</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-destructive/30 bg-destructive/10 text-destructive dark:text-destructive-foreground">+258 (+12.5%)</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-border bg-muted text-muted-foreground">0pp</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-destructive/30 bg-destructive/10 text-destructive dark:text-destructive-foreground">+4</span></td>
+<td class="p-2 text-center"></td>
+</tr></tbody>
+</table>
+</div>
+<template id="modal-real-write-overwrite-off-r1"><div class="text-xs text-muted-foreground">工具：read, bash, read, read, read, read, read, read, read</div>
+<div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>fs/native</code> · 运行状态 <code>cutoff</code> · 提前停止(stopAt) · 通知 <code>0 条 / 0 字节</code> · experiment <code>80e3a41319a10099cbfe</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>cbaff6722e485f085376</code> · grader <code>4bfe17b163c8cfbdb440</code> · execution <code>c884be566184d98c5ad6</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>❌</span><span>writeSucceeded README.md (successful post-break write)</span></li></ul></div></div>
+<div class="rounded-lg border bg-muted/30">
+<div class="border-b px-3 py-2 text-xs font-medium text-muted-foreground">完整 session.jsonl（友好视图 · 0 个事件 · 本地文件 /Users/canglong/program/dsh-tool-retry/.artifacts/eval/runs/2026-08-17T12-20-12.980Z/real-write-overwrite/off/r1/session.jsonl）</div>
+<div class="max-h-[60vh] space-y-1.5 overflow-y-auto p-3"></div>
+</div></template>
+<template id="modal-real-write-overwrite-on-r1"><div class="text-xs text-muted-foreground">工具：read, bash, read, read, read, read, write</div>
+<div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>fs/native</code> · 运行状态 <code>cutoff</code> · 提前停止(stopAt) · 通知 <code>4 条 / 896 字节</code> · experiment <code>7ad7b67d3cc8e5a7508b</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>cbaff6722e485f085376</code> · grader <code>4bfe17b163c8cfbdb440</code> · execution <code>c884be566184d98c5ad6</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>❌</span><span>writeSucceeded README.md (successful post-break write)</span></li></ul></div></div>
+<div class="rounded-lg border bg-muted/30">
+<div class="border-b px-3 py-2 text-xs font-medium text-muted-foreground">完整 session.jsonl（友好视图 · 0 个事件 · 本地文件 /Users/canglong/program/dsh-tool-retry/.artifacts/eval/runs/2026-08-17T12-20-12.980Z/real-write-overwrite/on/r1/session.jsonl）</div>
+<div class="max-h-[60vh] space-y-1.5 overflow-y-auto p-3"></div>
+</div></template>
+</div>
+<div class="rounded-xl border bg-card text-card-foreground shadow-xs overflow-hidden">
+<div class="flex flex-wrap items-center gap-2 border-b bg-muted/40 px-4 py-3">
+<h3 class="text-sm font-semibold tracking-tight">计划评审被用户驳回（真实）</h3>
+<code class="text-xs text-muted-foreground">real-plan-dismissed</code>
+<span class="text-xs text-muted-foreground">native</span>
+<span class="ml-auto flex items-center gap-2">
+<span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">内容 token 省 36.3%</span>
+<span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">特性优势</span>
+<span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">采用率 0%</span>
+</span>
+</div>
+<div class="space-y-1 px-4 py-2 text-xs text-muted-foreground">
+<div><span class="font-medium">输入：</span>模型提交了一份约 1 万字符的 abc-db Rust 重构计划，用户驳回了计划评审并直接发言。</div>
+<div><span class="font-medium">预期结果：</span>按用户发言修订计划后重新提交 exit_plan_mode 成功。</div>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full caption-bottom text-sm">
+<thead class="bg-muted/50 [&_th]:h-10 [&_th]:px-3 [&_th]:text-left [&_th]:align-middle [&_th]:font-medium [&_th]:text-muted-foreground">
+<tr><th class="w-24">eval</th>
+<th class="text-right">内容 token</th><th class="text-right">断点后步数</th><th class="text-right">第一步输出(含推理)</th><th class="text-right">全程输出(含推理)</th><th class="text-right">断点后输入 token</th><th class="text-right">重试成功率</th><th class="text-right">通知条数</th>
+<th class="w-28 text-center">详情</th>
+</tr>
+</thead>
+<tbody><tr>
+<td class="p-2 pl-3 text-right text-xs text-muted-foreground">r1 OFF</td>
+<td class="p-2 text-right align-middle tabular-nums text-muted-foreground">306</td><td class="p-2 text-right align-middle tabular-nums text-muted-foreground">0</td><td class="p-2 text-right align-middle tabular-nums text-muted-foreground">5177</td><td class="p-2 text-right align-middle tabular-nums text-muted-foreground">0</td><td class="p-2 text-right align-middle tabular-nums text-muted-foreground">176</td><td class="p-2 text-right align-middle tabular-nums text-muted-foreground">100%</td><td class="p-2 text-right align-middle tabular-nums text-muted-foreground">0</td>
+<td class="p-2 text-center"><button data-open-modal="#modal-real-plan-dismissed-off-r1" data-run-label="real-plan-dismissed · OFF r1" class="inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用</button></td>
+</tr>
+<tr>
+<td class="p-2 pl-3 text-right text-xs font-medium">r1 ON</td>
+<td class="p-2 text-right align-middle tabular-nums ">195</td><td class="p-2 text-right align-middle tabular-nums ">0</td><td class="p-2 text-right align-middle tabular-nums ">2306</td><td class="p-2 text-right align-middle tabular-nums ">0</td><td class="p-2 text-right align-middle tabular-nums ">183</td><td class="p-2 text-right align-middle tabular-nums ">100%</td><td class="p-2 text-right align-middle tabular-nums ">1</td>
+<td class="p-2 text-center"><button data-open-modal="#modal-real-plan-dismissed-on-r1" data-run-label="real-plan-dismissed · ON r1" class="inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用</button></td>
+</tr>
+<tr class="border-b-2">
+<td class="p-2 pl-3 text-right text-[11px] font-semibold text-muted-foreground">Δ r1</td>
+<td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">-111 (-36.3%)</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-border bg-muted text-muted-foreground">0 (0×)</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">-2871 (-55.5%)</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-border bg-muted text-muted-foreground">0 (0%)</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-destructive/30 bg-destructive/10 text-destructive dark:text-destructive-foreground">+7 (+4%)</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-border bg-muted text-muted-foreground">0pp</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-destructive/30 bg-destructive/10 text-destructive dark:text-destructive-foreground">+1</span></td>
+<td class="p-2 text-center"></td>
+</tr><tr>
+<td class="p-2 pl-3 text-right text-xs text-muted-foreground">中位 OFF</td>
+<td class="p-2 text-right align-middle tabular-nums font-semibold">306</td><td class="p-2 text-right align-middle tabular-nums font-semibold">0</td><td class="p-2 text-right align-middle tabular-nums font-semibold">5177</td><td class="p-2 text-right align-middle tabular-nums font-semibold">0</td><td class="p-2 text-right align-middle tabular-nums font-semibold">176</td><td class="p-2 text-right align-middle tabular-nums font-semibold">100%</td><td class="p-2 text-right align-middle tabular-nums font-semibold">0</td>
+<td class="p-2 text-center"></td>
+</tr>
+<tr>
+<td class="p-2 pl-3 text-right text-xs font-medium">中位 ON</td>
+<td class="p-2 text-right align-middle tabular-nums font-semibold">195</td><td class="p-2 text-right align-middle tabular-nums font-semibold">0</td><td class="p-2 text-right align-middle tabular-nums font-semibold">2306</td><td class="p-2 text-right align-middle tabular-nums font-semibold">0</td><td class="p-2 text-right align-middle tabular-nums font-semibold">183</td><td class="p-2 text-right align-middle tabular-nums font-semibold">100%</td><td class="p-2 text-right align-middle tabular-nums font-semibold">1</td>
+<td class="p-2 text-center"></td>
+</tr>
+<tr class="bg-muted/40">
+<td class="p-2 pl-3 text-right text-[11px] font-semibold text-muted-foreground">Δ 中位</td>
+<td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">-111 (-36.3%)</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-border bg-muted text-muted-foreground">0 (0×)</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">-2871 (-55.5%)</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-border bg-muted text-muted-foreground">0 (0%)</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-destructive/30 bg-destructive/10 text-destructive dark:text-destructive-foreground">+7 (+4%)</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-border bg-muted text-muted-foreground">0pp</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-destructive/30 bg-destructive/10 text-destructive dark:text-destructive-foreground">+1</span></td>
+<td class="p-2 text-center"></td>
+</tr></tbody>
+</table>
+</div>
+<template id="modal-real-plan-dismissed-on-r1"><div class="text-xs text-muted-foreground">工具：bash, exit_plan_mode</div>
+<div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>plan/native</code> · 运行状态 <code>cutoff</code> · 提前停止(stopAt) · 通知 <code>1 条 / 224 字节</code> · experiment <code>c161458a0ce21595ab9f</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>47302cd242d186346df1</code> · grader <code>91c243d9b826da90332d</code> · execution <code>c884be566184d98c5ad6</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>exit_plan_mode accepted</span></li></ul></div></div>
+<div class="rounded-lg border bg-muted/30">
+<div class="border-b px-3 py-2 text-xs font-medium text-muted-foreground">完整 session.jsonl（友好视图 · 0 个事件 · 本地文件 /Users/canglong/program/dsh-tool-retry/.artifacts/eval/runs/2026-08-17T12-20-12.980Z/real-plan-dismissed/on/r1/session.jsonl）</div>
+<div class="max-h-[60vh] space-y-1.5 overflow-y-auto p-3"></div>
+</div></template>
+<template id="modal-real-plan-dismissed-off-r1"><div class="text-xs text-muted-foreground">工具：bash, exit_plan_mode</div>
+<div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>plan/native</code> · 运行状态 <code>cutoff</code> · 提前停止(stopAt) · 通知 <code>0 条 / 0 字节</code> · experiment <code>7bebde38aff1e33949d5</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>47302cd242d186346df1</code> · grader <code>91c243d9b826da90332d</code> · execution <code>c884be566184d98c5ad6</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>exit_plan_mode accepted</span></li></ul></div></div>
+<div class="rounded-lg border bg-muted/30">
+<div class="border-b px-3 py-2 text-xs font-medium text-muted-foreground">完整 session.jsonl（友好视图 · 0 个事件 · 本地文件 /Users/canglong/program/dsh-tool-retry/.artifacts/eval/runs/2026-08-17T12-20-12.980Z/real-plan-dismissed/off/r1/session.jsonl）</div>
+<div class="max-h-[60vh] space-y-1.5 overflow-y-auto p-3"></div>
+</div></template>
+</div></div>
+<div data-panel="code" class="hidden space-y-6"><div class="rounded-xl border bg-card text-card-foreground shadow-xs overflow-hidden">
+<div class="flex flex-wrap items-center gap-2 border-b bg-muted/40 px-4 py-3">
+<h3 class="text-sm font-semibold tracking-tight">PTC：程序缺必填字段（真实）</h3>
+<code class="text-xs text-muted-foreground">real-run-code-missing-desc</code>
+<span class="text-xs text-muted-foreground">PTC</span>
+<span class="ml-auto flex items-center gap-2">
+<span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-destructive/30 bg-destructive/10 text-destructive dark:text-destructive-foreground">内容 token 多 196.8%</span>
+<span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-destructive/30 bg-destructive/10 text-destructive dark:text-destructive-foreground">特性劣势</span>
+<span class="inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-medium whitespace-nowrap border-border bg-muted text-muted-foreground">采用率 0%</span>
+</span>
+</div>
+<div class="space-y-1 px-4 py-2 text-xs text-muted-foreground">
+<div><span class="font-medium">输入：</span>run_code 程序参数缺少必填的 description 字段（INVALID_ARGS，真实程序文本）。</div>
+<div><span class="font-medium">预期结果：</span>修正后的程序无 error 完成。</div>
+</div>
+<div class="overflow-x-auto">
+<table class="w-full caption-bottom text-sm">
+<thead class="bg-muted/50 [&_th]:h-10 [&_th]:px-3 [&_th]:text-left [&_th]:align-middle [&_th]:font-medium [&_th]:text-muted-foreground">
+<tr><th class="w-24">eval</th>
+<th class="text-right">内容 token</th><th class="text-right">断点后步数</th><th class="text-right">第一步输出(含推理)</th><th class="text-right">全程输出(含推理)</th><th class="text-right">断点后输入 token</th><th class="text-right">重试成功率</th><th class="text-right">通知条数</th>
+<th class="w-28 text-center">详情</th>
+</tr>
+</thead>
+<tbody><tr>
+<td class="p-2 pl-3 text-right text-xs text-muted-foreground">r1 OFF</td>
+<td class="p-2 text-right align-middle tabular-nums text-muted-foreground">95</td><td class="p-2 text-right align-middle tabular-nums text-muted-foreground">0</td><td class="p-2 text-right align-middle tabular-nums text-muted-foreground">898</td><td class="p-2 text-right align-middle tabular-nums text-muted-foreground">0</td><td class="p-2 text-right align-middle tabular-nums text-muted-foreground">16</td><td class="p-2 text-right align-middle tabular-nums text-muted-foreground">100%</td><td class="p-2 text-right align-middle tabular-nums text-muted-foreground">0</td>
+<td class="p-2 text-center"><button data-open-modal="#modal-real-run-code-missing-desc-off-r1" data-run-label="real-run-code-missing-desc · OFF r1" class="inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用</button></td>
+</tr>
+<tr>
+<td class="p-2 pl-3 text-right text-xs font-medium">r1 ON</td>
+<td class="p-2 text-right align-middle tabular-nums ">282</td><td class="p-2 text-right align-middle tabular-nums ">0</td><td class="p-2 text-right align-middle tabular-nums ">1688</td><td class="p-2 text-right align-middle tabular-nums ">0</td><td class="p-2 text-right align-middle tabular-nums ">34</td><td class="p-2 text-right align-middle tabular-nums ">100%</td><td class="p-2 text-right align-middle tabular-nums ">0</td>
+<td class="p-2 text-center"><button data-open-modal="#modal-real-run-code-missing-desc-on-r1" data-run-label="real-run-code-missing-desc · ON r1" class="inline-flex items-center gap-1 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium transition-colors hover:bg-muted/70">查看调用</button></td>
+</tr>
+<tr class="border-b-2">
+<td class="p-2 pl-3 text-right text-[11px] font-semibold text-muted-foreground">Δ r1</td>
+<td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-destructive/30 bg-destructive/10 text-destructive dark:text-destructive-foreground">+187 (+196.8%)</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-border bg-muted text-muted-foreground">0 (0×)</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-destructive/30 bg-destructive/10 text-destructive dark:text-destructive-foreground">+790 (+88%)</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-border bg-muted text-muted-foreground">0 (0%)</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-destructive/30 bg-destructive/10 text-destructive dark:text-destructive-foreground">+18 (+112.5%)</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-border bg-muted text-muted-foreground">0pp</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-border bg-muted text-muted-foreground">0</span></td>
+<td class="p-2 text-center"></td>
+</tr><tr>
+<td class="p-2 pl-3 text-right text-xs text-muted-foreground">中位 OFF</td>
+<td class="p-2 text-right align-middle tabular-nums font-semibold">95</td><td class="p-2 text-right align-middle tabular-nums font-semibold">0</td><td class="p-2 text-right align-middle tabular-nums font-semibold">898</td><td class="p-2 text-right align-middle tabular-nums font-semibold">0</td><td class="p-2 text-right align-middle tabular-nums font-semibold">16</td><td class="p-2 text-right align-middle tabular-nums font-semibold">100%</td><td class="p-2 text-right align-middle tabular-nums font-semibold">0</td>
+<td class="p-2 text-center"></td>
+</tr>
+<tr>
+<td class="p-2 pl-3 text-right text-xs font-medium">中位 ON</td>
+<td class="p-2 text-right align-middle tabular-nums font-semibold">282</td><td class="p-2 text-right align-middle tabular-nums font-semibold">0</td><td class="p-2 text-right align-middle tabular-nums font-semibold">1688</td><td class="p-2 text-right align-middle tabular-nums font-semibold">0</td><td class="p-2 text-right align-middle tabular-nums font-semibold">34</td><td class="p-2 text-right align-middle tabular-nums font-semibold">100%</td><td class="p-2 text-right align-middle tabular-nums font-semibold">0</td>
+<td class="p-2 text-center"></td>
+</tr>
+<tr class="bg-muted/40">
+<td class="p-2 pl-3 text-right text-[11px] font-semibold text-muted-foreground">Δ 中位</td>
+<td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-destructive/30 bg-destructive/10 text-destructive dark:text-destructive-foreground">+187 (+196.8%)</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-border bg-muted text-muted-foreground">0 (0×)</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-destructive/30 bg-destructive/10 text-destructive dark:text-destructive-foreground">+790 (+88%)</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-border bg-muted text-muted-foreground">0 (0%)</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-destructive/30 bg-destructive/10 text-destructive dark:text-destructive-foreground">+18 (+112.5%)</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-border bg-muted text-muted-foreground">0pp</span></td><td class="p-2 text-center align-middle"><span class="inline-flex w-full items-center justify-center rounded-md border px-1.5 py-0.5 text-xs font-semibold tabular-nums border-border bg-muted text-muted-foreground">0</span></td>
+<td class="p-2 text-center"></td>
+</tr></tbody>
+</table>
+</div>
+<template id="modal-real-run-code-missing-desc-on-r1"><div class="text-xs text-muted-foreground">工具：run_code</div>
+<div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>boom/code</code> · 运行状态 <code>cutoff</code> · 提前停止(stopAt) · 通知 <code>0 条 / 0 字节</code> · experiment <code>50eab7c15a3fe14a286d</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>b546b1ffd577022536f1</code> · grader <code>fc2de247d27d149078c6</code> · execution <code>c884be566184d98c5ad6</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>post-break run_code completed without error</span></li></ul></div></div>
+<div class="rounded-lg border bg-muted/30">
+<div class="border-b px-3 py-2 text-xs font-medium text-muted-foreground">完整 session.jsonl（友好视图 · 0 个事件 · 本地文件 /Users/canglong/program/dsh-tool-retry/.artifacts/eval/runs/2026-08-17T12-20-12.980Z/real-run-code-missing-desc/on/r1/session.jsonl）</div>
+<div class="max-h-[60vh] space-y-1.5 overflow-y-auto p-3"></div>
+</div></template>
+<template id="modal-real-run-code-missing-desc-off-r1"><div class="text-xs text-muted-foreground">工具：run_code</div>
+<div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs"><div><span class="text-muted-foreground">判定准则</span> <code>boom/code</code> · 运行状态 <code>cutoff</code> · 提前停止(stopAt) · 通知 <code>0 条 / 0 字节</code> · experiment <code>e6fe29d461b982059515</code></div><div><span class="text-muted-foreground">修订</span> scenario <code>b546b1ffd577022536f1</code> · grader <code>fc2de247d27d149078c6</code> · execution <code>c884be566184d98c5ad6</code></div><div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5"><li class="flex items-center gap-2"><span>✅</span><span>post-break run_code completed without error</span></li></ul></div></div>
+<div class="rounded-lg border bg-muted/30">
+<div class="border-b px-3 py-2 text-xs font-medium text-muted-foreground">完整 session.jsonl（友好视图 · 0 个事件 · 本地文件 /Users/canglong/program/dsh-tool-retry/.artifacts/eval/runs/2026-08-17T12-20-12.980Z/real-run-code-missing-desc/off/r1/session.jsonl）</div>
+<div class="max-h-[60vh] space-y-1.5 overflow-y-auto p-3"></div>
+</div></template>
+</div></div>
+</div>
+
+<footer class="space-y-2 border-t pt-6 text-xs text-muted-foreground">
+<p>方法说明：每场景 × 臂（ON=挂载插件 / OFF=基线）× 1 次独立运行；断点快照为真实会话日志裁剪的失败工具调用前缀（恢复式续跑）。非 plan 场景断点后不注入任何 user 消息——模型仅凭失败结果与静态协议自行决定下一步（plan 场景续接用户真实发言）。指标取自断点后的权威会话日志：重试步输出 token = 断点后第一条 assistant/message 的 usage.outputTokens（含推理 token）；内容 token = 输出 token − reasoningTokens，衡量模型实际产出的编辑/重生成文本；「第一步输出」只取断点后第一条 assistant/message，「全程输出」合计断点后全部模型步（含推理），两列并看可区分「一轮想得更深」与「多轮重试」；采用 = native 出现且结果非 error 的 editPreviousToolCalling / PTC 参数引用 checkpoint 路径且无 error 的 run_code；重试成功 = 场景判据（fs 为工作区文件包含目标片段、plan 为重新提交被接受、PTC 为断点后 run_code 无 error）。</p>
+<p>每次运行的完整会话（全部工具调用的原始参数与结果）已落盘于 .artifacts/eval/runs/，可在上表最右侧「查看调用」按钮中点击展开；逐条记录见 .artifacts/eval/results.jsonl。本报告由 pnpm eval:report 生成并持久化于仓库 reports/。</p>
+</footer>
+
+</div>
+
+<!-- Call-detail modal (shadcn Dialog pattern) -->
+<div id="call-modal" class="fixed inset-0 z-50 hidden">
+  <div class="absolute inset-0 bg-black/50" data-modal-close></div>
+  <div class="absolute inset-x-4 top-1/2 mx-auto max-w-3xl -translate-y-1/2 overflow-hidden rounded-xl border bg-card text-card-foreground shadow-lg">
+    <div class="flex items-center justify-between border-b px-4 py-3">
+      <div id="call-modal-title" class="text-sm font-semibold"></div>
+      <button data-modal-close class="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted" aria-label="关闭">✕</button>
+    </div>
+    <div id="call-modal-body" class="max-h-[75vh] space-y-2 overflow-y-auto p-4"></div>
+  </div>
+</div>
+</body>
+</html>
