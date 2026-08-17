@@ -2,6 +2,11 @@
   "name": "native-invalid-args",
   "mode": "native",
   "kind": "deploy",
+  "title": "长参数部署：缺失必填字段",
+  "description": {
+    "input": "模型要部署一个带长模板的 payments 配置，但漏掉了必填字段 config.kind，schema 校验失败（INVALID_ARGS）。",
+    "expected": "以最小改动补上 kind 字段并重试成功（deploy 以合法输入重跑）。"
+  },
   "blocks": [
     {
       "callId": "break_1",

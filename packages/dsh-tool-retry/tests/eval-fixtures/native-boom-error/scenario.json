@@ -2,6 +2,11 @@
   "name": "native-boom-error",
   "mode": "native",
   "kind": "boom",
+  "title": "普通模式：标记值工具失败",
+  "description": {
+    "input": "boom 工具在 value 为标记值 v1-marker 时抛错。",
+    "expected": "换一个合法值重试成功。"
+  },
   "blocks": [
     {
       "callId": "break_boom",

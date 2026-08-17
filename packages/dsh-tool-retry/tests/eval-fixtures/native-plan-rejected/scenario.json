@@ -2,6 +2,11 @@
   "name": "native-plan-rejected",
   "mode": "native",
   "kind": "plan",
+  "title": "计划被用户拒绝",
+  "description": {
+    "input": "exit_plan_mode 提交的长实施计划被用户拒绝，用户反馈随失败结果返回。",
+    "expected": "按反馈修改计划后重新提交成功。"
+  },
   "blocks": [
     {
       "callId": "break_plan",

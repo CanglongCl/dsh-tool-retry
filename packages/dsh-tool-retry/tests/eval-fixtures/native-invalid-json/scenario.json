@@ -2,6 +2,11 @@
   "name": "native-invalid-json",
   "mode": "native",
   "kind": "deploy",
+  "title": "非法 JSON 参数",
+  "description": {
+    "input": "模型发出的工具参数字符串不是合法 JSON（截断），调用直接失败。",
+    "expected": "修复 JSON 文本并重试成功。"
+  },
   "blocks": [
     {
       "callId": "break_2",

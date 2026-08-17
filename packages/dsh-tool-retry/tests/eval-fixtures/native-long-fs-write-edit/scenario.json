@@ -2,6 +2,11 @@
   "name": "native-long-fs-write-edit",
   "mode": "native",
   "kind": "fs",
+  "title": "长文本双失败：write 缺字段 + edit 失配",
+  "description": {
+    "input": "并行两个调用同时失败——write（长内容，缺必填 file_path）与 edit（长 new_string，old_string 引用了已删除的 v1 片段）。",
+    "expected": "两个调用都以最小改动修复：report.md 生成、notes.md 包含新手册片段。"
+  },
   "blocks": [
     {
       "callId": "break_fs_w",

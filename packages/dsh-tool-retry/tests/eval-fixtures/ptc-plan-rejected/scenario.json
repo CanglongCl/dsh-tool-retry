@@ -2,6 +2,11 @@
   "name": "ptc-plan-rejected",
   "mode": "code",
   "kind": "plan",
+  "title": "PTC：程序内提交计划被拒",
+  "description": {
+    "input": "run_code 程序内 tools.exit_plan_mode 提交的计划被用户拒绝，程序失败。",
+    "expected": "修正后的程序重新提交成功。"
+  },
   "blocks": [
     {
       "callId": "break_plan_rc",

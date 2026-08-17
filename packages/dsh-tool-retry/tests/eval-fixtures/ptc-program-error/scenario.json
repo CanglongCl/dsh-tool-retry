@@ -2,6 +2,11 @@
   "name": "ptc-program-error",
   "mode": "code",
   "kind": "boom",
+  "title": "PTC：程序未捕获异常",
+  "description": {
+    "input": "run_code 程序调用 tools.boom（标记值 v1-marker）且未捕获异常，程序整体失败。",
+    "expected": "修正后的程序无 error 完成（plan §6 判据）。"
+  },
   "blocks": [
     {
       "callId": "break_rc",

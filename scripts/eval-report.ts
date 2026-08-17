@@ -23,6 +23,7 @@ import { fileURLToPath } from 'node:url'
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 const EVAL_DIR = join(ROOT, '.artifacts', 'eval')
 const REPORTS_DIR = join(ROOT, 'reports')
+const FIXTURES_DIR = join(ROOT, 'packages', 'dsh-tool-retry', 'tests', 'eval-fixtures')
 const TAILWIND_CSS = join(ROOT, 'scripts', 'report.css')
 const TAILWIND_CLI = join(ROOT, 'node_modules', '@tailwindcss', 'cli', 'dist', 'index.mjs')
 
@@ -293,36 +294,109 @@ function statCard(label: string, value: string, hint: string, tone: 'positive' |
   ].join('\n')
 }
 
-/** One A/B comparison table: metrics as rows, ON stacked above OFF, a Δ
- * difference column spanning each pair. */
-function abTable(row: ScenarioRow): string {
+/** Scenario metadata (human-readable title + description) from scenario.json. */
+interface ScenarioMeta { title: string; description: { input: string; expected: string } }
+
+function loadScenarioMeta(name: string): ScenarioMeta | undefined {
+  try {
+    const meta = JSON.parse(readFileSync(join(FIXTURES_DIR, name, 'scenario.json'), 'utf8')) as ScenarioMeta
+    return meta.title === undefined ? undefined : meta
+  } catch {
+    return undefined
+  }
+}
+
+/** One A/B statistics table (v3): ROWS = evals (OFF/ON stuck together + a Δ
+ * row below each pair), COLUMNS = output metrics. Details live elsewhere. */
+function abDiffTable(row: ScenarioRow): string {
+  const meta = loadScenarioMeta(row.scenario)
+  const onRuns = row.runs.filter(run => run.arm === 'on')
+  const offRuns = row.runs.filter(run => run.arm === 'off')
+  const reps = [...new Set(row.runs.map(run => run.repetition))].sort((a, b) => a - b)
   const headlineTone = row.contentSavingsPercent >= 10 ? 'positive' : row.contentSavingsPercent <= -10 ? 'negative' : 'neutral'
   const verdict = row.contentSavingsPercent >= 10 ? '特性优势' : row.contentSavingsPercent <= -10 ? '特性劣势' : '中性'
-  const metrics: { name: string; on: string; off: string; delta: string; tone?: 'positive' | 'negative' | 'neutral' }[] = [
-    { name: '断点后步数', on: String(row.onSteps), off: String(row.offSteps), delta: row.stepsRatio === 0 ? '—' : `${row.stepsRatio}×`, tone: row.stepsRatio <= 1 ? 'positive' : 'negative' },
-    { name: '第一步输出 token（含推理）', on: String(row.onTokens), off: String(row.offTokens), delta: `${row.savingsPercent}%`, tone: row.savingsPercent >= 0 ? 'positive' : 'negative' },
-    { name: '内容 token（第一步）', on: String(row.onContentTokens), off: String(row.offContentTokens), delta: `${row.contentSavingsPercent}%`, tone: headlineTone },
-    { name: '全程输出 token（含推理）', on: String(row.onTotalOutput), off: String(row.offTotalOutput), delta: `${row.totalSavingsPercent}%`, tone: row.totalSavingsPercent >= 0 ? 'positive' : 'negative' },
-    { name: '断点后输入 token', on: String(row.onInput), off: String(row.offInput), delta: '—' },
-    { name: '重试成功率', on: percent(row.onRetryRate), off: percent(row.offRetryRate), delta: `${row.onRetryPp > 0 ? '+' : ''}${row.onRetryPp}pp`, tone: row.onRetryPp >= 0 ? 'positive' : 'negative' },
-    { name: '通知条数（中位）', on: String(row.notices), off: '—', delta: row.notices === 0 ? '0（无额外失败）' : `${row.notices} 次迭代失败` },
+  const pct1 = (value: number): string => `${value > 0 ? '+' : ''}${Math.round(value * 10) / 10}%`
+  const tokenDiff = (on: number, off: number): { text: string; tone: 'positive' | 'negative' | 'neutral' } => {
+    const diff = off - on
+    const pct = off > 0 ? diff / off * 100 : 0
+    return { text: `${diff > 0 ? '+' : ''}${diff} (${pct1(pct)})`, tone: diff > 0 ? 'positive' : diff < 0 ? 'negative' : 'neutral' }
+  }
+  const stepDiff = (on: number, off: number): { text: string; tone: 'positive' | 'negative' | 'neutral' } => {
+    const diff = off - on
+    const ratio = off > 0 ? Math.round(on / off * 10) / 10 : 0
+    return { text: `${diff > 0 ? '+' : ''}${diff} (${ratio}×)`, tone: diff > 0 ? 'positive' : diff < 0 ? 'negative' : 'neutral' }
+  }
+  const ppDiff = (on: number, off: number): { text: string; tone: 'positive' | 'negative' | 'neutral' } => {
+    const diff = on - off
+    return { text: `${diff > 0 ? '+' : ''}${diff}pp`, tone: diff > 0 ? 'positive' : diff < 0 ? 'negative' : 'neutral' }
+  }
+  interface MetricSpec {
+    name: string
+    value: (run: RunRecord) => number
+    format: (value: number) => string
+    diff: (on: number, off: number) => { text: string; tone: 'positive' | 'negative' | 'neutral' }
+  }
+  const number = (value: number): string => String(value)
+  const metrics: MetricSpec[] = [
+    { name: '内容 token', value: contentTokensForRecord, format: number, diff: tokenDiff },
+    { name: '断点后步数', value: run => postBreakMessages(run).length, format: number, diff: stepDiff },
+    { name: '第一步输出(含推理)', value: run => run.summary.retryStepOutputTokens, format: number, diff: tokenDiff },
+    { name: '全程输出(含推理)', value: totalPostBreakOutput, format: number, diff: tokenDiff },
+    { name: '断点后输入 token', value: run => run.summary.postBreakInputTokens, format: number, diff: tokenDiff },
+    { name: '重试成功率', value: run => run.summary.retrySuccess ? 100 : 0, format: value => percent(value / 100), diff: ppDiff },
+    { name: '通知条数', value: run => run.summary.noticeCount, format: number, diff: (on, off) => {
+      const diff = off - on
+      return { text: diff === 0 ? '0' : `−${Math.abs(diff)}`, tone: diff < 0 ? 'negative' : 'neutral' }
+    } },
   ]
-  const body = metrics.map((metric) => [
-    '<tr class="border-t">',
-    `<td rowspan="2" class="p-3 align-middle text-sm text-muted-foreground">${metric.name}</td>`,
-    `<td class="p-2 text-right align-middle"><span class="inline-flex items-center rounded-md border border-border bg-muted px-2 py-0.5 text-[11px] font-medium">ON</span></td>`,
-    `<td class="p-2 text-right align-middle tabular-nums font-medium">${metric.on}</td>`,
-    `<td rowspan="2" class="p-2 text-center align-middle">${metric.tone === undefined ? `<span class="text-xs text-muted-foreground">${metric.delta}</span>` : savingsCell(metric.delta, metric.tone)}</td>`,
-    '</tr>',
-    '<tr class="border-t">',
-    '<td class="p-2 text-right align-middle"><span class="inline-flex items-center rounded-md border border-border bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">OFF</span></td>',
-    `<td class="p-2 text-right align-middle tabular-nums text-muted-foreground">${metric.off}</td>`,
-    '</tr>',
-  ].join('\n')).join('\n')
+  const runValue = (spec: MetricSpec, arm: 'on' | 'off', rep: number): number => {
+    const run = (arm === 'on' ? onRuns : offRuns).find(run => run.repetition === rep)
+    return run === undefined ? 0 : spec.value(run)
+  }
+  const medianOf = (values: number[]): number => {
+    const sorted = [...values].sort((a, b) => a - b)
+    return sorted[Math.floor(sorted.length / 2)] ?? 0
+  }
+  const group = (label: string, onValues: number[], offValues: number[], emphasized: boolean): string => {
+    const onCells = metrics.map(spec => `<td class="p-2 text-right align-middle tabular-nums ${emphasized ? 'font-semibold' : ''}">${spec.format(onValues[metrics.indexOf(spec)] ?? 0)}</td>`).join('')
+    const offCells = metrics.map(spec => `<td class="p-2 text-right align-middle tabular-nums ${emphasized ? 'font-semibold' : 'text-muted-foreground'}">`
+      + `${spec.format(offValues[metrics.indexOf(spec)] ?? 0)}</td>`).join('')
+    const diffCells = metrics.map(spec => {
+      const d = spec.diff(onValues[metrics.indexOf(spec)] ?? 0, offValues[metrics.indexOf(spec)] ?? 0)
+      return `<td class="p-2 text-center align-middle">${savingsCell(d.text, d.tone)}</td>`
+    }).join('')
+    return [
+      '<tr>',
+      `<td class="p-2 pl-3 text-right text-xs text-muted-foreground">${label} OFF</td>`,
+      offCells,
+      '</tr>',
+      '<tr>',
+      `<td class="p-2 pl-3 text-right text-xs font-medium">${label} ON</td>`,
+      onCells,
+      '</tr>',
+      `<tr class="${emphasized ? 'bg-muted/40' : 'border-b-2'}">`,
+      `<td class="p-2 pl-3 text-right text-[11px] font-semibold text-muted-foreground">Δ ${label}</td>`,
+      diffCells,
+      '</tr>',
+    ].join('\n')
+  }
+  const rows = reps.map(rep =>
+    group(`r${rep}`, metrics.map(spec => runValue(spec, 'on', rep)), metrics.map(spec => runValue(spec, 'off', rep)), false)).join('\n')
+  const medGroup = group('中位',
+    metrics.map(spec => medianOf(onRuns.map(run => spec.value(run)))),
+    metrics.map(spec => medianOf(offRuns.map(run => spec.value(run)))),
+    true)
+  const descriptionBlock = meta === undefined ? '' : [
+    '<div class="space-y-1 px-4 py-2 text-xs text-muted-foreground">',
+    `<div><span class="font-medium">输入：</span>${escapeHtml(meta.description.input)}</div>`,
+    `<div><span class="font-medium">预期结果：</span>${escapeHtml(meta.description.expected)}</div>`,
+    '</div>',
+  ].join('\n')
   return [
     '<div class="rounded-xl border bg-card text-card-foreground shadow-xs overflow-hidden">',
     '<div class="flex flex-wrap items-center gap-2 border-b bg-muted/40 px-4 py-3">',
-    `<h3 class="text-sm font-semibold tracking-tight">${escapeHtml(row.scenario)}</h3>`,
+    `<h3 class="text-sm font-semibold tracking-tight">${escapeHtml(meta?.title ?? row.scenario)}</h3>`,
+    `<code class="text-xs text-muted-foreground">${escapeHtml(row.scenario)}</code>`,
     `<span class="text-xs text-muted-foreground">${row.mode === 'native' ? 'native' : 'PTC'}</span>`,
     '<span class="ml-auto flex items-center gap-2">',
     badge(`内容 token ${row.contentSavingsPercent >= 0 ? '省' : '多'} ${Math.abs(row.contentSavingsPercent)}%`, headlineTone),
@@ -330,12 +404,15 @@ function abTable(row: ScenarioRow): string {
     badge(`采用率 ${percent(row.adoptionRate)}`, row.adoptionRate >= 0.5 ? 'positive' : 'neutral'),
     '</span>',
     '</div>',
+    descriptionBlock,
     '<div class="overflow-x-auto">',
     '<table class="w-full caption-bottom text-sm">',
     '<thead class="bg-muted/50 [&_th]:h-10 [&_th]:px-3 [&_th]:text-left [&_th]:align-middle [&_th]:font-medium [&_th]:text-muted-foreground">',
-    '<tr><th class="w-56">指标</th><th class="w-16 text-right">臂</th><th class="text-right">值</th><th class="w-32 text-center">Δ 差异</th></tr>',
+    '<tr><th class="w-24">eval</th>',
+    metrics.map(spec => `<th class="text-right">${spec.name}</th>`).join(''),
+    '</tr>',
     '</thead>',
-    `<tbody>${body}</tbody>`,
+    `<tbody>${rows}${medGroup}</tbody>`,
     '</table>',
     '</div>',
     '</div>',
@@ -458,49 +535,28 @@ function renderRunDetails(record: RunRecord): string {
   ].join('\n')).join('\n')
 }
 
-/** Per-run table with accordion drill-down (shadcn Table + accordion pattern). */
-function runTables(rows: ScenarioRow[]): string {
+/** Per-run DETAILS, separated from the statistics table: one standalone
+ * accordion card per run (arm/rep/status + meta + grader + per-step tokens +
+ * tool calls + trace). */
+function runDetailCards(rows: ScenarioRow[]): string {
   return rows.map((row) => {
-    const runRows = row.runs.map((run) => {
-      const s = run.summary
-      return [
-        '<tr class="border-t transition-colors hover:bg-muted/50 align-top">',
-        `<td class="p-3"><span class="inline-flex items-center rounded-md border border-border bg-muted px-2 py-0.5 text-xs font-medium">${run.arm === 'on' ? 'ON' : 'OFF'}</span></td>`,
-        `<td class="p-3 text-right tabular-nums">${run.repetition}</td>`,
-        `<td class="p-3 text-right tabular-nums">${postBreakMessages(run).length}</td>`,
-        `<td class="p-3 text-right tabular-nums">${s.retryStepOutputTokens}</td>`,
-        `<td class="p-3 text-right tabular-nums text-muted-foreground">${contentTokensForRecord(run)}</td>`,
-        `<td class="p-3 text-right tabular-nums">${totalPostBreakOutput(run)}</td>`,
-        `<td class="p-3 text-right tabular-nums">${s.postBreakInputTokens}</td>`,
-        `<td class="p-3">${s.adopted ? '✅' : '<span class="text-muted-foreground">—</span>'}</td>`,
-        `<td class="p-3">${s.retrySuccess ? '✅' : '❌'}</td>`,
-        `<td class="p-3">${statusBadge(s.status ?? (s.completed ? 'completed' : 'error'))}</td>`,
-        `<td class="p-3 text-right tabular-nums">${s.noticeCount}</td>`,
-        `<td class="p-3 text-xs text-muted-foreground max-w-64 truncate">${escapeHtml(s.toolCalls.join(', '))}</td>`,
-        '<td class="p-3 w-1/3">',
-        '<details class="group rounded-lg border bg-card text-card-foreground">',
-        '<summary class="flex cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">',
-        CHEVRON,
-        '<span>完整调用详情</span>',
-        '</summary>',
-        `<div class="border-t px-3 py-3 space-y-2">${renderRunMeta(run)}${renderRunDetails(run)}${renderRunTrace(run)}</div>`,
-        '</details>',
-        '</td>',
-        '</tr>',
-      ].join('\n')
-    }).join('\n')
+    const cards = row.runs.map((run) => [
+      '<details class="group rounded-lg border bg-card text-card-foreground">',
+      '<summary class="flex flex-wrap cursor-pointer select-none items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium [&::-webkit-details-marker]:hidden [&::marker]:hidden">',
+      CHEVRON,
+      `<span>${run.arm === 'on' ? 'ON' : 'OFF'} r${run.repetition}</span>`,
+      statusBadge(run.summary.status ?? (run.summary.completed ? 'completed' : 'error')),
+      `<span class="text-xs font-normal text-muted-foreground">工具：${escapeHtml(run.summary.toolCalls.join(', ') || '—')}</span>`,
+      '</summary>',
+      `<div class="border-t px-3 py-3 space-y-2">${renderRunMeta(run)}${renderRunDetails(run)}${renderRunTrace(run)}</div>`,
+      '</details>',
+    ].join('\n')).join('\n')
+    const meta = loadScenarioMeta(row.scenario)
     return [
-      '<section class="space-y-3">',
-      `<h3 class="text-base font-semibold tracking-tight">${escapeHtml(row.scenario)} · 每次运行明细</h3>`,
-      '<div class="rounded-xl border bg-card text-card-foreground shadow-xs overflow-hidden">',
-      '<div class="overflow-x-auto">',
-      '<table class="w-full caption-bottom text-sm">',
-      '<thead class="bg-muted/50 [&_th]:h-10 [&_th]:px-3 [&_th]:text-left [&_th]:align-middle [&_th]:font-medium [&_th]:text-muted-foreground [&_th]:whitespace-nowrap">',
-      '<tr><th>臂</th><th class="text-right">重复</th><th class="text-right">断点后步数</th><th class="text-right">第一步输出<br><span class="font-normal">含推理</span></th><th class="text-right">第一步内容 token</th><th class="text-right">全程输出 token<br><span class="font-normal">含推理</span></th><th class="text-right">断点后输入 token</th><th>采用</th><th>重试成功</th><th>状态</th><th class="text-right">通知条数</th><th>工具调用</th><th>详情</th></tr>',
-      '</thead>',
-      `<tbody>${runRows}</tbody>`,
-      '</table>',
-      '</div></div></section>',
+      `<section class="space-y-3">`,
+      `<h3 class="text-base font-semibold tracking-tight">${escapeHtml(meta?.title ?? row.scenario)} · 每次运行详情</h3>`,
+      `<div class="space-y-2">${cards}</div>`,
+      `</section>`,
     ].join('\n')
   }).join('\n')
 }
@@ -510,8 +566,9 @@ function tabPanels(rows: ScenarioRow[]): string {
   const panels = (['native', 'code'] as const).map((mode) => {
     const group = rows.filter(row => row.mode === mode)
     if (group.length === 0) return ''
-    const tables = group.map(abTable).join('\n')
-    return `<div data-panel="${mode}" class="hidden space-y-6">${tables}</div>`
+    const tables = group.map(abDiffTable).join('\n')
+    const details = runDetailCards(group)
+    return `<div data-panel="${mode}" class="hidden space-y-6">${tables}<section class="space-y-6 pt-2">${details}</section></div>`
   })
   const tabs = (['native', 'code'] as const)
     .filter(mode => rows.some(row => row.mode === mode))
@@ -613,8 +670,6 @@ addEventListener('DOMContentLoaded', () => {
 </section>
 
 ${tabPanels(rows)}
-
-<section class="space-y-6">${runTables(rows)}</section>
 
 <footer class="space-y-2 border-t pt-6 text-xs text-muted-foreground">
 <p>方法说明：每场景 × 臂（ON=挂载插件 / OFF=基线）× ${batch.repeats} 次独立运行；断点快照为持久化的失败工具调用前缀（恢复式续跑）。指标取自断点后的权威会话日志：重试步输出 token = 断点后第一条 assistant/message 的 usage.outputTokens（含推理 token）；内容 token = 输出 token − reasoningTokens，衡量模型实际产出的编辑/重生成文本；「第一步输出」只取断点后第一条 assistant/message（plan §6 指标），「全程输出」合计断点后全部模型步（含推理），两列并看可区分「一轮想得更深」与「多轮重试」；采用 = native 出现 editPreviousToolCalling / PTC 后续 run_code 参数引用 checkpoint 路径；重试成功 = native 断点工具以合法输入重跑（行为级）/ PTC 按 plan §6 判据「断点后的 run_code 调用无 error」。</p>

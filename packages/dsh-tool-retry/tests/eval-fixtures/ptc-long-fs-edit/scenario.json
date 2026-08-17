@@ -2,6 +2,11 @@
   "name": "ptc-long-fs-edit",
   "mode": "code",
   "kind": "fs",
+  "title": "PTC：程序内 edit 失配",
+  "description": {
+    "input": "run_code 程序内 tools.edit 的 old_string 引用了已删除的 v1 片段，程序失败。",
+    "expected": "修正后的程序完成，且 notes.md 包含新手册片段。"
+  },
   "blocks": [
     {
       "callId": "break_fs_rc",

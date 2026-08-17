@@ -270,6 +270,10 @@ interface EvalScenario {
   createdAt: number
   mode: 'native' | 'code'
   kind: EvalKind
+  /** Human-readable scenario title (report-facing). */
+  title: string
+  /** What the breakpoint feed is (input) and what the retry must achieve. */
+  description: { input: string; expected: string }
   /** The breakpoint round's failing blocks, in model order. */
   blocks: EvalBlock[]
   /** The original user task (prefix history). */
@@ -370,6 +374,11 @@ const EVAL_SCENARIOS: EvalScenario[] = [
   {
     name: 'native-invalid-args',
     createdAt: 11,
+    title: '长参数部署：缺失必填字段',
+    description: {
+      input: '模型要部署一个带长模板的 payments 配置，但漏掉了必填字段 config.kind，schema 校验失败（INVALID_ARGS）。',
+      expected: '以最小改动补上 kind 字段并重试成功（deploy 以合法输入重跑）。',
+    },
     mode: 'native',
     kind: 'deploy',
     blocks: [{
@@ -385,6 +394,11 @@ const EVAL_SCENARIOS: EvalScenario[] = [
   {
     name: 'native-invalid-json',
     createdAt: 12,
+    title: '非法 JSON 参数',
+    description: {
+      input: '模型发出的工具参数字符串不是合法 JSON（截断），调用直接失败。',
+      expected: '修复 JSON 文本并重试成功。',
+    },
     mode: 'native',
     kind: 'deploy',
     blocks: [{
@@ -400,6 +414,11 @@ const EVAL_SCENARIOS: EvalScenario[] = [
   {
     name: 'ptc-program-error',
     createdAt: 13,
+    title: 'PTC：程序未捕获异常',
+    description: {
+      input: 'run_code 程序调用 tools.boom（标记值 v1-marker）且未捕获异常，程序整体失败。',
+      expected: '修正后的程序无 error 完成（plan §6 判据）。',
+    },
     mode: 'code',
     kind: 'boom',
     blocks: [{
@@ -421,6 +440,11 @@ const EVAL_SCENARIOS: EvalScenario[] = [
   {
     name: 'native-boom-error',
     createdAt: 16,
+    title: '普通模式：标记值工具失败',
+    description: {
+      input: 'boom 工具在 value 为标记值 v1-marker 时抛错。',
+      expected: '换一个合法值重试成功。',
+    },
     mode: 'native',
     kind: 'boom',
     blocks: [{
@@ -436,6 +460,11 @@ const EVAL_SCENARIOS: EvalScenario[] = [
   {
     name: 'ptc-long-fs-edit',
     createdAt: 17,
+    title: 'PTC：程序内 edit 失配',
+    description: {
+      input: 'run_code 程序内 tools.edit 的 old_string 引用了已删除的 v1 片段，程序失败。',
+      expected: '修正后的程序完成，且 notes.md 包含新手册片段。',
+    },
     mode: 'code',
     kind: 'fs',
     blocks: [{
@@ -471,6 +500,11 @@ const EVAL_SCENARIOS: EvalScenario[] = [
   {
     name: 'ptc-plan-rejected',
     createdAt: 18,
+    title: 'PTC：程序内提交计划被拒',
+    description: {
+      input: 'run_code 程序内 tools.exit_plan_mode 提交的计划被用户拒绝，程序失败。',
+      expected: '修正后的程序重新提交成功。',
+    },
     mode: 'code',
     kind: 'plan',
     blocks: [{
@@ -498,6 +532,11 @@ const EVAL_SCENARIOS: EvalScenario[] = [
   {
     name: 'native-long-fs-write-edit',
     createdAt: 14,
+    title: '长文本双失败：write 缺字段 + edit 失配',
+    description: {
+      input: '并行两个调用同时失败——write（长内容，缺必填 file_path）与 edit（长 new_string，old_string 引用了已删除的 v1 片段）。',
+      expected: '两个调用都以最小改动修复：report.md 生成、notes.md 包含新手册片段。',
+    },
     mode: 'native',
     kind: 'fs',
     blocks: [
@@ -531,6 +570,11 @@ const EVAL_SCENARIOS: EvalScenario[] = [
   {
     name: 'native-plan-rejected',
     createdAt: 15,
+    title: '计划被用户拒绝',
+    description: {
+      input: 'exit_plan_mode 提交的长实施计划被用户拒绝，用户反馈随失败结果返回。',
+      expected: '按反馈修改计划后重新提交成功。',
+    },
     mode: 'native',
     kind: 'plan',
     blocks: [{
@@ -635,6 +679,8 @@ export function buildEvalFixtures(root = EVAL_FIXTURES): string[] {
       name: scenario.name,
       mode: scenario.mode,
       kind: scenario.kind,
+      title: scenario.title,
+      description: scenario.description,
       blocks: scenario.blocks,
       continuation: scenario.continuation,
       ...scenario.workspaceFiles === undefined ? {} : { workspaceFiles: scenario.workspaceFiles },
