@@ -6,7 +6,9 @@
 
 import { beforeEach, describe, expect, it } from 'vitest'
 import { Context } from '@deepseek-ai/cordis'
+import { FsVersion } from '@deepseek-ai/dsh-fs'
 import SessionStore from '@deepseek-ai/dsh-session'
+import { SessionId } from '@deepseek-ai/dsh-session/types'
 import SystemPrompt, { renderPrompt } from '@deepseek-ai/dsh-system-prompt'
 import ToolRuntime, { defineTool } from '@deepseek-ai/dsh-tools'
 import * as FsPolicy from '@deepseek-ai/dsh-fs-observation-policy'
@@ -248,5 +250,40 @@ describe('mode detection', () => {
     expect(rendered).toContain('TOOL-CALL CHECKPOINT & REPLAY')
     expect(rendered).toContain('editPreviousToolCalling')
     expect(rendered).not.toContain('Tools called INSIDE a program')
+  })
+})
+
+describe('restart recovery', () => {
+  it('resolves the FIRST previous_ordinal after a resume by lazily rebuilding the round map', async () => {
+    const { ctx, fs } = await setup()
+    // Simulate a resumed session: the log already holds an earlier call whose
+    // by-id file exists on disk, but NO direct call has run in this process
+    // yet (the round map is still empty — no post-execute ever fired).
+    const root = join(CHECKPOINT_ROOT, 'resume-ordinal-session')
+    const session = ctx.sessions.create(SessionId('resume-ordinal-session'), {
+      seed: [{
+        type: 'tool/call', seq: 0, time: 1,
+        data: { turn: 1, step: 1, callId: 'old-1', name: 'echo', arguments: '{"tex":"hi"}' },
+      }] as never,
+    })
+    const agent = fakeAgent(session)
+    // Pre-seed the checkpoint store exactly as the plugin leaves it on disk.
+    fs.files.set(`key:${join(root, 'by-id', 'old-1.json')}`, { content: '{"tex":"hi"}', version: FsVersion('v0') })
+    const target = await ctx.fs.resolve(join(root, 'by-id', 'old-1.json'))
+    ctx.emit('fs/observed', target, { kind: 'present', version: FsVersion('v0') }, { agent })
+
+    // The FIRST call in this process targets the previous message's ordinal —
+    // before this fix it always failed (the map rebuilds at post-execute,
+    // which runs after the tool body).
+    const replay = await call(ctx, 'editPreviousToolCalling', {
+      previous_ordinal: 1,
+      old_string: '"tex":"hi"',
+      new_string: '"text":"hi"',
+    }, agent)
+    if (replay.isError) throw new Error(`expected resume replay success: ${textOf(replay.content)}`)
+    expect(textOf(replay.content)).toContain('Replayed echo with the edited arguments')
+    expect(textOf(replay.content)).toContain('echoed: hi')
+    // The edit landed on the by-id file (the only real store).
+    expect(fs.files.get(`key:${join(root, 'by-id', 'old-1.json')}`)?.content).toBe('{"text":"hi"}')
   })
 })

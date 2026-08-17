@@ -178,6 +178,18 @@ export class SessionCheckpoint {
     return this.round?.ordinals.get(ordinal)
   }
 
+  /**
+   * Lazy round-map recovery (plan decision 11): rebuild the map from the
+   * session log when it is absent. The map normally rebuilds at the first
+   * direct call's post-execute — which runs AFTER that call's tool body —
+   * so the very first ordinal replay after a process restart would miss
+   * without this; the replay tool calls it before giving up on an ordinal.
+   */
+  async ensureRound(io: CheckpointIo, sessionEvents: readonly unknown[]): Promise<void> {
+    if (this.round !== undefined) return
+    await this.rebuildFromLog(io, sessionEvents)
+  }
+
   /** Resolve one call id to its tool name from the current round. */
   lookupTool(callId: string): string | undefined {
     if (this.round === undefined) return undefined

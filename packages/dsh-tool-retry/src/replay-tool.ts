@@ -13,7 +13,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import type { ScopeKey } from '@deepseek-ai/dsh-scope'
 import { defineTool, type JsonValue } from '@deepseek-ai/dsh-tools'
 import { join } from 'node:path'
-import type { SessionCheckpoint } from './checkpoint.ts'
+import type { CheckpointIo, SessionCheckpoint } from './checkpoint.ts'
 import { sanitizeId } from './invariant.ts'
 import { REPLAY_GUIDANCE, REPLAY_GUIDANCE_ORDER, REPLAY_TOOL_NAME } from './notices.ts'
 
@@ -54,7 +54,7 @@ function textOf(content: readonly ContentBlock[]): string {
  * text gates itself on the caller's scope coverage (tool registrations are
  * global registry entries).
  */
-export function registerReplayTool(ctx: Context, lookup: StoreLookup, covers: ScopeCoverage): void {
+export function registerReplayTool(ctx: Context, io: CheckpointIo, lookup: StoreLookup, covers: ScopeCoverage): void {
   ctx.systemPrompt.section({
     name: 'tool:editPreviousToolCalling',
     order: REPLAY_GUIDANCE_ORDER,
@@ -133,7 +133,15 @@ export function registerReplayTool(ctx: Context, lookup: StoreLookup, covers: Sc
       let callId: string
       let toolName: string | undefined
       if (hasOrdinal) {
-        const entry = store.lookupOrdinal(args.previous_ordinal as number)
+        let entry = store.lookupOrdinal(args.previous_ordinal as number)
+        if (entry === undefined) {
+          // Restart/resume recovery (decision 11): the round map is rebuilt
+          // at the first direct call's post-execute, which runs AFTER this
+          // tool body — the very first ordinal replay after a restart would
+          // otherwise miss. Rebuild the map lazily from the session log.
+          await store.ensureRound(io, agent.session.events)
+          entry = store.lookupOrdinal(args.previous_ordinal as number)
+        }
         if (entry === undefined) {
           throw new Error(`no checkpoint for previous_ordinal ${String(args.previous_ordinal)} (only the PREVIOUS message's calls keep their ordinals)`)
         }

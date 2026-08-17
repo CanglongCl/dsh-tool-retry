@@ -98,7 +98,7 @@ export function apply(ctx: Context, config: Config): void {
   // `both` mode reads as code and gets no tool).
   const codeMode = isCodeMode(ctx, ownScope)
   if (!codeMode) {
-    registerReplayTool(ctx, (sessionId) => {
+    registerReplayTool(ctx, io, (sessionId) => {
       let store = stores.get(sessionId)
       if (store === undefined) {
         store = new SessionCheckpoint(sessionId)

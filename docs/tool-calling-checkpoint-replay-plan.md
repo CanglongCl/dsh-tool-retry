@@ -372,7 +372,7 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工�
 8. **重放审计**：v1 结果内嵌 `meta`（不新增 session 事件、不改 harness 核心）vs 新增 `tool/replay` 事件类型（需改 core/session——建议不做）。
 9. **保留策略**：id 文件与 history.jsonl 全量保留至会话结束（目录在 tmp 下，OS 可回收）；会话结束删除整目录（建议）。
 10. **PTC「免读编辑」风险**：✅ 已定稿（实现期）——采用「`JSON.parse` → `prev.code.replace` → `AsyncFunction` 构造器执行并 return」路线，replace 作用在解析后的真实程序文本上，`JSON.stringify` 格式化不再进入匹配串（`await`/顶层 `return` 与原生 run_code 语义一致）。实证（PTC 自测 + 运行时探针）：strict 模式下 eval 程序内的顶层 `return` 是规范 early error（`SyntaxError: Illegal return statement`），故采用 `new AsyncFunction(...)` 包装而非 eval；另一已知成本：重试自身再失败时新 checkpoint 存 loader（`file_path` 仍指回原程序，文案已提示）。文案不引导 `tools.edit`（工具仍可用，但不作为官方路径）。原选项 (a)/(b) 作废。
-11. **进程重启后的轮映射**：编号/轮映射为内存态，重启后从会话日志尾部 `tool/call` 事件重建（按最后一步顺序编号）；id 文件与 jsonl 在磁盘上天然可重建——建议 v1 直接实现。
+11. **进程重启后的轮映射**：编号/轮映射为内存态，重启后从会话日志尾部 `tool/call` 事件重建（按最后一步顺序编号）；id 文件与 jsonl 在磁盘上天然可重建。实现期补注：重建原挂在「该轮首条直调的 post-execute」，晚于工具体执行——重启/恢复后**第一次按 previous_ordinal 的重放必败**（实测评测复现：恢复后首条 editPreviousToolCalling 报 `no checkpoint for previous_ordinal 1`）。已修复为**懒重建**：重放工具的 ordinal 路由未命中时先 `ensureRound`（从会话日志重建轮映射）再解析，重启后首个 ordinal 重放即可命中（回归测试 `replay-tool.spec.ts`「restart recovery」）。
 12. **独立插件仓库**：仓库即本工作区 `/Users/canglong/Program/dsh-tool-retry`（参照 limao-magic-ui 布局）；npm 包名 `@canglongcl/dsh-tool-retry`；注册主渠道 = 用户预设 `~/.dsh/.agent-presets/`（两份：standard/code）——请确认命名与渠道。
 13. **重放的安全语义**：重放走完整管线（审批策略对新参数再次生效）——确认这是期望行为（而非「已批准调用重放免审」）。
 14. **写盘/通知失败路径**：写盘失败静默跳过通知（建议）；是否需要可观测的 telemetry 事件（session-telemetry 已有 error 预映射，可扩展）。

@@ -85,7 +85,7 @@ Rules for the dsh-tool-retry plugin: automatic checkpointing of every model-dire
 
 ### Lifecycle
 
-- Per-session in-memory round map; on process restart rebuild it from the session log's last tool/call step tail (by-id files and history.jsonl are on disk).
+- Per-session in-memory round map; on process restart rebuild it from the session log's last tool/call step tail (by-id files and history.jsonl are on disk). The rebuild is LAZY: it also runs inside the replay tool when the first previous_ordinal lookup misses, so the first ordinal replay after a restart/resume resolves instead of failing (the round-map rebuild at post-execute runs after the tool body).
 - Cleanup: session/disposed removes the session directory; ctx.effect teardown is the HMR backstop.
 
 ## Known limitations (do not "fix" into breakage)
