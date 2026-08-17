@@ -22,3 +22,6 @@ test-results/
 # Local scratch
 tmp/
 .artifacts/
+
+# pnpm content-addressable store (never commit)
+.pnpm-store/
