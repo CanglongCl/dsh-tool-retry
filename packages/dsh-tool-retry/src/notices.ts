@@ -74,6 +74,8 @@ export const REPLAY_GUIDANCE = [
   `Edit and replay a previous tool call's checkpointed arguments in ONE call.`,
   `For a call in your PREVIOUS message, pass previous_ordinal (its position 1/2/\u2026 in that message);`,
   `for an OLDER call, pass call_id (a failed call's id was given in its failure notice; any id can be looked up in the tail of history.jsonl).`,
+  'previous_ordinal is only reliable when this replay call is the FIRST tool call of your message:',
+  'after any earlier tool call in the same message (or for a parallel sibling), pass call_id instead.',
   'Exactly one of previous_ordinal / call_id must be provided. Provide old_string / new_string / replace_all:',
   'your edit is applied to the checkpoint and the original tool is immediately re-invoked with the edited arguments.',
   'Use this only when a small correction is needed; otherwise call the tool again with fresh arguments.',

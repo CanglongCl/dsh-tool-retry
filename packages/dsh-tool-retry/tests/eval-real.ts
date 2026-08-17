@@ -48,8 +48,12 @@ if (STOP_AT !== 'idle' && STOP_AT !== 'retry-success') {
 }
 // web-review parity: runs are configurable, 1 repeat per scenario by default,
 // and the queue drains over a bounded worker pool (DSH_EVAL_CONCURRENCY).
-const REPEATS = Math.max(1, Number(flagValue('repeat', process.env.DSH_EVAL_REPEATS ?? '1')))
-const CONCURRENCY = Math.max(1, Number(flagValue('concurrency', process.env.DSH_EVAL_CONCURRENCY ?? '4')))
+const REPEATS = Number(flagValue('repeat', process.env.DSH_EVAL_REPEATS ?? '1'))
+const CONCURRENCY = Number(flagValue('concurrency', process.env.DSH_EVAL_CONCURRENCY ?? '4'))
+if (!Number.isInteger(REPEATS) || REPEATS < 1 || !Number.isInteger(CONCURRENCY) || CONCURRENCY < 1) {
+  console.error(`eval:real — --repeat/--concurrency (or DSH_EVAL_REPEATS/DSH_EVAL_CONCURRENCY) must be positive integers, got ${JSON.stringify({ repeat: REPEATS, concurrency: CONCURRENCY })}`)
+  process.exit(1)
+}
 const DEADLINE_MS = Number(process.env.DSH_EVAL_TIMEOUT_MS ?? 15 * 60 * 1000)
 
 // Provider-key gate over the layered credential chain (nothing is printed).
@@ -262,9 +266,17 @@ for (const mode of ['native', 'code'] as const) {
 }
 console.log(`\nrecords: ${join(OUT_DIR, 'results.jsonl')} (stamp ${stamp})`)
 console.log('next: pnpm eval:report')
-// The eval reports model behavior; exit non-zero only on runner-level
-// failure (a timeout or errored run). Cutoff runs are the stop-at design;
-// adoption/retry metrics are observations either way.
-const mechanismOk = reports.every(report => [...report.arms.on, ...report.arms.off]
-  .every(run => run.status === 'completed' || run.status === 'cutoff'))
-process.exit(mechanismOk ? 0 : 1)
+// The eval reports model behavior; exit non-zero on runner-level failure
+// (an errored run — provider rejections included — or a vacuous empty
+// batch). Cutoff/timeout runs are observations either way.
+if (reports.length === 0) {
+  console.error('eval:real — batch produced ZERO run records; nothing to report (check --repeat/--concurrency and the scenario list)')
+  process.exit(1)
+}
+const errored = reports.flatMap(report => [...report.arms.on, ...report.arms.off])
+  .filter(run => run.status === 'error')
+if (errored.length > 0) {
+  for (const run of errored) console.error(`eval:real — errored run: ${run.scenario}/${run.arm} (${run.status})`)
+  process.exit(1)
+}
+process.exit(0)

@@ -66,6 +66,8 @@ interface RunRecord {
     completed: boolean
     stoppedEarly: boolean
     status: 'completed' | 'cutoff' | 'timeout' | 'error'
+    /** Post-break boundary in the persisted run log (newer runners). */
+    prefixEventCount?: number
     grader: { criterion: string; checks: { name: string; pass: boolean }[] }
     revisions: { scenario: string; grader: string; execution: string; experiment: string }
     resultTexts: string[]
@@ -110,31 +112,24 @@ function rate(values: boolean[]): number {
 }
 
 /**
- * Apply the plan §6 retry-success criterion to code-mode records recorded by
- * an older runner build that used the fixture marker value: "the next
- * run_code call completes without error" = at least one post-break run_code
- * result whose text is not a code-run failure. (The PTC corpus's only
- * post-break tool is run_code, so the flat result texts are sufficient.)
+ * NOTE: no post-hoc regrade of retrySuccess — the record's summary value is
+ * authoritative (computed by the runner against the scenario's grader
+ * criterion). A report-side heuristic once contradicted the record's own
+ * grader evidence for code-mode runs; it was removed.
  */
-function regradeCodeRetrySuccess(record: RunRecord): RunRecord {
-  if (record.mode !== 'code') return record
-  const succeeded = record.summary.resultTexts
-    .some(text => !text.startsWith('Error:') && !text.includes('code run failed'))
-  return { ...record, summary: { ...record.summary, retrySuccess: succeeded } }
-}
 
-function loadBatch(stampFilter?: string): { batch: BatchMeta; records: RunRecord[] } {
+function loadBatch(stampFilter?: string): { batch: BatchMeta; records: RunRecord[]; newestStamp: string } {
   const batch = JSON.parse(readFileSync(join(EVAL_DIR, 'batch.json'), 'utf8')) as BatchMeta
+  const newestStamp = batch.stamp
   const stamp = stampFilter ?? batch.stamp
   const lines = readFileSync(join(EVAL_DIR, 'results.jsonl'), 'utf8').split('\n').filter(line => line.trim() !== '')
   const records = lines
     .map(line => JSON.parse(line) as RunRecord)
     .filter(record => record.stamp === stamp)
-    .map(regradeCodeRetrySuccess)
   if (records.length === 0) {
     throw new Error(`eval:report — no run records for batch ${stamp}; run pnpm eval:real first`)
   }
-  return { batch: { ...batch, stamp }, records }
+  return { batch: { ...batch, stamp }, records, newestStamp }
 }
 
 /**
@@ -144,7 +139,7 @@ function loadBatch(stampFilter?: string): { batch: BatchMeta; records: RunRecord
  */
 function numberForBatch(stamp: string): number {
   const files = readdirSync(REPORTS_DIR, { withFileTypes: true })
-    .filter(entry => entry.isFile() && /^\d{3}-.+\.html$/u.test(entry.name))
+    .filter(entry => entry.isFile() && /^\d{3,}-.+\.html$/u.test(entry.name))
   const existing = files.find(entry => entry.name.includes(stamp))
   if (existing !== undefined) return Number(existing.name.slice(0, 3))
   const numbers = files.map(entry => Number(entry.name.slice(0, 3)))
@@ -163,12 +158,19 @@ function readRunSession(record: RunRecord): SessionLine[] | undefined {
   }
 }
 
-/** Post-break assistant messages (the prefix occupies turn 1; the followup starts turn 2). */
+/** Post-break boundary: the runner persists prefixEventCount; older records
+ * without it fall back to the follow-up turn (turn 2 of the old corpus). */
+function postBreakLines(record: RunRecord): SessionLine[] {
+  const lines = readRunSession(record) ?? []
+  const prefix = record.summary.prefixEventCount
+  return prefix === undefined
+    ? lines.filter(line => line.type === 'assistant/message' && (line.data as { turn?: number }).turn === 2)
+    : lines.slice(1 + prefix)
+}
+
+/** Post-break assistant messages (the retry work). */
 function postBreakMessages(record: RunRecord): SessionLine[] {
-  const lines = readRunSession(record)
-  if (lines === undefined) return []
-  return lines.filter(line =>
-    line.type === 'assistant/message' && (line.data as { turn?: number }).turn === 2)
+  return postBreakLines(record).filter(line => line.type === 'assistant/message')
 }
 
 /** Total output tokens across every post-break model step (the full cost). */
@@ -179,9 +181,7 @@ function totalPostBreakOutput(record: RunRecord): number {
 
 /** Content tokens of one run's retry step (output minus reasoning). */
 function contentTokensForRecord(record: RunRecord): number {
-  const lines = readRunSession(record)
-  const first = lines?.find(line =>
-    line.type === 'assistant/message' && (line.data as { turn?: number }).turn === 2)
+  const first = postBreakMessages(record)[0]
   const reasoning = first?.data?.usage?.reasoningTokens
     ?? record.summary.retryStepReasoningTokens ?? 0
   return record.summary.retryStepOutputTokens - reasoning
@@ -299,6 +299,10 @@ function loadScenarioMeta(name: string): ScenarioMeta | undefined {
     const meta = JSON.parse(readFileSync(join(FIXTURES_DIR, name, 'scenario.json'), 'utf8')) as ScenarioMeta
     return meta.title === undefined ? undefined : meta
   } catch {
+    // Scenario fixtures were removed from the tree (e.g. the old synthetic
+    // corpus) — the title/description blocks cannot be reconstructed; say so
+    // instead of silently dropping them.
+    console.warn(`eval:report — scenario.json missing for "${name}"; title/description unavailable`)
     return undefined
   }
 }
@@ -345,7 +349,8 @@ function abDiffTable(row: ScenarioRow): string {
     { name: '重试成功率', value: run => run.summary.retrySuccess ? 100 : 0, format: value => percent(value / 100), diff: ppDiff },
     { name: '通知条数', value: run => run.summary.noticeCount, format: number, diff: (on, off) => {
       const diff = on - off
-      return { text: diff === 0 ? '0' : `+${diff}`, tone: diff > 0 ? 'negative' : 'neutral' }
+      // ON with fewer notices = savings = green, per the Δ convention.
+      return { text: diff === 0 ? '0' : `${diff > 0 ? '+' : ''}${diff}`, tone: diff < 0 ? 'positive' : diff > 0 ? 'negative' : 'neutral' }
     } },
   ]
   const runValue = (spec: MetricSpec, arm: 'on' | 'off', rep: number): number => {
@@ -465,7 +470,7 @@ function renderRunMeta(record: RunRecord): string {
     `<tr><td class="num">${step.step}</td><td class="num">${step.input}</td><td class="num">${step.output}</td><td class="num">${step.reasoning}</td></tr>`).join('')
   return [
     '<div class="rounded-lg border bg-muted/30 p-3 space-y-1.5 text-xs">',
-    `<div><span class="text-muted-foreground">判定准则</span> <code>${escapeHtml(s.grader?.criterion ?? 'unknown')}</code> · experiment <code>${escapeHtml(revisions?.experiment ?? 'unknown')}</code></div>`,
+    `<div><span class="text-muted-foreground">判定准则</span> <code>${escapeHtml(s.grader?.criterion ?? 'unknown')}</code> · 运行状态 <code>${escapeHtml(s.status ?? 'completed')}</code>${s.stoppedEarly === true ? ' · 提前停止(stopAt)' : ''} · 通知 <code>${s.noticeCount} 条 / ${s.noticeBytes} 字节</code> · experiment <code>${escapeHtml(revisions?.experiment ?? 'unknown')}</code></div>`,
     `<div><span class="text-muted-foreground">修订</span> scenario <code>${escapeHtml(revisions?.scenario ?? '-')}</code> · grader <code>${escapeHtml(revisions?.grader ?? '-')}</code> · execution <code>${escapeHtml(revisions?.execution ?? '-')}</code></div>`,
     grader === '' ? '' : `<div><div class="font-medium text-muted-foreground">grader 证据</div><ul class="space-y-0.5">${grader}</ul></div>`,
     stepRows === '' ? '' : [
@@ -579,12 +584,42 @@ function renderSessionFriendly(record: RunRecord): string {
         '</div>',
       ].join('\n')
     }
+    // Streaming delta chunks are MERGED into their assistant/message above —
+    // the raw deltas are redundant and never rendered.
+    if (type === 'assistant/chunk') return ''
+    // Pure structure: fold into one-line markers instead of raw JSON dumps.
+    if (type === 'step/start') {
+      return `<div class="px-2.5 text-[11px] text-muted-foreground">step/start · Turn ${(data as { turn?: number }).turn ?? '?'} · Step ${(data as { step?: number }).step ?? '?'}</div>`
+    }
+    if (type === 'step/end') {
+      return `<div class="px-2.5 text-[11px] text-muted-foreground">step/end · Turn ${(data as { turn?: number }).turn ?? '?'} · Step ${(data as { step?: number }).step ?? '?'}</div>`
+    }
+    if (type === 'session' || type === 'session/end-seed') return ''
+    // The inbox splice channel (notices/steering land here): show the
+    // inserted message text, which is the load-bearing evidence.
+    if (type === 'agent/inbox/spliced') {
+      const splice = data as { target?: string; inserted?: { content?: { type?: string; text?: string }[]; source?: { plugin?: string; form?: string } }[] }
+      const inserted = splice.inserted ?? []
+      const bodies = inserted.map(message =>
+        textOf(message.content) === '' && message.source?.form !== undefined
+          ? `<span class="text-muted-foreground">（${escapeHtml(message.source.form)} · 空内容）</span>`
+          : pre(textOf(message.content), 'max-h-32')).join('\n')
+      return [
+        '<div class="rounded-md border bg-card px-2.5 py-1.5">',
+        `<div class="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">inbox splice · ${escapeHtml(splice.target ?? '')}</div>`,
+        bodies,
+        '</div>',
+      ].join('\n')
+    }
+    // Any other event type: a collapsed, truncated raw view (compact by
+    // default so high-volume logs stay navigable).
     const detail = JSON.stringify(data)
+    const short = detail.length > 300 ? `${detail.slice(0, 300)}…` : detail
     return [
       '<div class="rounded-md border bg-card px-2.5 py-1.5">',
-      `<div class="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">${escapeHtml(type)}</div>`,
-      pre(detail.length > 2000 ? `${detail.slice(0, 2000)}…` : detail, 'max-h-48'),
-      '</div>',
+      `<details><summary class="cursor-pointer text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">${escapeHtml(type)}</summary>`,
+      pre(short, 'max-h-48'),
+      '</details></div>',
     ].join('\n')
   })
   return [
@@ -732,8 +767,8 @@ addEventListener('DOMContentLoaded', () => {
 ${tabPanels(rows)}
 
 <footer class="space-y-2 border-t pt-6 text-xs text-muted-foreground">
-<p>方法说明：每场景 × 臂（ON=挂载插件 / OFF=基线）× ${batch.repeats} 次独立运行；断点快照为持久化的失败工具调用前缀（恢复式续跑）。指标取自断点后的权威会话日志：重试步输出 token = 断点后第一条 assistant/message 的 usage.outputTokens（含推理 token）；内容 token = 输出 token − reasoningTokens，衡量模型实际产出的编辑/重生成文本；「第一步输出」只取断点后第一条 assistant/message（plan §6 指标），「全程输出」合计断点后全部模型步（含推理），两列并看可区分「一轮想得更深」与「多轮重试」；采用 = native 出现 editPreviousToolCalling / PTC 后续 run_code 参数引用 checkpoint 路径；重试成功 = native 断点工具以合法输入重跑（行为级）/ PTC 按 plan §6 判据「断点后的 run_code 调用无 error」。</p>
-<p>每次运行的完整会话（全部工具调用的原始参数与结果）已落盘于 .artifacts/eval/runs/，可在上表「完整调用详情」中点击展开；逐条记录见 .artifacts/eval/results.jsonl。本报告由 pnpm eval:report 生成并持久化于仓库 reports/。</p>
+<p>方法说明：每场景 × 臂（ON=挂载插件 / OFF=基线）× ${batch.repeats} 次独立运行；断点快照为真实会话日志裁剪的失败工具调用前缀（恢复式续跑）。非 plan 场景断点后不注入任何 user 消息——模型仅凭失败结果与静态协议自行决定下一步（plan 场景续接用户真实发言）。指标取自断点后的权威会话日志：重试步输出 token = 断点后第一条 assistant/message 的 usage.outputTokens（含推理 token）；内容 token = 输出 token − reasoningTokens，衡量模型实际产出的编辑/重生成文本；「第一步输出」只取断点后第一条 assistant/message，「全程输出」合计断点后全部模型步（含推理），两列并看可区分「一轮想得更深」与「多轮重试」；采用 = native 出现且结果非 error 的 editPreviousToolCalling / PTC 参数引用 checkpoint 路径且无 error 的 run_code；重试成功 = 场景判据（fs 为工作区文件包含目标片段、plan 为重新提交被接受、PTC 为断点后 run_code 无 error）。</p>
+<p>每次运行的完整会话（全部工具调用的原始参数与结果）已落盘于 .artifacts/eval/runs/，可在上表最右侧「查看调用」按钮中点击展开；逐条记录见 .artifacts/eval/results.jsonl。本报告由 pnpm eval:report 生成并持久化于仓库 reports/。</p>
 </footer>
 
 </div>
@@ -776,7 +811,7 @@ function inlineTailwind(htmlPath: string): void {
 /** Regenerate the catalog listing every persisted report. */
 function renderIndex(batch: BatchMeta, latestNumber: number): void {
   const files = readdirSync(REPORTS_DIR, { withFileTypes: true })
-    .filter(entry => entry.isFile() && /^\d{3}-.+\.html$/u.test(entry.name))
+    .filter(entry => entry.isFile() && /^\d{3,}-.+\.html$/u.test(entry.name))
     .map(entry => entry.name)
     .sort()
   const items = files.map((name) => [
@@ -816,7 +851,7 @@ function renderIndex(batch: BatchMeta, latestNumber: number): void {
 const stampFilter = process.argv.includes('--batch')
   ? process.argv[process.argv.indexOf('--batch') + 1]
   : undefined
-const { batch, records } = loadBatch(stampFilter)
+const { batch, records, newestStamp } = loadBatch(stampFilter)
 const rows = buildScenarioRows(records)
 mkdirSync(REPORTS_DIR, { recursive: true })
 const number = numberForBatch(batch.stamp)
@@ -825,7 +860,9 @@ const path = join(REPORTS_DIR, fileName)
 writeFileSync(path, renderReport(number, batch, rows))
 inlineTailwind(path)
 const indexPath = join(REPORTS_DIR, 'index.html')
-renderIndex(batch, number)
+// The 「最新」 badge follows the NEWEST batch.json stamp, not the batch
+// being (re)generated, so --batch of a historical stamp never self-badges.
+renderIndex({ ...batch, stamp: newestStamp }, number)
 inlineTailwind(indexPath)
 console.log(`eval:report — wrote ${path}`)
 console.log(`eval:report — catalog refreshed at ${indexPath}`)

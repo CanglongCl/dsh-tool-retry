@@ -57,11 +57,17 @@ export function sanitizeId(id: string): string {
 /**
  * Code-mode detection (the plan's dual condition): `run_code` is visible for
  * the scope AND the runtime behind it is mounted. The reserved name cannot be
- * forged, so visibility is authoritative. `both` mode reads as code.
+ * forged, so visibility is authoritative. `both` mode reads as code. A broken
+ * deployment where `run_code` is visible but the runtime failed to mount
+ * degrades to native (the visibility probe itself would throw otherwise).
  */
 export function isCodeMode(ctx: Context, scope: ScopeKey | undefined): boolean {
-  return ctx.tools.get(RUN_CODE_NAME, scope) !== undefined
-    && ctx.get('codeRuntime') !== undefined
+  try {
+    return ctx.tools.get(RUN_CODE_NAME, scope) !== undefined
+      && ctx.get('codeRuntime') !== undefined
+  } catch {
+    return false
+  }
 }
 
 /** Mode selection for one agent (assembly- or post-execute-time). */

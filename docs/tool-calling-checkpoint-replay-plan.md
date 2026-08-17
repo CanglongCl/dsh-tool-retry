@@ -325,7 +325,7 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工�
 **① 断点（break）作为 eval 起点——直接用 session.jsonl，不再做任何插件（十五轮评审定稿）**。所有场景对齐到同一个逻辑断点——「首个**不符合预期的工具调用**」：显式失败（`tool/result` isError）或「成功但结果不符合预期」的调用（后者见 ② 观察类）。ON 臂断点之后紧跟插件通知，OFF 臂断点之后直接接模型下一步；断点前的历史两臂天然相同，断点后才做测量。
 - **断点快照 = 一段 session.jsonl 前缀**（fixture），**全部从本机存量 bad case 裁剪**（真实会话日志，解压 .jsonl.zstd 后裁剪到「断点 + turn 边界」，脱敏后入库）：`pnpm crop:real`（维护者运行，不入 commit 门禁）从 ~/.dsh/sessions/ 抽取 5 个真实坏例到 `tests/eval-fixtures-src/real/<name>/`，builder 逐字复制进 `tests/eval-fixtures/`。裁剪器做三件保真工作：① 删除持久化信封里的 `sourceEventSeqs`（原会话事件 id，裁剪后必非法）并重排 `seq`；② 中性化机器路径；③ 工作区快照还原到**断点时刻**的文件状态——若后文重试已把目标内容写进当前文件（fileContains 评分将零成本通过），edit 类按 `new_string→old_string` 反向回滚，不可恢复的退化场景直接抛错拒绝入库，保证评分不可能靠「什么都不做」通过；
 - **eval 起跑方式**：以该前缀启动/恢复会话（会话持久化按 session-id 载入 jsonl 日志，agent-loop 支持 resume，`ctx.agents.resume({ resumeSessionId })`，`packages/core/agent-loop/tests/resume.spec.ts`），**真模型从断点继续**，断点后的行为全部由真模型生成；
-- 两臂共用同一前缀（止于失败 `tool/result`）；ON 臂不再预注入通知 `user/message`——机制说明已由静态段（order 149）承载，模型凭静态协议自行决定重试路径（评测不测通知投递通道）；断点后模型新失败时插件仍真实注入通知，计入开销指标。
+- 两臂共用同一前缀（止于失败 `tool/result`）；ON 臂不再预注入通知 `user/message`——机制说明已由静态段（order 149）承载，模型凭静态协议自行决定重试路径（评测不测通知投递通道）；**非 plan 场景断点后也不注入任何 user 消息**：恢复后的循环由一条空内容的插件消息唤醒（无任何指令文本），模型仅凭上下文中的失败结果与静态协议继续（plan 场景续接用户真实发言）；断点后模型新失败时插件仍真实注入通知，计入开销指标。
 
 **② 场景来源——聚焦「工具调用不符合预期」，不超出本特性边界（十五轮评审定稿）**：
 

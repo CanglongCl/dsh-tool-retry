@@ -180,14 +180,23 @@ export class SessionCheckpoint {
 
   /**
    * Lazy round-map recovery (plan decision 11): rebuild the map from the
-   * session log when it is absent. The map normally rebuilds at the first
-   * direct call's post-execute — which runs AFTER that call's tool body —
-   * so the very first ordinal replay after a process restart would miss
-   * without this; the replay tool calls it before giving up on an ordinal.
+   * session log when it is absent (or when the current message's group must
+   * be excluded — see the ordinal stability rule in the replay tool). The map
+   * normally rebuilds at the first direct call's post-execute, which runs
+   * AFTER that call's tool body, so the very first ordinal replay after a
+   * process restart would miss without this.
+   * @param exclude - skip the group at-or-after this (turn, step) — the
+   * replay call's own message — so previous_ordinal keeps meaning "the
+   * PREVIOUS message's calls" even when an earlier direct call in the same
+   * message has already re-pointed the in-memory round.
    */
-  async ensureRound(io: CheckpointIo, sessionEvents: readonly unknown[]): Promise<void> {
-    if (this.round !== undefined) return
-    await this.rebuildFromLog(io, sessionEvents)
+  async ensureRound(
+    io: CheckpointIo,
+    sessionEvents: readonly unknown[],
+    exclude?: { turn: number; step: number },
+  ): Promise<void> {
+    if (this.round !== undefined && exclude === undefined) return
+    await this.rebuildFromLog(io, sessionEvents, exclude)
   }
 
   /** Resolve one call id to its tool name from the current round. */
@@ -205,7 +214,11 @@ export class SessionCheckpoint {
    * disk (a fresh session's log already contains the in-flight call, whose
    * file is not written yet). Memory only — aliases are restored separately.
    */
-  async rebuildFromLog(io: CheckpointIo, sessionEvents: readonly unknown[]): Promise<void> {
+  async rebuildFromLog(
+    io: CheckpointIo,
+    sessionEvents: readonly unknown[],
+    exclude?: { turn: number; step: number },
+  ): Promise<void> {
     const calls: ToolCallData[] = []
     for (const event of sessionEvents) {
       const candidate = event as { type?: string; data?: ToolCallData } | undefined
@@ -217,7 +230,11 @@ export class SessionCheckpoint {
     // group with at least one persisted by-id file. The newest group usually
     // contains the in-flight call itself (its by-id file does not exist yet —
     // it is being written NOW), so stopping at the last group would miss the
-    // previous round entirely; the backward walk recovers it.
+    // previous round entirely; the backward walk recovers it. An exclude
+    // bound additionally skips the caller's own message group, keeping the
+    // ordinals anchored to the previous message.
+    const atOrAfter = (turn: number, step: number): boolean =>
+      exclude !== undefined && (turn > exclude.turn || (turn === exclude.turn && step >= exclude.step))
     const groups = new Map<string, ToolCallData[]>()
     for (const call of calls) {
       const key = `${call.turn}/${call.step}`
@@ -227,6 +244,7 @@ export class SessionCheckpoint {
     }
     for (const key of [...groups.keys()].reverse()) {
       const group = groups.get(key)!
+      if (atOrAfter(group[0]!.turn, group[0]!.step)) continue
       const ordinals = new Map<number, RoundOrdinal>()
       let size = 0
       for (const call of group) {

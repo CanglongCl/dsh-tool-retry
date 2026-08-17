@@ -48,6 +48,18 @@ function textOf(content: readonly ContentBlock[]): string {
     .join('\n')
 }
 
+/** The (turn, step) of one recorded tool/call, if the log holds it. */
+function callTurnStep(sessionEvents: readonly unknown[], callId: string): { turn: number; step: number } | undefined {
+  for (const event of sessionEvents) {
+    const candidate = event as { type?: string; data?: { callId?: string; turn?: number; step?: number } } | undefined
+    if (candidate?.type === 'tool/call' && candidate.data?.callId === callId
+      && candidate.data.turn !== undefined && candidate.data.step !== undefined) {
+      return { turn: candidate.data.turn, step: candidate.data.step }
+    }
+  }
+  return undefined
+}
+
 /**
  * Register the replay tool and its guidance section. Native mode only — the
  * caller applies the plan's dual-detection before registering. The guidance
@@ -134,12 +146,27 @@ export function registerReplayTool(ctx: Context, io: CheckpointIo, lookup: Store
       let toolName: string | undefined
       if (hasOrdinal) {
         let entry = store.lookupOrdinal(args.previous_ordinal as number)
+        // Ordinal stability: previous_ordinal means "the PREVIOUS message's
+        // calls", but the round map re-points at the FIRST direct call of
+        // each message (its post-execute) — so a replay call that is not the
+        // message's first call (a parallel sibling, or after an earlier read)
+        // can resolve against the CURRENT message's map: a miss (the current
+        // calls are not checkpointed yet) or, worse, the current message's
+        // call with the same ordinal — a wrong-target replay. Detect both by
+        // comparing the resolved entry's (turn, step) with this call's own
+        // group, and rebuild from the log with the current group excluded.
+        const own = callTurnStep(agent.session.events, String(exec.callId))
+        if (entry !== undefined && own !== undefined) {
+          const entryGroup = callTurnStep(agent.session.events, entry.callId)
+          if (entryGroup !== undefined && entryGroup.turn === own.turn && entryGroup.step === own.step) {
+            entry = undefined
+          }
+        }
         if (entry === undefined) {
-          // Restart/resume recovery (decision 11): the round map is rebuilt
-          // at the first direct call's post-execute, which runs AFTER this
-          // tool body — the very first ordinal replay after a restart would
-          // otherwise miss. Rebuild the map lazily from the session log.
-          await store.ensureRound(io, agent.session.events)
+          // Restart/resume recovery (decision 11) and the stability rule
+          // above: rebuild lazily from the session log (excluding this
+          // message's group when the map had re-pointed to it).
+          await store.ensureRound(io, agent.session.events, own)
           entry = store.lookupOrdinal(args.previous_ordinal as number)
         }
         if (entry === undefined) {

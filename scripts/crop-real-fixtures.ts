@@ -6,6 +6,22 @@
  * Output lands under tests/eval-fixtures-src/real/<name>/; the fixture
  * builder copies it into tests/eval-fixtures/ deterministically.
  *
+ * Fidelity contracts enforced here (adversarially reviewed):
+ * - the persisted envelope's sourceEventSeqs (original-session ids) is
+ *   dropped and seq/time re-assigned contiguously;
+ * - machine identity is neutralized EVERYWHERE (prefix events, raw args,
+ *   error text, workspace contents): /Users/<user>/ → ~/, P4 client names →
+ *   <client>, depot prefixes → //<depot>/;
+ * - parallel siblings of the failed call are stripped from the assistant
+ *   message — providers reject a message whose tool-call blocks outnumber
+ *   the recorded tool/result;
+ * - the workspace snapshot is restored to FAILURE-TIME state: the session's
+ *   eventual successful edit on the same file is reverse-applied (or the
+ *   recorded new_string itself is reversed), so the fileContains grader can
+ *   never pass with zero work; unrecoverable post-success states throw;
+ * - the success fragment is the first 60-char window of the intended content
+ *   that the failure-time file does NOT already contain.
+ *
  * Usage: pnpm crop:real
  */
 
@@ -37,7 +53,11 @@ interface RealCase {
   stripPrefix: string
   /** Real files to snapshot into the fixture workspace (post-strip rel). */
   workspaceSnapshot: { path: string; rel: string }[]
+  /** Fallback continuation; overridden by the real next user message when
+   * nextUserMessageAsContinuation is set (e.g. a dismissed plan review where
+   * the user's own words ARE the next instruction). */
   continuation: string
+  nextUserMessageAsContinuation?: boolean
 }
 
 const CASES: RealCase[] = [
@@ -50,11 +70,12 @@ const CASES: RealCase[] = [
     title: '计划评审被用户驳回（真实）',
     description: {
       input: '模型提交了一份约 1 万字符的 abc-db Rust 重构计划，用户驳回了计划评审并直接发言。',
-      expected: '按用户反馈修订计划后重新提交 exit_plan_mode 成功。',
+      expected: '按用户发言修订计划后重新提交 exit_plan_mode 成功。',
     },
     stripPrefix: '/Users/canglong/program/abc-db/',
     workspaceSnapshot: [],
-    continuation: 'Your plan was dismissed — the user wants to speak instead. Revise the plan per the feedback in the failure result and re-submit it with the smallest change, then report the outcome.',
+    continuation: 'Your plan was dismissed — the user wants to speak instead. Wait for the user\'s message and respond appropriately.',
+    nextUserMessageAsContinuation: true,
   },
   {
     name: 'real-edit-stale',
@@ -69,7 +90,7 @@ const CASES: RealCase[] = [
     },
     stripPrefix: '/Users/canglong/program/abc-db/',
     workspaceSnapshot: [{ path: '/Users/canglong/program/abc-db/python/src/abc_db/gen_protos.py', rel: 'src/abc_db/gen_protos.py' }],
-    continuation: 'That edit failed — the old_string no longer matches the file. Fix it with the smallest change and retry, then report the outcome.',
+    continuation: '',
   },
   {
     name: 'real-edit-unobserved',
@@ -84,7 +105,7 @@ const CASES: RealCase[] = [
     },
     stripPrefix: '/Users/canglong/program/abc-db/',
     workspaceSnapshot: [{ path: '/Users/canglong/program/abc-db/python/examples/extract_trainers.py', rel: 'python/examples/extract_trainers.py' }],
-    continuation: 'That edit failed because the file was never read. Fix it with the smallest change and retry, then report the outcome.',
+    continuation: '',
   },
   {
     name: 'real-write-overwrite',
@@ -99,7 +120,7 @@ const CASES: RealCase[] = [
     },
     stripPrefix: '/Users/canglong/program/abc-db/',
     workspaceSnapshot: [{ path: '/Users/canglong/program/abc-db/README.md', rel: 'README.md' }],
-    continuation: 'That write failed because the file was never read. Fix it with the smallest change and retry, then report the outcome.',
+    continuation: '',
   },
   {
     name: 'real-run-code-missing-desc',
@@ -114,7 +135,7 @@ const CASES: RealCase[] = [
     },
     stripPrefix: '/Users/canglong/program/dsh-web-review/',
     workspaceSnapshot: [],
-    continuation: 'That program failed. Fix it with the smallest change, run the corrected program, and report the result.',
+    continuation: '',
   },
 ]
 
@@ -122,8 +143,17 @@ function zstdText(path: string): string {
   return execFileSync('zstd', ['-dc', path], { encoding: 'utf8', maxBuffer: 512 * 1024 * 1024 }).toString()
 }
 
+/** Neutralize machine identity in one string (case prefix first). */
+function scrubText(value: string, stripPrefix: string): string {
+  return value
+    .replaceAll(stripPrefix, '')
+    .replaceAll(/\/Users\/[A-Za-z0-9._-]+\//gu, '~/')
+    .replaceAll('canglong.dai_CanglongdeMacBook-Pro_8089', '<client>')
+    .replaceAll('//ABC_Project/', '//<depot>/')
+}
+
 function scrub(value: unknown, stripPrefix: string): unknown {
-  if (typeof value === 'string') return value.replaceAll(stripPrefix, '')
+  if (typeof value === 'string') return scrubText(value, stripPrefix)
   if (Array.isArray(value)) return value.map(item => scrub(item, stripPrefix))
   if (value !== null && typeof value === 'object') {
     const out: Record<string, unknown> = {}
@@ -133,6 +163,33 @@ function scrub(value: unknown, stripPrefix: string): unknown {
     return out
   }
   return value
+}
+
+/** The first human user/message at or before an index (walking backward). */
+function precedingTask(events: EventLike[], fromIndex: number): EventLike | undefined {
+  for (let index = fromIndex; index >= 0; index -= 1) {
+    const event = events[index]!
+    if (event.type !== 'user/message') continue
+    const source = (event.data as { source?: { kind?: string } } | undefined)?.source
+    if (source?.kind === 'user') return event
+  }
+  return events.find(event => event.type === 'user/message')
+}
+
+/** The next human user/message strictly after an index. */
+function nextUserMessage(events: EventLike[], fromIndex: number): EventLike | undefined {
+  for (let index = fromIndex + 1; index < events.length; index += 1) {
+    const event = events[index]!
+    if (event.type !== 'user/message') continue
+    const source = (event.data as { source?: { kind?: string } } | undefined)?.source
+    if (source?.kind === 'user') return event
+  }
+  return undefined
+}
+
+function textOf(message: EventLike | undefined): string {
+  return ((message?.data?.content as { type?: string; text?: string }[] | undefined) ?? [])
+    .filter(block => block.type === 'text').map(block => block.text ?? '').join('\n')
 }
 
 /** Crop one real case into a resumable breakpoint prefix + scenario.json. */
@@ -169,17 +226,33 @@ function cropOne(caseDef: RealCase): void {
   const step = (toolCall.data as { step?: number }).step ?? 1
   const task = events.find(event =>
     event.type === 'user/message' && (event.data as { turn?: number }).turn === turn)
-    ?? events.find(event => event.type === 'user/message')
+    ?? precedingTask(events, breakResultIndex - 1)
   if (task === undefined) throw new Error(`no task message for ${caseDef.name}`)
   const rawArguments = (toolCall.data as { arguments?: string }).arguments ?? ''
   const errorBlock = (breakResult.data?.message as { content?: { content?: { text?: string }[] }[] }).content?.[0]
   const errorText = (errorBlock?.content ?? []).map(part => part.text ?? '').join('\n')
 
+  // Keep ONLY the failed tool-call block in the assistant message: providers
+  // reject a message whose tool-call blocks outnumber the recorded results
+  // ("insufficient tool messages"); parallel siblings are stripped while the
+  // reasoning/text blocks stay (they explain the intent).
+  const strippedAssistant: EventLike = {
+    ...assistantMessage,
+    data: {
+      ...(assistantMessage.data ?? {}),
+      message: {
+        ...((assistantMessage.data?.message ?? {}) as Record<string, unknown>),
+        content: ((assistantMessage.data?.message as { content?: { type?: string; id?: string }[] }).content ?? [])
+          .filter(block => block.type !== 'tool-call' || block.id === callId),
+      },
+    },
+  }
+
   const prefix = [
     { type: 'turn/start', data: { turn } },
     task,
     { type: 'step/start', data: { turn, step } },
-    assistantMessage,
+    strippedAssistant,
     toolCall,
     breakResult,
     { type: 'step/end', data: { turn, step } },
@@ -205,32 +278,80 @@ function cropOne(caseDef: RealCase): void {
     + `${scrubbed.map(event => JSON.stringify(event)).join('\n')}\n`)
   const workspaceFiles = caseDef.workspaceSnapshot
     .filter(snapshot => existsSync(snapshot.path))
-    .map(snapshot => ({ path: snapshot.rel, content: readFileSync(snapshot.path, 'utf8') }))
+    .map(snapshot => ({ path: snapshot.rel, content: String(scrub(readFileSync(snapshot.path, 'utf8'), caseDef.stripPrefix)) }))
   const scrubbedArgs = String(scrub(rawArguments, caseDef.stripPrefix))
+  const continuation = caseDef.nextUserMessageAsContinuation === true
+    ? (textOf(nextUserMessage(events, breakResultIndex)).trim() || caseDef.continuation)
+    : caseDef.continuation
+
   // fs success check: after the retry the file must contain the intended new
   // content. The workspace snapshot must be the file AT THE BREAKPOINT, never
   // the post-session state where a later successful retry already applied the
   // content — a fileContains grader over an already-correct file would pass
   // with zero work and make the eval dishonest. Failure-time state recovery:
-  // an edit whose new_string is still present once is reversed back to its
-  // old_string; anything unrecoverable throws (a maintainer must re-crop).
+  // first reverse the session's OWN later successful edit on the same file
+  // (its new_string → old_string), then fall back to reversing the recorded
+  // failed call itself; anything unrecoverable throws (re-crop required).
   let successChecks: { kind: 'fileContains'; path: string; fragment: string }[] = []
   if (caseDef.kind === 'fs' && workspaceFiles.length > 0) {
-    let parsed: { new_string?: string; old_string?: string; content?: string }
+    let parsed: { new_string?: string; old_string?: string; content?: string; file_path?: string }
     try {
-      parsed = JSON.parse(scrubbedArgs) as { new_string?: string; old_string?: string; content?: string }
+      parsed = JSON.parse(scrubbedArgs) as { new_string?: string; old_string?: string; content?: string; file_path?: string }
     } catch {
       throw new Error(`fs case ${caseDef.name} has no JSON-parseable arguments`)
     }
     const intended = parsed.new_string ?? parsed.content ?? ''
     const target = workspaceFiles.find(file => file.path === caseDef.workspaceSnapshot[0]?.rel)
     if (target === undefined || intended === '') throw new Error(`fs case ${caseDef.name} missing workspace target or intended content`)
+
+    // Reverse the session's later successful edit/write on the same file, if any.
+    const failedPath = parsed.file_path ?? ''
+    let laterEdit: { new_string: string; old_string: string } | undefined
+    let laterWrite: { content: string } | undefined
+    for (let index = breakResultIndex + 1; index < events.length; index += 1) {
+      const event = events[index]!
+      if (event.type !== 'tool/call') continue
+      const data = event.data as { callId?: string; name?: string; arguments?: string }
+      if (data.name !== 'edit' && data.name !== 'write') continue
+      let callArgs: { file_path?: string; new_string?: string; old_string?: string; content?: string }
+      try {
+        callArgs = JSON.parse(String(scrub(data.arguments ?? '', caseDef.stripPrefix))) as typeof callArgs
+      } catch {
+        continue
+      }
+      if (callArgs.file_path !== failedPath) continue
+      const result = events.slice(index + 1).find(candidate =>
+        candidate.type === 'tool/result'
+        && ((candidate.data?.message as { content?: { toolCallId?: string; isError?: boolean }[] } | undefined)
+          ?.content?.[0]?.toolCallId) === data.callId)
+      const isError = (result?.data?.message as { content?: { isError?: boolean }[] } | undefined)?.content?.[0]?.isError
+      if (isError === true) continue
+      if (data.name === 'edit' && callArgs.new_string !== undefined && callArgs.old_string !== undefined) {
+        laterEdit = { new_string: callArgs.new_string, old_string: callArgs.old_string }
+      } else if (data.name === 'write' && callArgs.content !== undefined) {
+        laterWrite = { content: callArgs.content }
+      }
+      break
+    }
+
     let failureState = target.content
-    if (failureState.includes(intended)) {
+    if (laterEdit !== undefined && failureState.includes(laterEdit.new_string)) {
+      if (failureState.split(laterEdit.new_string).length - 1 !== 1) {
+        throw new Error(`cannot reverse later edit for ${caseDef.name}: new_string present ${failureState.split(laterEdit.new_string).length - 1}x`)
+      }
+      failureState = failureState.replace(laterEdit.new_string, laterEdit.old_string)
+    } else if (laterWrite !== undefined && failureState.includes(laterWrite.content)) {
+      if (failureState !== laterWrite.content) {
+        // The write landed and the file diverged further: failure-time state
+        // is unrecoverable from the current snapshot.
+        throw new Error(`cannot recover failure-time state for ${caseDef.name}: a later successful write landed in the snapshot`)
+      }
+      // Content-equal no-op rewrite: the snapshot IS the failure-time state.
+    } else if (failureState.includes(intended)) {
       const occurrences = failureState.split(intended).length - 1
       if (parsed.new_string !== undefined && parsed.old_string !== undefined && occurrences === 1) {
-        // Reverse the later successful edit: failure-time state = new_string
-        // swapped back to the old_string that the rejected call had matched.
+        // Reverse the recorded failed call itself: failure-time state =
+        // new_string swapped back to the old_string it had tried to match.
         failureState = failureState.replace(intended, parsed.old_string)
       } else {
         throw new Error(`cannot recover failure-time state for ${caseDef.name}: snapshot already contains the intended content (${occurrences}x)`)
@@ -258,18 +379,20 @@ function cropOne(caseDef: RealCase): void {
     blocks: [{
       callId,
       tool: (toolCall.data as { name?: string }).name ?? 'unknown',
+      turn,
+      step,
       rawArguments: scrubbedArgs,
       errorText: String(scrub(errorText, caseDef.stripPrefix)),
     }],
-    continuation: caseDef.continuation,
+    continuation,
     ...workspaceFiles.length > 0 ? { workspaceFiles } : {},
     ...successChecks.length > 0 ? { successChecks } : {},
   }, null, 2)}\n`)
-  const taskText = ((task.data?.content as { type?: string; text?: string }[]) ?? [])
-    .filter(block => block.type === 'text').map(block => block.text ?? '').join('\n')
+  const taskText = textOf(task)
   console.log(`=== ${caseDef.name}: call ${callId} turn ${turn} step ${step}, args ${rawArguments.length} chars`)
   console.log(`    task: ${taskText.slice(0, 200).replace(/\n/gu, ' | ')}`)
   console.log(`    error: ${errorText.slice(0, 120)}`)
+  console.log(`    continuation: ${continuation.slice(0, 120).replace(/\n/gu, ' | ')}`)
   console.log(`    files: ${workspaceFiles.map(file => file.path).join(', ') || 'none'}`)
 }
 
