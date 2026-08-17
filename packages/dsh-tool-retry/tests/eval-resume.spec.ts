@@ -41,7 +41,7 @@ function firstLine(value: unknown): string {
   return String(value).split('\n')[0]!
 }
 
-describe('eval resume mechanics (keyless smoke, REAL corpus)', () => {
+describe('eval resume mechanics (keyless smoke, REAL corpus)', { timeout: 120_000 }, () => {
   it('real-plan-dismissed: ON revises the checkpointed plan, OFF resubmits fresh', async () => {
     const fixture = loadEvalFixture(join(EVAL_FIXTURES, 'real-plan-dismissed'))
     const args = JSON.parse(fixture.blocks[0]!.rawArguments) as { plan: string }

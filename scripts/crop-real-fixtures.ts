@@ -221,19 +221,16 @@ function cropOne(caseDef: RealCase): void {
   const errorBlock = (breakResult.data?.message as { content?: { content?: { text?: string }[] }[] }).content?.[0]
   const errorText = (errorBlock?.content ?? []).map(part => part.text ?? '').join('\n')
 
-  // FULL-PREFIX crop: the breakpoint is the failing tool/result, and the
-  // prefix is EVERYTHING the model saw before it — every turn, every step,
-  // every thinking block, every tool call and result. Nothing above the cut
-  // is lost (the earlier K-steps crop amputated the evidence the reasoning
-  // references and made the resumed model re-explore). Two artifact classes
-  // are dropped, both lossless for the model: streaming delta chunks (their
-  // content lives intact inside the assistant/message blocks) and event
-  // types the pinned session library cannot restore (steering/message — a
-  // newer-harness event). The cut lands after the failing step's LAST
-  // result, so every tool-call block of that message keeps its result and
-  // the provider transcript stays valid; the open step/turn tail is closed
-  // by the harness's own interrupted-turn repair at resume.
-  const DROPPED_EVENTS = new Set(['assistant/chunk', 'text-chunks', 'reasoning-chunks', 'tool-call-chunks', 'steering/message'])
+  // FULL-PREFIX crop — a DIRECT jsonl cut: the breakpoint is the failing
+  // tool/result, and the prefix is the session log's rows from its start
+  // through the failing step's LAST result, VERBATIM. Original seq/seq0/time
+  // values and sourceEventSeqs provenance stay untouched — a cut from the
+  // session start is already contiguous and every provenance reference still
+  // points at an earlier present event. Only two in-place edits remain:
+  // machine-path scrubbing, and an `ignorable: true` marker on
+  // steering/message rows (a newer-harness type the pinned session library
+  // otherwise refuses). The open step/turn tail is closed by the harness's
+  // own interrupted-turn repair at resume.
   let cutPoint = breakResultIndex
   for (let index = breakResultIndex + 1; index < events.length; index += 1) {
     const event = events[index]!
@@ -244,28 +241,19 @@ function cropOne(caseDef: RealCase): void {
   }
   // events[0] is the real session header line — the crop synthesizes its own.
   const prefix = events.slice(1, cutPoint + 1)
-    .filter(event => event.type !== undefined && !DROPPED_EVENTS.has(event.type))
+    .map((event) => {
+      const cleaned = scrub(event, caseDef.stripPrefix) as Record<string, unknown>
+      if (event.type === 'steering/message') cleaned.ignorable = true
+      return cleaned
+    })
   if (prefix.length === 0) throw new Error(`empty prefix for ${caseDef.name}`)
-  const scrubbed = prefix.map((event, index) => {
-    // The persisted envelope references the ORIGINAL session's event ids
-    // (sourceEventSeqs must point at earlier events of the SAME log); the
-    // cropped log cannot satisfy that, so drop the envelope provenance —
-    // seq/time are re-assigned below, surfaceOp is kept for surface folding.
-    const cleaned = scrub(event, caseDef.stripPrefix) as Record<string, unknown>
-    delete cleaned.sourceEventSeqs
-    return {
-      ...cleaned,
-      seq: index,
-      time: index + 1,
-    }
-  })
   const dir = join(OUT, caseDef.name)
   rmSync(dir, { recursive: true, force: true })
   mkdirSync(dir, { recursive: true })
   // The committed prefix is zstd-compressed (full sessions are large); the
   // fixture builder decompresses it deterministically.
   const prefixText = `{"type":"session","version":0,"id":"${caseDef.name}-prefix","createdAt":1,"cwd":"/workspace","delegationDepth":0}\n`
-    + `${scrubbed.map(event => JSON.stringify(event)).join('\n')}\n`
+    + `${prefix.map(event => JSON.stringify(event)).join('\n')}\n`
   writeFileSync(join(dir, 'session-prefix.jsonl.zstd'),
     execFileSync('zstd', ['-19', '-q', '-c'], { input: prefixText, maxBuffer: 512 * 1024 * 1024 }))
   const workspaceFiles = caseDef.workspaceSnapshot
@@ -404,7 +392,7 @@ function cropOne(caseDef: RealCase): void {
     ...workspaceFiles.length > 0 ? { workspaceFiles } : {},
     ...successChecks.length > 0 ? { successChecks } : {},
   }, null, 2)}\n`)
-  console.log(`=== ${caseDef.name}: call ${callId} turn ${turn} step ${step}, args ${rawArguments.length} chars, prefix ${scrubbed.length} events`)
+  console.log(`=== ${caseDef.name}: call ${callId} turn ${turn} step ${step}, args ${rawArguments.length} chars, prefix ${prefix.length} rows`)
   console.log(`    error: ${errorText.slice(0, 120)}`)
   console.log(`    continuation: ${continuation.slice(0, 120).replace(/\n/gu, ' | ')}`)
   console.log(`    files: ${workspaceFiles.map(file => file.path).join(', ') || 'none'}`)

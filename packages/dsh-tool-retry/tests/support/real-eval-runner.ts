@@ -29,7 +29,7 @@ import LocalFileSystem from '@deepseek-ai/dsh-fs-local'
 import * as FsPolicy from '@deepseek-ai/dsh-fs-observation-policy'
 import * as LlmDeepSeek from '@deepseek-ai/dsh-llm-deepseek'
 import { LlmAdapter } from '@deepseek-ai/dsh-llm'
-import { SESSION_FORMAT_VERSION, SessionId } from '@deepseek-ai/dsh-session'
+import { decodeStorageRecord, SESSION_FORMAT_VERSION, SessionId } from '@deepseek-ai/dsh-session'
 import SessionPersistenceJsonl from '@deepseek-ai/dsh-session-persistence-jsonl'
 import * as ToolFs from '@deepseek-ai/dsh-tool-fs'
 import { defineTool } from '@deepseek-ai/dsh-tools'
@@ -58,12 +58,16 @@ export interface EvalFixture {
   events: unknown[]
 }
 
-/** Parse one committed eval fixture directory into a runnable snapshot. */
+/** Parse one committed eval fixture directory into a runnable snapshot.
+ * The verbatim prefix keeps the persisted storage rows (chunk rows carry
+ * seq0 bases); the append API takes EXPANDED events, so each row decodes
+ * through the session lib's own decodeStorageRecord (one assistant/chunk
+ * event per member, original contiguous seqs preserved). */
 export function loadEvalFixture(dir: string): EvalFixture {
   const scenario = JSON.parse(readFileSync(join(dir, 'scenario.json'), 'utf8')) as EvalFixture
   const lines = readFileSync(join(dir, 'session-prefix.jsonl'), 'utf8').split('\n').filter(line => line.trim().length > 0)
   const header = JSON.parse(lines[0]!) as { id: string; createdAt: number }
-  const events = lines.slice(1).map(line => JSON.parse(line) as unknown)
+  const events = lines.slice(1).flatMap(line => decodeStorageRecord(JSON.parse(line) as never))
   return { ...scenario, header, events }
 }
 
