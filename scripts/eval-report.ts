@@ -78,8 +78,10 @@ interface SessionLine {
     callId?: string
     name?: string
     arguments?: string
+    content?: { type?: string; text?: string }[]
+    source?: { kind?: string; plugin?: string; form?: string }
     usage?: { inputTokens?: number; outputTokens?: number; reasoningTokens?: number }
-    message?: { content?: { toolCallId?: string; content?: { type?: string; text?: string }[]; isError?: boolean }[] }
+    message?: { content?: { type?: string; text?: string; name?: string; arguments?: string; toolCallId?: string; content?: { type?: string; text?: string }[]; isError?: boolean }[] }
   }
 }
 
@@ -397,8 +399,7 @@ function abDiffTable(row: ScenarioRow): string {
     const content = [
       `<div class="text-xs text-muted-foreground">工具：${escapeHtml(run.summary.toolCalls.join(', ') || '—')}</div>`,
       renderRunMeta(run),
-      renderRunDetails(run),
-      renderRunJsonl(run),
+      renderSessionFriendly(run),
     ].join('\n')
     return `<template id="${modalId}">${content}</template>`
   }).join('\n')
@@ -480,74 +481,85 @@ function readRunProcess(record: RunRecord): { perStepTokens?: { step: number; in
   }
 }
 
-/** The FULL session.jsonl of one run, shown verbatim in the modal. */
-function renderRunJsonl(record: RunRecord): string {
-  if (record.runDir === undefined) return ''
-  let jsonl = ''
-  try {
-    jsonl = readFileSync(join(EVAL_DIR, record.runDir, 'session.jsonl'), 'utf8')
-  } catch {
-    return ''
-  }
+/** Human-friendly rendering of the FULL session.jsonl in the modal: every
+ * event becomes a labeled card (turns, user messages, assistant steps with
+ * usage, tool calls with raw arguments, results with error badges). */
+function renderSessionFriendly(record: RunRecord): string {
+  const lines = readRunSession(record) ?? []
+  const textOf = (content: { type?: string; text?: string }[] | undefined): string =>
+    (content ?? []).filter(block => block.type === 'text').map(block => block.text ?? '').join('\n')
+  const pre = (value: string, max = 'max-h-56'): string =>
+    value === '' ? '' : `<pre class="rounded-md bg-muted p-2.5 text-xs font-mono whitespace-pre-wrap break-all ${max} overflow-auto">${escapeHtml(value)}</pre>`
+  const items = lines.map((line, index) => {
+    const data = line.data ?? {}
+    const type = line.type ?? 'unknown'
+    if (type === 'turn/start') {
+      return `<div class="rounded-md border bg-card px-2.5 py-1.5 text-xs font-semibold">↳ Turn ${(data as { turn?: number }).turn ?? '?'} 开始</div>`
+    }
+    if (type === 'turn/end') {
+      return `<div class="px-2.5 text-[11px] text-muted-foreground">Turn 结束（${escapeHtml(((data as { reason?: { kind?: string } }).reason?.kind) ?? 'unknown')}）</div>`
+    }
+    if (type === 'user/message') {
+      const text = textOf(data.content as { type?: string; text?: string }[] | undefined)
+      const source = (data.source as { kind?: string; plugin?: string; form?: string } | undefined)
+      const label = source?.plugin !== undefined ? `plugin ${source.plugin} · ${source.form ?? ''}` : source?.kind ?? 'user'
+      return [
+        '<div class="rounded-md border bg-card px-2.5 py-1.5">',
+        `<div class="flex items-center gap-2"><span class="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">用户消息</span><span class="text-[11px] text-muted-foreground">${escapeHtml(label)}</span></div>`,
+        pre(text, 'max-h-40'),
+        '</div>',
+      ].join('\n')
+    }
+    if (type === 'assistant/message') {
+      const usage = data.usage as { inputTokens?: number; outputTokens?: number; reasoningTokens?: number } | undefined
+      const content = (data.message as { content?: { type?: string; text?: string; name?: string; arguments?: string }[] } | undefined)?.content ?? []
+      const reasoning = content.filter(block => block.type === 'reasoning').map(block => block.text ?? '').join('\n')
+      const text = textOf(content as { type?: string; text?: string }[])
+      const calls = content.filter(block => block.type === 'tool-call')
+        .map(block => [
+          '<div class="mt-1 rounded-md border bg-muted/40 px-2 py-1.5">',
+          `<div class="text-xs font-medium">🛠 ${escapeHtml(block.name ?? '')} <span class="text-muted-foreground">(${escapeHtml((block as { id?: string }).id ?? '')})</span></div>`,
+          pre(block.arguments ?? '', 'max-h-40'),
+          '</div>',
+        ].join('\n')).join('\n')
+      return [
+        '<div class="rounded-md border bg-card px-2.5 py-1.5">',
+        `<div class="flex flex-wrap items-center gap-2"><span class="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">助手</span>`,
+        `<span class="text-[11px] text-muted-foreground">Turn ${(data as { turn?: number }).turn ?? '?'} · Step ${(data as { step?: number }).step ?? '?'}</span>`,
+        usage === undefined ? '' : `<span class="text-[11px] text-muted-foreground">in ${usage.inputTokens ?? 0} · out ${usage.outputTokens ?? 0} · reasoning ${usage.reasoningTokens ?? 0}</span>`,
+        '</div>',
+        reasoning === '' ? '' : `<details class="mt-1"><summary class="cursor-pointer text-[11px] text-muted-foreground">思考过程（${reasoning.length} 字符）</summary>${pre(reasoning, 'max-h-40')}</details>`,
+        text === '' ? '' : pre(text, 'max-h-40'),
+        calls,
+        '</div>',
+      ].join('\n')
+    }
+    if (type === 'tool/call') {
+      return [
+        '<div class="rounded-md border bg-card px-2.5 py-1.5">',
+        `<div class="flex items-center gap-2"><span class="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">工具调用</span><span class="text-xs font-medium">${escapeHtml(data.name ?? '')}</span><span class="text-[11px] text-muted-foreground">${escapeHtml(data.callId ?? '')}</span></div>`,
+        pre(data.arguments ?? '', 'max-h-56'),
+        '</div>',
+      ].join('\n')
+    }
+    if (type === 'tool/result') {
+      const block = data.message?.content?.[0]
+      const isError = block?.isError === true
+      return [
+        '<div class="rounded-md border bg-card px-2.5 py-1.5">',
+        `<div class="flex items-center gap-2"><span class="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">工具结果</span><span class="text-[11px] text-muted-foreground">${escapeHtml(block?.toolCallId ?? '')}</span>${isError ? badge('失败', 'negative') : badge('成功', 'positive')}</div>`,
+        pre(textOf(block?.content as { type?: string; text?: string }[] | undefined), 'max-h-56'),
+        '</div>',
+      ].join('\n')
+    }
+    return `<div class="px-2.5 text-[11px] text-muted-foreground">#${index + 1} ${escapeHtml(type)}</div>`
+  })
   return [
     '<div class="rounded-lg border bg-muted/30">',
-    '<div class="border-b px-3 py-2 text-xs font-medium text-muted-foreground">完整 session.jsonl（${jsonl.split(chr(10)).length} 行）</div>'.replace('${jsonl.split(chr(10)).length}', String(jsonl.split('\n').length)),
-    `<pre class="p-3 text-xs font-mono whitespace-pre-wrap break-all max-h-96 overflow-auto">${escapeHtml(jsonl)}</pre>`,
+    `<div class="border-b px-3 py-2 text-xs font-medium text-muted-foreground">完整 session.jsonl（友好视图 · ${lines.length} 个事件 · 本地文件 ${escapeHtml(record.runDir ?? '')}/session.jsonl）</div>`,
+    `<div class="max-h-[60vh] space-y-1.5 overflow-y-auto p-3">${items.join('\n')}</div>`,
     '</div>',
   ].join('\n')
-}
-
-/** Render every tool call of one run with its raw arguments and result. */
-function renderRunDetails(record: RunRecord): string {
-  const lines = readRunSession(record)
-  const calls: { callId: string; name: string; arguments: string; result: string; isError: boolean }[] = []
-  const results = new Map<string, { text: string; isError: boolean }>()
-  if (lines !== undefined) {
-    for (const line of lines) {
-      const content = line.data?.message?.content?.[0]
-      if (line.type === 'tool/result' && content?.toolCallId !== undefined) {
-        const text = (content.content ?? []).filter(block => block.type === 'text').map(block => block.text ?? '').join('\n')
-        results.set(content.toolCallId, { text, isError: content.isError === true })
-      }
-    }
-    for (const line of lines) {
-      if (line.type !== 'tool/call' || line.data?.callId === undefined) continue
-      const result = results.get(line.data.callId)
-      calls.push({
-        callId: line.data.callId,
-        name: line.data.name ?? '',
-        arguments: line.data.arguments ?? '',
-        result: result?.text ?? '',
-        isError: result?.isError === true,
-      })
-    }
-  }
-  if (calls.length === 0) {
-    for (const [index, argumentsText] of (record.summary.toolCallArguments ?? []).entries()) {
-      calls.push({
-        callId: `call-${index + 1}`,
-        name: record.summary.toolCalls[index] ?? 'unknown',
-        arguments: argumentsText,
-        result: record.summary.resultTexts[index] ?? '',
-        isError: false,
-      })
-    }
-  }
-  if (calls.length === 0) return '<div class="text-sm text-muted-foreground">（无工具调用）</div>'
-  return calls.map((call, index) => [
-    '<div class="rounded-lg border bg-muted/30 p-3 space-y-1.5">',
-    '<div class="flex items-center gap-2 text-sm font-medium">',
-    `<span class="text-muted-foreground">#${index + 1}</span>`,
-    `<code class="rounded bg-muted px-1.5 py-0.5 text-xs">${escapeHtml(call.name)}</code>`,
-    `<span class="text-xs text-muted-foreground">callId ${escapeHtml(call.callId)}</span>`,
-    call.isError ? '<span class="ml-auto"><span class="inline-flex items-center rounded-md border border-destructive/30 bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive dark:text-destructive-foreground">失败</span></span>' : '',
-    '</div>',
-    '<div class="text-xs font-medium text-muted-foreground">参数（原始字符串）</div>',
-    `<pre class="rounded-md bg-muted p-3 text-xs font-mono whitespace-pre-wrap break-all max-h-72 overflow-auto">${escapeHtml(call.arguments)}</pre>`,
-    '<div class="text-xs font-medium text-muted-foreground">结果</div>',
-    `<pre class="rounded-md bg-muted p-3 text-xs font-mono whitespace-pre-wrap break-all max-h-72 overflow-auto">${escapeHtml(call.result)}</pre>`,
-    '</div>',
-  ].join('\n')).join('\n')
 }
 
 /** Minimal tabs: vanilla toggling, no framework (shadcn Tabs look). */
