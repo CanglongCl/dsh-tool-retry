@@ -406,9 +406,12 @@ export async function runEvalScenario(options: EvalRunOptions): Promise<EvalRunS
     await ctx.plugin(LocalFileSystem, { cwd: workspace })
     await ctx.plugin(FsPolicy)
     if (fixture.kind === 'fs' || fixture.mode === 'code') await ctx.plugin(ToolFs)
-    // fs scenarios: pre-create the workspace files the retry edits against.
+    // fs scenarios: pre-create the workspace files the retry edits against
+    // (nested snapshot paths need their parent directories first).
     for (const file of fixture.workspaceFiles ?? []) {
-      writeFileSync(join(workspace, file.path), file.content)
+      const target = join(workspace, file.path)
+      mkdirSync(dirname(target), { recursive: true })
+      writeFileSync(target, file.content)
     }
     if (options.arm === 'on') await ctx.plugin(ToolRetry)
     await ctx.plugin(AgentLoop, { agents: [] })

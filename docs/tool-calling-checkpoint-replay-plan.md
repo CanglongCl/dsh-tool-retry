@@ -298,7 +298,7 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工�
 3. **agent-loop 集成**（`packages/fs/tool-fs/tests/harness.ts:15-24` 的 `fsHarness` + `packages/test-support/agent-loop-testkit` `mountAgentLoopTestDependencies` :37-46，依赖自发布版 npm 包）：真实循环内「成功调用也落盘 → 失败 → 通知（含 id）时序位于该 tool/result 之后 → editPreviousToolCalling(id) 单次重放 → 结果」全链路；**上一步全部并行 block 各自可重放**；多次重试用 id 路径可复现。
 4. **code-mode 集成**：外层 `run_code` 整体落盘（`previous/1.json` + `by-id/<id>.json`）→ 未捕获失败 → 通知（含 id 与路径）；内部子调用失败被捕获 → 不通知；程序执行期间 checkpoint 旧内容可读（替换在程序结束后）；下一步程序内 `tools.read` checkpoint → `JSON.parse` → `prev.code.replace` → `AsyncFunction` 包装执行并 return（验证预观察生效、`return`/`await` 语义与原生一致）；**code 模式不注册 editPreviousToolCalling**。
 5. **机制验证（keyless 脚本化 A/B，llm-replay）**——**从 §6 移入（十三轮评审）**：llm-replay 回放固定剧本、模型行为是脚本化的，它验证的是**特性机制本身**而非模型行为，故属阶段四：
-   - 语料：**手写构造或从本机存量 bad case 裁剪**（~/.dsh/sessions/ 真实日志，解压 .jsonl.zstd、脱敏、裁剪到「断点 + turn 边界」）的 `session.jsonl` 前缀 fixtures（native 与 PTC 各若干，含多并行 block 场景）——**与 §6 真模型 eval 共用同一套断点快照语料库**；
+   - 语料：**手写构造或从本机存量 bad case 裁剪**（~/.dsh/sessions/ 真实日志，解压 .jsonl.zstd、脱敏、裁剪到「断点 + turn 边界」）的 `session.jsonl` 前缀 fixtures（native 与 PTC 各若干，含多并行 block 场景）——**与 §6 真模型 eval 的语料分开维护**（§5 用 `tests/replay-fixtures/` 的脚本化 A/B 语料，§6 用 `tests/eval-fixtures/` 的真实断点语料）；
    - 用 `replay.override.json`（`packages/test-support/llm-replay`）在该调用后强制注入 `tool/result{error}`，并脚本化两臂完全相同的重试脚本；
    - 特性 ON/OFF 两种 cordis 组合各回放一遍（`installLlmReplay` 驱动真实 agent-loop）；
    - 逐场景断言：checkpoint/别名/jsonl 落盘、通知条数与时序（恒等于失败次数）、并行 block 各自可重放、多次重试用 id 可复现、重放路径成功、固定开销（写盘耗时/注入 token 数）与脚本化重试的 token 上界（仅机制算术演示，不作对外数据）；
@@ -323,30 +323,26 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工�
 **实现设计（十四轮评审）**：
 
 **① 断点（break）作为 eval 起点——直接用 session.jsonl，不再做任何插件（十五轮评审定稿）**。所有场景对齐到同一个逻辑断点——「首个**不符合预期的工具调用**」：显式失败（`tool/result` isError）或「成功但结果不符合预期」的调用（后者见 ② 观察类）。ON 臂断点之后紧跟插件通知，OFF 臂断点之后直接接模型下一步；断点前的历史两臂天然相同，断点后才做测量。
-- **断点快照 = 一段 session.jsonl 前缀**（fixture）：**手写构造，或从本机存量 bad case 裁剪**——本机 ~/.dsh/sessions/ 下有大量含失败工具调用的真实会话日志（解压 .jsonl.zstd 后裁剪到「断点 + turn 边界」，脱敏后入库）；
+- **断点快照 = 一段 session.jsonl 前缀**（fixture），**全部从本机存量 bad case 裁剪**（真实会话日志，解压 .jsonl.zstd 后裁剪到「断点 + turn 边界」，脱敏后入库）：`pnpm crop:real`（维护者运行，不入 commit 门禁）从 ~/.dsh/sessions/ 抽取 5 个真实坏例到 `tests/eval-fixtures-src/real/<name>/`，builder 逐字复制进 `tests/eval-fixtures/`。裁剪器做三件保真工作：① 删除持久化信封里的 `sourceEventSeqs`（原会话事件 id，裁剪后必非法）并重排 `seq`；② 中性化机器路径；③ 工作区快照还原到**断点时刻**的文件状态——若后文重试已把目标内容写进当前文件（fileContains 评分将零成本通过），edit 类按 `new_string→old_string` 反向回滚，不可恢复的退化场景直接抛错拒绝入库，保证评分不可能靠「什么都不做」通过；
 - **eval 起跑方式**：以该前缀启动/恢复会话（会话持久化按 session-id 载入 jsonl 日志，agent-loop 支持 resume，`ctx.agents.resume({ resumeSessionId })`，`packages/core/agent-loop/tests/resume.spec.ts`），**真模型从断点继续**，断点后的行为全部由真模型生成；
-- 两臂共用同一前缀（止于失败 `tool/result`）；ON 臂不再预注入通知 `user/message`——机制说明已由静态段（order 149）承载，模型凭静态协议自行决定重试路径（评测不测通知投递通道）；断点后模型新失败时插件仍真实注入通知，计入开销指标；
-- **与 §5 机制验证共用同一套断点快照语料库**：§5 用 llm-replay 回放这些前缀（脚本化、无 key），§6 用它们做真模型续跑的起点。
+- 两臂共用同一前缀（止于失败 `tool/result`）；ON 臂不再预注入通知 `user/message`——机制说明已由静态段（order 149）承载，模型凭静态协议自行决定重试路径（评测不测通知投递通道）；断点后模型新失败时插件仍真实注入通知，计入开销指标。
 
 **② 场景来源——聚焦「工具调用不符合预期」，不超出本特性边界（十五轮评审定稿）**：
 
-**显式失败类（isError，主场景）**：
-  1. **参数 schema 校验失败**：缺必填字段/类型错/枚举非法 → `INVALID_ARGS`（checkpoint 存原始串，正是可编辑修复的对象）；
-  2. **参数 JSON 格式非法**：工具参数不是合法 JSON（raw 串落盘）；
-  3. **长文本编辑失配**：`edit` 的 `old_string` 在文件中不存在（文件已变）、`old_string` 为空、`old==new`——长 `new_string` 场景按参数长度分层统计（本特性的核心价值场景）；评测语料已含 `native-long-fs-write-edit`（并行双失败：长内容 `write` 缺必填字段 + 长 `new_string` 的 `edit` 命中已变更文件，重试成功按工作区状态行为校验）；
-  4. **路径/资源笔误**：`file_path` 打错（ENOENT/`FS_NOT_FOUND`）、未读先改（`FS_NOT_OBSERVED`）；
-  4b. **计划被拒**（plan 模式特有，评测语料 `native-plan-rejected`）：`exit_plan_mode` 提交的长计划被用户拒绝、反馈随失败结果返回，模型按反馈修改 checkpoint 中的计划后重新提交；
-  5. **权限/沙箱拒绝**：只读模式写入（`FS_SANDBOX_DENIED`）、命令权限错误；
-  6. **PTC 专属**：`run_code` 程序语法错误、SDK 里工具名打错（`UNKNOWN_TOOL`）、未捕获异常、返回值不合 output schema。
+**显式失败类（isError，主场景）**——当前语料为 `pnpm crop:real` 从真实会话日志裁剪的 5 例（`tests/eval-fixtures-src/real/`，builder 逐字复制，维护者可按同类真实坏例扩充）：
+  1. **长计划被驳回**（`real-plan-dismissed`）：真实会话中 `exit_plan_mode` 提交约 1 万字符的 Rust 重构计划被用户驳回、反馈随失败结果返回——模型按反馈最小修改 checkpoint 计划后重新提交；
+  2. **长文本编辑失配**（`real-edit-stale`）：真实 `edit` 的 `old_string`（1.7KB 参数）已不在文件中（文件已变）——本特性的核心价值场景；
+  3. **未读先改**（`real-edit-unobserved`）：真实 `FS_NOT_OBSERVED`（先读后改即可）；
+  4. **未读先写**（`real-write-overwrite`）：真实 `FS_NOT_OBSERVED` 覆盖已有 README.md；
+  5. **PTC 程序缺必填字段**（`real-run-code-missing-desc`）：真实 `run_code` 程序参数缺 `description`（`INVALID_ARGS`，整程序参数落盘）。
 
 **「成功但结果不符合预期」观察类（成功也落盘的动机，作为观察项）**：
   - 工具返回成功但内容不对（bash 输出非预期、读错了文件、结果与要求不符）→ 模型主动经 `previous/<n>.json` 或 `history.jsonl` 取 id 重放修正。该类难以自然诱导，**只统计采用率、不设达标线**。
 
 **明确不做（超出工具调用重放边界）**：plan 重写流程的质量评估、单元测试驱动的多轮迭代、多步任务规划优化、复杂任务级评分 oracle——本 eval 只度量「工具调用不符合预期后，模型如何完成**该调用**的重试」，任务成败仅以轻量检查兜底（见 ③）。
-  - 场景载体 = 固定 workspace fixture + 任务提示词；用预置环境保证「大概率自然触发」断点；未触发断点的行次不计入统计（只统计触发行）。
 
 **③ 执行与测量（断点后）——PTC 与 non-PTC 分标准（十五轮评审）**：
-- 每场景 × 每臂（ON：用户预设含插件；OFF：原版 standard/code 预设）独立 workspace 与 session-id（BENCHMARK.md 要求），同一模型/参数，每臂重复 N≥3 次取中位数（模型有随机性）；
+- 每场景 × 每臂（ON：用户预设含插件；OFF：原版 standard/code 预设）独立 workspace 与 session-id（BENCHMARK.md 要求），同一模型/参数；**重复次数默认 1**（`DSH_EVAL_REPEATS`/`--repeat` 可调，模型有随机性时手动加重复），**worker 池并发默认 4**（`DSH_EVAL_CONCURRENCY`/`--concurrency`，对齐 dsh-web-review 的 worker 池模式）；模型与推理档位经 `DSH_EVAL_MODEL`/`DSH_EVAL_REASONING` 配置（默认 deepseek-v4-flash / high）；
 - 驱动：`examples/jsonrpc-agent/minimal.py`（`BENCHMARK.md` 唯一指引路径）或 `DeepSeekHarness` SDK；起跑 = ① 的前缀 resume；
 - **断点后测量（两模式通用）**：重试步输出 token（断点后第一条 `assistant/message.usage.outputTokens`，ON vs OFF 的节省）、重试成功（断点指向的调用被重放且新的 `tool/result` 无 `error`）、通知条数 = 失败次数、注入开销。
 - **native 专属标准**：采用率 = 断点后是否出现 `editPreviousToolCalling` 调用或对 checkpoint 目录（`by-id/`、`previous/`）的 `edit`/`read`；重试成功率按「同工具下一次 `tool/result` 无 `error`」计。

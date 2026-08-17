@@ -1,0 +1,19 @@
+{
+  "name": "real-run-code-missing-desc",
+  "mode": "code",
+  "kind": "boom",
+  "title": "PTC：程序缺必填字段（真实）",
+  "description": {
+    "input": "run_code 程序参数缺少必填的 description 字段（INVALID_ARGS，真实程序文本）。",
+    "expected": "修正后的程序无 error 完成。"
+  },
+  "blocks": [
+    {
+      "callId": "call_00_eyS77atGz2StzFQxLmnQ0143",
+      "tool": "run_code",
+      "rawArguments": "{\"code\": \"const res = await tools.bash({\\n  command: \\\"npm view @canglongcl/dsh-web-review versions --json 2>&1; echo '---DIST-TAGS---'; npm view @canglongcl/dsh-web-review dist-tags --json 2>&1\\\",\\n  description: \\\"Query npm registry for plugin versions and dist-tags\\\"\\n});\\nconsole.log(res.stdout.text);\\nconsole.error(res.stderr.text);\"}",
+      "errorText": "Error: invalid arguments: missing required property \"description\""
+    }
+  ],
+  "continuation": "That program failed. Fix it with the smallest change, run the corrected program, and report the result."
+}

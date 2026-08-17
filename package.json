@@ -21,7 +21,8 @@
     "e2e:real": "tsx scripts/e2e-real.ts",
     "build:fixtures": "tsx scripts/build-fixtures.ts",
     "eval:real": "tsx scripts/eval.ts",
-    "eval:report": "tsx scripts/eval-report.ts"
+    "eval:report": "tsx scripts/eval-report.ts",
+    "crop:real": "tsx scripts/crop-real-fixtures.ts"
   },
   "devDependencies": {
     "@tailwindcss/cli": "^4.3.3",
