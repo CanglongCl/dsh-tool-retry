@@ -509,14 +509,20 @@ function readRunProcess(record: RunRecord): { perStepTokens?: { step: number; in
 
 /** Human-friendly rendering of the FULL session.jsonl in the modal: every
  * event becomes a labeled card (turns, user messages, assistant steps with
- * usage, tool calls with raw arguments, results with error badges). */
+ * usage, tool calls with raw arguments, results with error badges). The
+ * viewer splits it into two tabs — the pre-break prefix (the recorded task
+ * the eval starts from) and the post-break run (what the model actually did
+ * after resume). */
 function renderSessionFriendly(record: RunRecord): string {
   const lines = readRunSession(record) ?? []
+  const breakpoint = record.summary.prefixEventCount ?? 0
+  const prefixLines = lines.slice(0, breakpoint)
+  const postLines = lines.slice(breakpoint)
   const textOf = (content: { type?: string; text?: string }[] | undefined): string =>
     (content ?? []).filter(block => block.type === 'text').map(block => block.text ?? '').join('\n')
   const pre = (value: string, max = 'max-h-56'): string =>
     value === '' ? '' : `<pre class="rounded-md bg-muted p-2.5 text-xs font-mono whitespace-pre-wrap break-all ${max} overflow-auto">${escapeHtml(value)}</pre>`
-  const items = lines.map((line) => {
+  const renderEvents = (slice: SessionLine[]): string => slice.map((line) => {
     const data = line.data ?? {}
     const type = line.type ?? 'unknown'
     if (type === 'request/header') {
@@ -636,11 +642,18 @@ function renderSessionFriendly(record: RunRecord): string {
       pre(short, 'max-h-48'),
       '</details></div>',
     ].join('\n')
-  })
+  }).join('\n')
+  const tabId = sanitizeAttr(`${record.scenario}-${record.arm}-r${record.repetition}-session`)
   return [
     '<div class="rounded-lg border bg-muted/30">',
-    `<div class="border-b px-3 py-2 text-xs font-medium text-muted-foreground">完整 session.jsonl（友好视图 · ${lines.length} 个事件 · 本地文件 ${escapeHtml(record.runDir ?? '')}/session.jsonl）</div>`,
-    `<div class="max-h-[60vh] space-y-1.5 overflow-y-auto p-3">${items.join('\n')}</div>`,
+    // Tab switcher: 断点前（题目）/ 恢复后运行，各自独立滚动。
+    '<div class="flex items-center gap-1 border-b px-2 py-1.5">',
+    `<button type="button" data-tab-toggle="${tabId}" data-tab-pane="${tabId}-prefix" class="rounded-md px-2 py-1 text-xs font-medium bg-muted">断点前（题目 · ${prefixLines.length} 事件）</button>`,
+    `<button type="button" data-tab-toggle="${tabId}" data-tab-pane="${tabId}-post" class="rounded-md px-2 py-1 text-xs font-medium text-muted-foreground">恢复后运行（${postLines.length} 事件）</button>`,
+    `<span class="ml-auto text-[11px] text-muted-foreground">本地 ${escapeHtml(record.runDir ?? '')}/session.jsonl · 共 ${lines.length} 事件</span>`,
+    '</div>',
+    `<div id="${tabId}-prefix" class="max-h-[60vh] space-y-1.5 overflow-y-auto p-3">${renderEvents(prefixLines)}</div>`,
+    `<div id="${tabId}-post" class="max-h-[60vh] space-y-1.5 overflow-y-auto p-3 hidden">${renderEvents(postLines)}</div>`,
     '</div>',
   ].join('\n')
 }
@@ -724,6 +737,22 @@ addEventListener('DOMContentLoaded', () => {
     if (!template) return;
     modalTitle.textContent = button.getAttribute('data-run-label') || '调用详情';
     modalBody.innerHTML = template.innerHTML;
+    // Session viewer tabs (断点前 / 恢复后): wire AFTER insertion, since the
+    // pane ids map to the pair scope and are unique per modal template.
+    for (const toggle of modalBody.querySelectorAll('[data-tab-toggle]')) {
+      toggle.addEventListener('click', () => {
+        const group = toggle.getAttribute('data-tab-toggle');
+        for (const pane of modalBody.querySelectorAll('[data-tab-pane]')) {
+          pane.classList.toggle('hidden', pane.id !== toggle.getAttribute('data-tab-pane'));
+        }
+        for (const sibling of modalBody.querySelectorAll('[data-tab-toggle="' + group + '"]')) {
+          sibling.classList.remove('bg-muted');
+          sibling.classList.add('text-muted-foreground');
+        }
+        toggle.classList.add('bg-muted');
+        toggle.classList.remove('text-muted-foreground');
+      });
+    }
     modal.classList.remove('hidden');
   };
   const closeModal = () => modal.classList.add('hidden');
