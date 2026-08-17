@@ -441,29 +441,45 @@ export async function runEvalScenario(options: EvalRunOptions): Promise<EvalRunS
       await ctx.plugin(LlmDeepSeek)
     }
 
-    // ON arm: pre-seed the checkpoint store (by-id content, the previous/
-    // shortcut, and the history index) exactly as the plugin leaves it on
-    // disk, so the resumed session replays the restart contract.
+    // Persist the prefix; the ON arm differs from OFF by composition and
+    // on-disk store only: the plugin's STATIC protocol section describes the
+    // checkpoint dirs and the replay tool, and the model decides on its own
+    // how to retry (the dynamic failure notice is NOT pre-injected — this
+    // eval does not test the user-message delivery channel; live post-break
+    // failures still produce real notices, which the metrics count).
+    const prefixEvents = [...fixture.events]
+    // ON arm: pre-seed the checkpoint store exactly as the plugin leaves it
+    // on disk at the breakpoint. The REAL store held every prior call of the
+    // session — mirror that from the cropped prefix's own tool/call events:
+    // by-id for all, history lines with real turn/step, and previous/N
+    // aliases for the LAST message's blocks in model order.
+    const seededCalls = prefixEvents
+      .filter(event => (event as { type?: string }).type === 'tool/call')
+      .map(event => (event as { type: string; data: { callId: string; name: string; arguments: string; turn?: number; step?: number } }).data)
     if (options.arm === 'on') {
       mkdirSync(join(checkpointDir, 'by-id'), { recursive: true })
       mkdirSync(join(checkpointDir, 'previous'), { recursive: true })
+      const byGroup = new Map<string, typeof seededCalls>()
+      for (const call of seededCalls) {
+        const key = `${call.turn ?? 1}/${call.step ?? 1}`
+        const group = byGroup.get(key)
+        if (group === undefined) byGroup.set(key, [call])
+        else group.push(call)
+      }
       let history = ''
-      fixture.blocks.forEach((block, index) => {
-        writeFileSync(join(checkpointDir, 'by-id', `${sanitizeId(block.callId)}.json`), block.rawArguments)
-        history += `${JSON.stringify({ id: block.callId, tool: block.tool, turn: block.turn ?? 1, step: block.step ?? 1, ordinal: index + 1 })}\n`
-        symlinkSync(`../by-id/${sanitizeId(block.callId)}.json`, join(checkpointDir, 'previous', `${index + 1}.json`))
+      for (const call of seededCalls) {
+        const key = `${call.turn ?? 1}/${call.step ?? 1}`
+        const ordinal = (byGroup.get(key) ?? []).indexOf(call) + 1
+        writeFileSync(join(checkpointDir, 'by-id', `${sanitizeId(call.callId)}.json`), call.arguments)
+        history += `${JSON.stringify({ id: call.callId, tool: call.name, turn: call.turn ?? 1, step: call.step ?? 1, ordinal })}\n`
+      }
+      const lastGroup = [...byGroup.entries()].at(-1)?.[1] ?? []
+      lastGroup.forEach((call, index) => {
+        symlinkSync(`../by-id/${sanitizeId(call.callId)}.json`, join(checkpointDir, 'previous', `${index + 1}.json`))
       })
       writeFileSync(join(checkpointDir, 'history.jsonl'), history)
     }
 
-    // Persist the prefix; the ON arm appends the recorded failure notice.
-    // The ON arm differs from OFF by composition and on-disk store only:
-    // the plugin's STATIC protocol section describes the checkpoint dirs and
-    // the replay tool, and the model decides on its own how to retry (the
-    // dynamic failure notice is NOT pre-injected — this eval does not test
-    // the user-message delivery channel; live post-break failures still
-    // produce real notices, which the metrics count).
-    const prefixEvents = [...fixture.events]
     await ctx.sessionPersistence.create({
       version: SESSION_FORMAT_VERSION,
       id: SessionId(sessionId),
@@ -493,14 +509,19 @@ export async function runEvalScenario(options: EvalRunOptions): Promise<EvalRunS
             },
           },
     })
+    // The persisted prefix ends mid-step at the failing result; the harness's
+    // interrupted-turn repair closes the open tail IN MEMORY at prepare time
+    // (synthetic step/end + turn/end), so the true post-break boundary is the
+    // resumed session's event count — not the raw prefix length.
+    const postBreakStart = handle.agent.session.events.length
     if (options.arm === 'on') {
       // The observation table is in-memory state that does not survive a
-      // restart, so the pre-seeded checkpoint must be re-observed for the
+      // restart, so the pre-seeded checkpoints must be re-observed for the
       // resumed session — the exact write-then-emit pattern the plugin uses
       // at checkpoint time (write outcome version, the call's exec actor).
-      for (const block of fixture.blocks) {
-        const byIdTarget = await ctx.fs.resolve(join(checkpointDir, 'by-id', `${sanitizeId(block.callId)}.json`))
-        const write = await ctx.fs.writeText(byIdTarget, block.rawArguments)
+      for (const call of seededCalls) {
+        const byIdTarget = await ctx.fs.resolve(join(checkpointDir, 'by-id', `${sanitizeId(call.callId)}.json`))
+        const write = await ctx.fs.writeText(byIdTarget, call.arguments)
         // The observation actor is the ToolExecution shape ({ agent }), whose
         // owner the policy derives as actor.agent.session.
         ctx.emit('fs/observed', byIdTarget, { kind: 'present', version: write.version }, { agent: handle.agent })
@@ -519,7 +540,7 @@ export async function runEvalScenario(options: EvalRunOptions): Promise<EvalRunS
     let stoppedEarly = false
     try {
       if (options.stopAt === 'retry-success') {
-        const outcome = await waitForStopAt(ctx, handle, prefixEvents.length, fixture, workspace, options, options.deadlineMs)
+        const outcome = await waitForStopAt(ctx, handle, postBreakStart, fixture, workspace, options, options.deadlineMs)
         if (outcome === 'cutoff') {
           stoppedEarly = true
           runStatus = 'cutoff'
@@ -546,7 +567,7 @@ export async function runEvalScenario(options: EvalRunOptions): Promise<EvalRunS
         reason?: { kind?: string }
       }
     }[]
-    const postBreak = events.slice(prefixEvents.length)
+    const postBreak = events.slice(postBreakStart)
     const toolCalls = postBreak
       .filter(event => event.type === 'tool/call')
       .map(event => event.data.name ?? '')
@@ -661,7 +682,7 @@ export async function runEvalScenario(options: EvalRunOptions): Promise<EvalRunS
       sessionId,
       /** Post-break boundary in the persisted run log (the report slices on
        * it instead of assuming the follow-up turn number). */
-      prefixEventCount: prefixEvents.length,
+      prefixEventCount: postBreakStart,
       retryStepOutputTokens,
       retryStepReasoningTokens,
       postBreakInputTokens,

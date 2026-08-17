@@ -12,9 +12,13 @@
  * - machine identity is neutralized EVERYWHERE (prefix events, raw args,
  *   error text, workspace contents): /Users/<user>/ → ~/, P4 client names →
  *   <client>, depot prefixes → //<depot>/;
- * - parallel siblings of the failed call are stripped from the assistant
- *   message — providers reject a message whose tool-call blocks outnumber
- *   the recorded tool/result;
+ * - parallel siblings of the failed call KEEP their results (the cut lands
+ *   after the failing step's LAST result) — providers reject a message whose
+ *   tool-call blocks outnumber the recorded results;
+ * - the prefix carries the failing step PLUS the K preceding steps of the
+ *   SAME turn (every event, thinking included): a single-step crop amputates
+ *   the evidence the reasoning references and the resumed model re-explores
+ *   the workspace cold instead of retrying;
  * - the workspace snapshot is restored to FAILURE-TIME state: the session's
  *   eventual successful edit on the same file is reverse-applied (or the
  *   recorded new_string itself is reversed), so the fileContains grader can
@@ -165,17 +169,6 @@ function scrub(value: unknown, stripPrefix: string): unknown {
   return value
 }
 
-/** The first human user/message at or before an index (walking backward). */
-function precedingTask(events: EventLike[], fromIndex: number): EventLike | undefined {
-  for (let index = fromIndex; index >= 0; index -= 1) {
-    const event = events[index]!
-    if (event.type !== 'user/message') continue
-    const source = (event.data as { source?: { kind?: string } } | undefined)?.source
-    if (source?.kind === 'user') return event
-  }
-  return events.find(event => event.type === 'user/message')
-}
-
 /** The next human user/message strictly after an index. */
 function nextUserMessage(events: EventLike[], fromIndex: number): EventLike | undefined {
   for (let index = fromIndex + 1; index < events.length; index += 1) {
@@ -224,39 +217,35 @@ function cropOne(caseDef: RealCase): void {
   }
   const turn = (toolCall.data as { turn?: number }).turn ?? 1
   const step = (toolCall.data as { step?: number }).step ?? 1
-  const task = events.find(event =>
-    event.type === 'user/message' && (event.data as { turn?: number }).turn === turn)
-    ?? precedingTask(events, breakResultIndex - 1)
-  if (task === undefined) throw new Error(`no task message for ${caseDef.name}`)
   const rawArguments = (toolCall.data as { arguments?: string }).arguments ?? ''
   const errorBlock = (breakResult.data?.message as { content?: { content?: { text?: string }[] }[] }).content?.[0]
   const errorText = (errorBlock?.content ?? []).map(part => part.text ?? '').join('\n')
 
-  // Keep ONLY the failed tool-call block in the assistant message: providers
-  // reject a message whose tool-call blocks outnumber the recorded results
-  // ("insufficient tool messages"); parallel siblings are stripped while the
-  // reasoning/text blocks stay (they explain the intent).
-  const strippedAssistant: EventLike = {
-    ...assistantMessage,
-    data: {
-      ...(assistantMessage.data ?? {}),
-      message: {
-        ...((assistantMessage.data?.message ?? {}) as Record<string, unknown>),
-        content: ((assistantMessage.data?.message as { content?: { type?: string; id?: string }[] }).content ?? [])
-          .filter(block => block.type !== 'tool-call' || block.id === callId),
-      },
-    },
+  // FULL-PREFIX crop: the breakpoint is the failing tool/result, and the
+  // prefix is EVERYTHING the model saw before it — every turn, every step,
+  // every thinking block, every tool call and result. Nothing above the cut
+  // is lost (the earlier K-steps crop amputated the evidence the reasoning
+  // references and made the resumed model re-explore). Two artifact classes
+  // are dropped, both lossless for the model: streaming delta chunks (their
+  // content lives intact inside the assistant/message blocks) and event
+  // types the pinned session library cannot restore (steering/message — a
+  // newer-harness event). The cut lands after the failing step's LAST
+  // result, so every tool-call block of that message keeps its result and
+  // the provider transcript stays valid; the open step/turn tail is closed
+  // by the harness's own interrupted-turn repair at resume.
+  const DROPPED_EVENTS = new Set(['assistant/chunk', 'text-chunks', 'reasoning-chunks', 'tool-call-chunks', 'steering/message'])
+  let cutPoint = breakResultIndex
+  for (let index = breakResultIndex + 1; index < events.length; index += 1) {
+    const event = events[index]!
+    if (event.type !== 'tool/result') break
+    const data = event.data as { turn?: number; step?: number }
+    if (data.turn === turn && data.step === step) cutPoint = index
+    else break
   }
-
-  const prefix = [
-    { type: 'turn/start', data: { turn } },
-    task,
-    { type: 'step/start', data: { turn, step } },
-    strippedAssistant,
-    toolCall,
-    breakResult,
-    { type: 'step/end', data: { turn, step } },
-  ]
+  // events[0] is the real session header line — the crop synthesizes its own.
+  const prefix = events.slice(1, cutPoint + 1)
+    .filter(event => event.type !== undefined && !DROPPED_EVENTS.has(event.type))
+  if (prefix.length === 0) throw new Error(`empty prefix for ${caseDef.name}`)
   const scrubbed = prefix.map((event, index) => {
     // The persisted envelope references the ORIGINAL session's event ids
     // (sourceEventSeqs must point at earlier events of the SAME log); the
@@ -273,9 +262,12 @@ function cropOne(caseDef: RealCase): void {
   const dir = join(OUT, caseDef.name)
   rmSync(dir, { recursive: true, force: true })
   mkdirSync(dir, { recursive: true })
-  writeFileSync(join(dir, 'session-prefix.jsonl'),
-    `{"type":"session","version":0,"id":"${caseDef.name}-prefix","createdAt":1,"cwd":"/workspace","delegationDepth":0}\n`
-    + `${scrubbed.map(event => JSON.stringify(event)).join('\n')}\n`)
+  // The committed prefix is zstd-compressed (full sessions are large); the
+  // fixture builder decompresses it deterministically.
+  const prefixText = `{"type":"session","version":0,"id":"${caseDef.name}-prefix","createdAt":1,"cwd":"/workspace","delegationDepth":0}\n`
+    + `${scrubbed.map(event => JSON.stringify(event)).join('\n')}\n`
+  writeFileSync(join(dir, 'session-prefix.jsonl.zstd'),
+    execFileSync('zstd', ['-19', '-q', '-c'], { input: prefixText, maxBuffer: 512 * 1024 * 1024 }))
   const workspaceFiles = caseDef.workspaceSnapshot
     .filter(snapshot => existsSync(snapshot.path))
     .map(snapshot => ({ path: snapshot.rel, content: String(scrub(readFileSync(snapshot.path, 'utf8'), caseDef.stripPrefix)) }))
@@ -388,9 +380,7 @@ function cropOne(caseDef: RealCase): void {
     ...workspaceFiles.length > 0 ? { workspaceFiles } : {},
     ...successChecks.length > 0 ? { successChecks } : {},
   }, null, 2)}\n`)
-  const taskText = textOf(task)
-  console.log(`=== ${caseDef.name}: call ${callId} turn ${turn} step ${step}, args ${rawArguments.length} chars`)
-  console.log(`    task: ${taskText.slice(0, 200).replace(/\n/gu, ' | ')}`)
+  console.log(`=== ${caseDef.name}: call ${callId} turn ${turn} step ${step}, args ${rawArguments.length} chars, prefix ${scrubbed.length} events`)
   console.log(`    error: ${errorText.slice(0, 120)}`)
   console.log(`    continuation: ${continuation.slice(0, 120).replace(/\n/gu, ' | ')}`)
   console.log(`    files: ${workspaceFiles.map(file => file.path).join(', ') || 'none'}`)

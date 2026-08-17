@@ -34,7 +34,8 @@
  * verification/eval drivers patch the token into the real path at load time.
  */
 
-import { copyFileSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { copyFileSync, existsSync, mkdirSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
@@ -242,17 +243,25 @@ export function buildEvalFixtures(root = EVAL_FIXTURES): string[] {
   // The eval corpus is cropped from REAL session logs (scripts/crop-real-fixtures.ts,
   // maintainer-run): every scenario under eval-fixtures-src/real/ is copied
   // verbatim — the committed source is the single source of truth, so the
-  // gate's regeneration stays byte-identical.
+  // gate's regeneration stays byte-identical. Full-session prefixes are
+  // committed zstd-compressed (session-prefix.jsonl.zstd) and decompressed
+  // deterministically into the built corpus.
   const srcRoot = join(ROOT, 'packages', 'dsh-tool-retry', 'tests', 'eval-fixtures-src', 'real')
   for (const name of readdirSync(srcRoot).sort()) {
     const src = join(srcRoot, name)
     if (!statSync(src).isDirectory()) continue
     const dir = join(root, name)
     mkdirSync(dir, { recursive: true })
-    for (const file of ['session-prefix.jsonl', 'scenario.json']) {
-      copyFileSync(join(src, file), join(dir, file))
-      written.push(join(dir, file))
+    copyFileSync(join(src, 'scenario.json'), join(dir, 'scenario.json'))
+    written.push(join(dir, 'scenario.json'))
+    const compressed = join(src, 'session-prefix.jsonl.zstd')
+    const plain = join(dir, 'session-prefix.jsonl')
+    if (existsSync(compressed)) {
+      writeFileSync(plain, execFileSync('zstd', ['-dc', compressed], { maxBuffer: 512 * 1024 * 1024 }))
+    } else {
+      copyFileSync(join(src, 'session-prefix.jsonl'), plain)
     }
+    written.push(plain)
   }
   return written
 }
