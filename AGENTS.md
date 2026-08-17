@@ -107,6 +107,27 @@ Rules for the dsh-tool-retry plugin: automatic checkpointing of every model-dire
 - **Real e2e** (native + PTC) is optional, provider-key gated, and not part of the commit gate.
 - pnpm check is the repo gate; harness suites are not run from this repo.
 
+## Installing the prebuilt tarball into a running profile (official channel)
+
+When a profile should load the plugin through the standard `dsh plugin` path
+(the way `dsh plugin --profile web add @canglongcl/dsh-web-review` installs an
+npm bundle) rather than the dev alias, stage and install the local tarball:
+
+1. `pnpm package:official` — regenerates `dist/canglongcl-dsh-tool-retry-<version>.tgz`
+   (prebuilt lib + cordis.patch.yml declaring `dsh.bundle.patch`).
+2. `dsh plugin --profile web add file:$PWD/dist/canglongcl-dsh-tool-retry-<version>.tgz`
+   — pnpm-adds the tarball into `$DSH_HOME/profiles/<profile>` and, because the
+   manifest declares `dsh.bundle.patch`, auto-registers the package in the
+   profile's `dsh.profile.bundles`; at boot the bundle layer's cordis.patch.yml
+   inserts the tool-retry row into the host composition.
+3. `pnpm install-presets --official` — rewrites the user-preset rows
+   (`~/.dsh/.agent-presets/tool-retry-standard` and `tool-retry-code`) to name
+   the installed official package instead of the dev alias.
+4. Restart the web instance (`dsh web`): bundles compose at boot, so a restart
+   is required; sessions persist and resume. The profile manifest must not mix
+   the official package with the dev alias — materializeProfilePluginLink
+   refuses that combination.
+
 ## Local development and verification
 
 1. pnpm install (pinned public @deepseek-ai/* packages; no harness checkout needed for ordinary gates).

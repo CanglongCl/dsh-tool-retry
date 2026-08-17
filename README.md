@@ -13,21 +13,24 @@
 
 ## 安装
 
+包尚未发布到 npm 前，从本地 tarball 安装到 web profile：
+
 ```sh
-npm i -g @canglongcl/dsh-tool-retry
+pnpm package:official   # 生成 dist/canglongcl-dsh-tool-retry-<版本>.tgz
+dsh plugin --profile web add file:$PWD/dist/canglongcl-dsh-tool-retry-<版本>.tgz
+pnpm install-presets --official   # 安装 tool-retry-standard / tool-retry-code 用户预设（行名指向官方包）
+dsh web
 ```
 
-插件是 agent 级能力，通过**用户预设**注册（harness 内置预设不可修改）：
+发布到 npm 后可直接：
 
-1. 在 DSH 主页复制一份内置预设（native 用「标准模式」，PTC 用「PTC 模式」），或手动在 ~/.dsh/.agent-presets/ 下放置预设文件（本仓库提供 tool-retry-standard / tool-retry-code 两个模板）。
-2. 在预设的 agent.cordis.yml 中加一行：
-
-```yaml
-- id: tool-retry
-  name: '@canglongcl/dsh-tool-retry'
+```sh
+dsh plugin --profile web add @canglongcl/dsh-tool-retry
+dsh web
 ```
 
-3. 会话选择该预设即可生效。
+- `dsh plugin add` 会把包写入 profile 的依赖，并因 manifest 声明 `dsh.bundle.patch` 自动注册进 `dsh.profile.bundles`——插件以 **profile bundle** 挂载，`dsh web` 重启后对整个 web 实例生效（会话会持久化恢复）。
+- 会话侧能力（失败通知、重放工具、提示词段）通过**用户预设**注册（harness 内置预设不可修改）：安装脚本已把本仓库的 tool-retry-standard / tool-retry-code 模板装到 ~/.dsh/.agent-presets/，新会话选择对应预设即可生效；native 用「标准模式 + 调用重试」，PTC 用「PTC 模式 + 调用重试」。
 
 ## 使用方法
 
