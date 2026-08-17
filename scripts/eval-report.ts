@@ -563,12 +563,16 @@ function runDetailCards(rows: ScenarioRow[]): string {
 
 /** Minimal tabs: vanilla toggling, no framework (shadcn Tabs look). */
 function tabPanels(rows: ScenarioRow[]): string {
+  const presentModes = (['native', 'code'] as const).filter(mode => rows.some(row => row.mode === mode))
   const panels = (['native', 'code'] as const).map((mode) => {
     const group = rows.filter(row => row.mode === mode)
     if (group.length === 0) return ''
     const tables = group.map(abDiffTable).join('\n')
     const details = runDetailCards(group)
-    return `<div data-panel="${mode}" class="hidden space-y-6">${tables}<section class="space-y-6 pt-2">${details}</section></div>`
+    // The first present panel is visible on load; the tab handler toggles
+    // the rest (and re-hides/shows this one when switching).
+    const initial = mode === presentModes[0] ? 'space-y-6' : 'hidden space-y-6'
+    return `<div data-panel="${mode}" class="${initial}">${tables}<section class="space-y-6 pt-2">${details}</section></div>`
   })
   const tabs = (['native', 'code'] as const)
     .filter(mode => rows.some(row => row.mode === mode))
