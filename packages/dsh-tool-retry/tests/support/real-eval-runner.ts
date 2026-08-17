@@ -16,7 +16,9 @@
  */
 
 import { Context } from '@deepseek-ai/cordis'
+import { installModelSelection } from '@deepseek-ai/dsh-agent'
 import { createUserMessage } from '@deepseek-ai/dsh-llm/message'
+import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import AgentLoop from '@deepseek-ai/dsh-agent-loop'
 import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
 import LocalCredentialProvider from '@deepseek-ai/dsh-credentials-local'
@@ -69,7 +71,14 @@ export interface EvalRunOptions {
   arm: 'on' | 'off'
   /** Real provider model (deepseek adapter). */
   model: string
+  /** Adapter reasoning effort (deepseek: off | high | max); absent = adapter default. */
+  reasoningEffort?: 'off' | 'high' | 'max'
   deadlineMs: number
+  /** Per-run artifact dir; when set, the FULL session log (every event, tool
+   * calls included with raw arguments) is persisted as session.jsonl there —
+   * the drill-down evidence the HTML report embeds (the dsh-web-review
+   * per-run session.jsonl pattern). */
+  runDir?: string
   /** Scripted adapter for the keyless smoke; absent = real provider. */
   adapter?: LlmAdapter
   /** Hook logs for the smoke's behavioral assertions. */
@@ -95,6 +104,8 @@ export interface EvalRunSummary {
   noticeBytes: number
   /** Post-break tool call names in order. */
   toolCalls: string[]
+  /** Post-break tool call raw argument strings (diagnostic evidence). */
+  toolCallArguments: string[]
   /** Whether the run reached a completed turn. */
   completed: boolean
   /** Flat text of post-break tool/result contents (debug evidence). */
@@ -217,6 +228,22 @@ export async function runEvalScenario(options: EvalRunOptions): Promise<EvalRunS
       agentOptions: options.adapter === undefined
         ? { provider: 'deepseek-official', model: options.model }
         : { provider: 'mock', model: 'mock' },
+      ...options.reasoningEffort === undefined || options.adapter !== undefined
+        ? {}
+        : {
+            // Reasoning effort rides the agent-scoped model selection (the
+            // agentOptions shape carries no effort field).
+            setup: (agentCtx: Context) => {
+              installModelSelection(agentCtx, {
+                current: {
+                  provider: 'deepseek-official',
+                  model: options.model,
+                  reasoningEffort: ReasoningEffortId(options.reasoningEffort!),
+                },
+                assembled: undefined,
+              })
+            },
+          },
     })
     if (options.arm === 'on') {
       // The observation table is in-memory state that does not survive a
@@ -301,8 +328,21 @@ export async function runEvalScenario(options: EvalRunOptions): Promise<EvalRunS
       noticeBytes: notices.reduce((sum, event) =>
         sum + (event.data.content?.find(block => block.type === 'text')?.text?.length ?? 0), 0),
       toolCalls,
+      toolCallArguments,
       completed: lastTurnEnd?.data.reason?.kind === 'completed',
       resultTexts,
+    }
+    // Persist the FULL session log (every event, tool calls included with
+    // their raw argument strings) as the per-run drill-down evidence — the
+    // dsh-web-review per-run session.jsonl pattern. The report embeds it.
+    if (options.runDir !== undefined) {
+      mkdirSync(options.runDir, { recursive: true })
+      const header = handle.agent.session.header as unknown as Record<string, unknown>
+      const lines = [
+        JSON.stringify({ type: 'session', version: 0, ...header }),
+        ...events.map(event => JSON.stringify(event)),
+      ]
+      writeFileSync(join(options.runDir, 'session.jsonl'), `${lines.join('\n')}\n`)
     }
     await handle.dispose()
     return summary

@@ -23,6 +23,7 @@ interface BatchMeta {
   stamp: string
   model: string
   provider: string
+  reasoning?: string
   repeats: number
   repoHead: string
   packages: Record<string, string>
@@ -39,6 +40,8 @@ interface RunRecord {
   repetition: number
   model: string
   provider: string
+  reasoning?: string
+  runDir?: string
   startedAt: string
   finishedAt: string
   summary: {
@@ -49,9 +52,84 @@ interface RunRecord {
     noticeCount: number
     noticeBytes: number
     toolCalls: string[]
+    toolCallArguments: string[]
     completed: boolean
     resultTexts: string[]
   }
+}
+
+
+interface SessionLine {
+  type?: string
+  data?: {
+    callId?: string
+    name?: string
+    arguments?: string
+    usage?: { inputTokens?: number; outputTokens?: number }
+    message?: { content?: { toolCallId?: string; content?: { type?: string; text?: string }[]; isError?: boolean }[] }
+  }
+}
+
+/** Read one run's persisted full session log (the drill-down evidence). */
+function readRunSession(record: RunRecord): SessionLine[] | undefined {
+  if (record.runDir === undefined) return undefined
+  try {
+    return readFileSync(join(EVAL_DIR, record.runDir, 'session.jsonl'), 'utf8')
+      .split('\n').filter(line => line.trim() !== '')
+      .map(line => JSON.parse(line) as SessionLine)
+  } catch {
+    return undefined
+  }
+}
+
+/** Render every tool call of one run with its raw arguments and result. */
+function renderRunDetails(record: RunRecord): string {
+  const lines = readRunSession(record)
+  const calls: { callId: string; name: string; arguments: string; result: string; isError: boolean }[] = []
+  const results = new Map<string, { text: string; isError: boolean }>()
+  if (lines !== undefined) {
+    for (const line of lines) {
+      const content = line.data?.message?.content?.[0]
+      if (line.type === 'tool/result' && content?.toolCallId !== undefined) {
+        const text = (content.content ?? []).filter(block => block.type === 'text').map(block => block.text ?? '').join('\n')
+        results.set(content.toolCallId, { text, isError: content.isError === true })
+      }
+    }
+    for (const line of lines) {
+      if (line.type !== 'tool/call' || line.data?.callId === undefined) continue
+      const result = results.get(line.data.callId)
+      calls.push({
+        callId: line.data.callId,
+        name: line.data.name ?? '',
+        arguments: line.data.arguments ?? '',
+        result: result?.text ?? '',
+        isError: result?.isError === true,
+      })
+    }
+  }
+  if (calls.length === 0) {
+    // Old batches without a persisted session: fall back to the summary.
+    for (const [index, argumentsText] of (record.summary.toolCallArguments ?? []).entries()) {
+      calls.push({
+        callId: `call-${index + 1}`,
+        name: record.summary.toolCalls[index] ?? 'unknown',
+        arguments: argumentsText,
+        result: record.summary.resultTexts[index] ?? '',
+        isError: false,
+      })
+    }
+  }
+  const blocks = calls.map((call, index) => [
+    '<div class="call">',
+    `<div class="call-head">#${index + 1} <code>${escapeHtml(call.name)}</code> · callId ${escapeHtml(call.callId)}${call.isError ? ' · <span class="err">失败</span>' : ''}</div>`,
+    '<div class="call-label">参数（原始字符串）：</div>',
+    `<pre>${escapeHtml(call.arguments)}</pre>`,
+    '<div class="call-label">结果：</div>',
+    `<pre>${escapeHtml(call.result)}</pre>`,
+    '</div>',
+  ].join('\n'))
+  if (blocks.length === 0) return '<div class="call">（无工具调用）</div>'
+  return blocks.join('\n')
 }
 
 /** HTML-escape one user/data string. */
@@ -196,6 +274,7 @@ function renderReport(number: number, batch: BatchMeta, rows: ScenarioRow[]): st
   const runTable = rows.map((row) => {
     const runRows = row.runs.map((run) => {
       const s = run.summary
+      const details = renderRunDetails(run)
       return [
         '<tr>',
         `<td>${run.arm === 'on' ? 'ON' : 'OFF'}</td>`,
@@ -207,6 +286,9 @@ function renderReport(number: number, batch: BatchMeta, rows: ScenarioRow[]): st
         `<td>${s.completed ? '✅' : '❌'}</td>`,
         `<td class="num">${s.noticeCount}</td>`,
         `<td>${escapeHtml(s.toolCalls.join(', '))}</td>`,
+        '<td>',
+        `<details><summary>完整调用详情（点击展开）</summary>${details}</details>`,
+        '</td>',
         '</tr>',
       ].join('\n')
     })
@@ -214,7 +296,7 @@ function renderReport(number: number, batch: BatchMeta, rows: ScenarioRow[]): st
       `<h3>${escapeHtml(row.scenario)} — 每次运行明细</h3>`,
       '<table class="runs"><thead><tr>',
       '<th>臂</th><th>重复</th><th>重试步输出 token</th><th>断点后输入 token</th>',
-      '<th>采用</th><th>重试成功</th><th>收敛</th><th>通知条数</th><th>工具调用</th>',
+      '<th>采用</th><th>重试成功</th><th>收敛</th><th>通知条数</th><th>工具调用</th><th>详情</th>',
       '</tr></thead><tbody>',
       ...runRows,
       '</tbody></table>',
@@ -262,6 +344,13 @@ td.good { color: #0b7a3e; font-weight: 600; }
 .meta ul { margin: .3rem 0; padding-left: 1.2rem; }
 .meta code { background: #eef1f4; padding: 0 .25rem; border-radius: 3px; }
 table.runs td { font-size: .8rem; }
+details { margin: .1rem 0; }
+details summary { cursor: pointer; color: #2f6fed; font-weight: 600; }
+.call { border-left: 3px solid #d9dee5; padding: .2rem .6rem; margin: .4rem 0; background: #fbfcfd; }
+.call-head { font-weight: 600; }
+.call-head .err { color: #b42318; }
+.call-label { color: #6b7280; font-size: .78rem; margin-top: .3rem; }
+.call pre { white-space: pre-wrap; word-break: break-word; background: #f6f8fa; border: 1px solid #e5e9ee; border-radius: 4px; padding: .4rem .5rem; margin: .15rem 0; max-height: 24em; overflow: auto; }
 footer { margin-top: 2rem; color: #6b7280; font-size: .8rem; }
 </style>
 </head>
@@ -270,7 +359,7 @@ footer { margin-top: 2rem; color: #6b7280; font-size: .8rem; }
 <div class="meta">
 <ul>
 <li><strong>编号</strong>：${String(number).padStart(3, '0')}（批次 stamp：<code>${escapeHtml(batch.stamp)}</code>）</li>
-<li><strong>模型</strong>：${escapeHtml(batch.model)}（provider ${escapeHtml(batch.provider)}）· 每场景每臂重复 <strong>${batch.repeats}</strong> 次</li>
+<li><strong>模型</strong>：${escapeHtml(batch.model)}（provider ${escapeHtml(batch.provider)}）· 思考强度 <strong>${escapeHtml(batch.reasoning ?? '默认')}</strong> · 每场景每臂重复 <strong>${batch.repeats}</strong> 次</li>
 <li><strong>仓库 git head</strong>：<code>${escapeHtml(batch.repoHead)}</code></li>
 <li><strong>运行时间</strong>：${escapeHtml(batch.startedAt)} → ${escapeHtml(batch.finishedAt)}</li>
 <li><strong>运行期依赖版本</strong>：<ul>${packages}</ul></li>
