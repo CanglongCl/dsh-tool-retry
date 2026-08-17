@@ -55,8 +55,10 @@ function packageVersions(): Record<string, string> {
   const versions: Record<string, string> = {}
   for (const name of names) {
     try {
+      // The published deps live in the plugin package's node_modules (they
+      // are its pinned devDependencies, not the repo root's).
       const manifest = JSON.parse(readFileSync(
-        fileURLToPath(new URL(`../../../node_modules/${name}/package.json`, import.meta.url)), 'utf8')) as { version?: string }
+        fileURLToPath(new URL(`../../node_modules/${name}/package.json`, import.meta.url)), 'utf8')) as { version?: string }
       versions[name] = manifest.version ?? 'unknown'
     } catch {
       versions[name] = 'unknown'

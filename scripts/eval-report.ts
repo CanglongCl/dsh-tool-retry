@@ -69,12 +69,32 @@ function rate(values: boolean[]): number {
   return values.length === 0 ? 0 : values.filter(value => value).length / values.length
 }
 
-/** Next sequential zero-padded report number (001, 002, …). */
-function nextNumber(): number {
+/**
+ * Report number for one batch: regeneration of the same batch is idempotent
+ * (an existing report carrying the batch stamp keeps its number); a new batch
+ * gets the next sequential zero-padded number (001, 002, …).
+ */
+function numberForBatch(stamp: string): number {
   const files = readdirSync(REPORTS_DIR, { withFileTypes: true })
     .filter(entry => entry.isFile() && /^\d{3}-.+\.html$/u.test(entry.name))
+  const existing = files.find(entry => entry.name.includes(stamp))
+  if (existing !== undefined) return Number(existing.name.slice(0, 3))
   const numbers = files.map(entry => Number(entry.name.slice(0, 3)))
   return (numbers.length === 0 ? 0 : Math.max(...numbers)) + 1
+}
+
+/**
+ * Apply the plan §6 retry-success criterion to code-mode records recorded by
+ * an older runner build that used the fixture marker value: "the next
+ * run_code call completes without error" = at least one post-break run_code
+ * result whose text is not a code-run failure. (The PTC corpus's only
+ * post-break tool is run_code, so the flat result texts are sufficient.)
+ */
+function regradeCodeRetrySuccess(record: RunRecord): RunRecord {
+  if (record.mode !== 'code') return record
+  const succeeded = record.summary.resultTexts
+    .some(text => !text.startsWith('Error:') && !text.includes('code run failed'))
+  return { ...record, summary: { ...record.summary, retrySuccess: succeeded } }
 }
 
 function loadBatch(stampFilter?: string): { batch: BatchMeta; records: RunRecord[] } {
@@ -84,6 +104,7 @@ function loadBatch(stampFilter?: string): { batch: BatchMeta; records: RunRecord
   const records = lines
     .map(line => JSON.parse(line) as RunRecord)
     .filter(record => record.stamp === stamp)
+    .map(regradeCodeRetrySuccess)
   if (records.length === 0) {
     throw new Error(`eval:report — no run records for batch ${stamp}; run pnpm eval:real first`)
   }
@@ -262,8 +283,8 @@ ${scenarioTable('code')}
 ${runTable.join('\n')}
 <footer>
 方法说明：每场景 × 臂（ON=挂载插件 / OFF=基线）× ${batch.repeats} 次独立运行；断点快照为持久化的失败工具调用前缀（恢复式续跑），
-指标取自断点后的权威会话日志：重试步输出 token = 断点后第一条 assistant/message 的 usage.outputTokens；
-采用 = native 出现 editPreviousToolCalling 调用 / PTC 后续 run_code 参数引用 checkpoint 路径；重试成功 = 断点工具以合法输入重跑（行为级）。
+指标取自断点后的权威会话日志：重试步输出 token = 断点后第一条 assistant/message 的 usage.outputTokens（含推理 token，adapter 默认档）；
+采用 = native 出现 editPreviousToolCalling 调用 / PTC 后续 run_code 参数引用 checkpoint 路径；重试成功 = native 断点工具以合法输入重跑（行为级）/ PTC 按 plan §6 判据「断点后的 run_code 调用无 error」。
 原始逐条记录见 .artifacts/eval/results.jsonl。本报告由 pnpm eval:report 生成并持久化于仓库 reports/。
 </footer>
 </body>
@@ -301,7 +322,7 @@ const stampFilter = process.argv.includes('--batch')
 const { batch, records } = loadBatch(stampFilter)
 const rows = buildScenarioRows(records)
 mkdirSync(REPORTS_DIR, { recursive: true })
-const number = nextNumber()
+const number = numberForBatch(batch.stamp)
 const fileName = `${String(number).padStart(3, '0')}-${batch.stamp}-${batch.model}.html`
 const path = join(REPORTS_DIR, fileName)
 writeFileSync(path, renderReport(number, batch, rows))

@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dsh-tool-retry 评测报告 001</title>
+<style>
+:root { color-scheme: light; }
+body { font-family: ui-sans-serif, system-ui, "PingFang SC", sans-serif; margin: 2rem auto; max-width: 1100px; padding: 0 1rem; color: #1a1d21; line-height: 1.6; }
+h1 { font-size: 1.5rem; border-bottom: 2px solid #2f6fed; padding-bottom: .4rem; }
+h2 { margin-top: 2rem; font-size: 1.2rem; }
+h3 { margin-top: 1.6rem; font-size: 1rem; }
+table { border-collapse: collapse; width: 100%; margin: .6rem 0 1.4rem; font-size: .9rem; }
+th, td { border: 1px solid #d9dee5; padding: .35rem .55rem; text-align: left; vertical-align: top; }
+thead th { background: #eef3fb; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+td.good { color: #0b7a3e; font-weight: 600; }
+.meta { background: #f6f8fa; border: 1px solid #d9dee5; border-radius: 6px; padding: .8rem 1rem; font-size: .85rem; }
+.meta ul { margin: .3rem 0; padding-left: 1.2rem; }
+.meta code { background: #eef1f4; padding: 0 .25rem; border-radius: 3px; }
+table.runs td { font-size: .8rem; }
+footer { margin-top: 2rem; color: #6b7280; font-size: .8rem; }
+</style>
+</head>
+<body>
+<h1>dsh-tool-retry 评测报告 001</h1>
+<div class="meta">
+<ul>
+<li><strong>编号</strong>：001（批次 stamp：<code>2026-08-17T05-40-24.321Z</code>）</li>
+<li><strong>模型</strong>：deepseek-v4-flash（provider deepseek-official）· 每场景每臂重复 <strong>3</strong> 次</li>
+<li><strong>仓库 git head</strong>：<code>dc37480054376941e72b1a9dc9e04843057c5782</code></li>
+<li><strong>运行时间</strong>：2026-08-17T05:40:24.321Z → 2026-08-17T05:47:29.543Z</li>
+<li><strong>运行期依赖版本</strong>：<ul><li><code>@deepseek-ai/dsh-tools</code> = 0.1.0-rc.6</li><li><code>@deepseek-ai/dsh-llm</code> = 0.1.0-rc.6</li><li><code>@deepseek-ai/dsh-session</code> = 0.1.0-rc.6</li><li><code>@deepseek-ai/dsh-agent-loop</code> = 0.1.0-rc.6</li><li><code>@deepseek-ai/dsh-session-persistence-jsonl</code> = 0.1.0-rc.6</li></ul></li>
+<li><strong>场景</strong>：native-invalid-args、native-invalid-json、ptc-program-error</li>
+</ul>
+</div>
+<h2>总体（全部场景合并）</h2>
+<table><tbody>
+<tr><th>ON 重试步输出 token（中位）</th><td class="num">357</td></tr>
+<tr><th>OFF 重试步输出 token（中位）</th><td class="num">418</td></tr>
+<tr><th>token 节省 %（中位）</th><td class="num ">14.6%</td></tr>
+<tr><th>采用率</th><td class="num">78%</td></tr>
+<tr><th>重试成功率 ON</th><td class="num">100%</td></tr>
+<tr><th>重试成功率 OFF</th><td class="num">100%</td></tr>
+</tbody></table>
+<h2>
+native 模式
+</h2>
+<table><thead><tr>
+<th>场景</th><th>ON 重试步输出 token（中位）</th><th>OFF 重试步输出 token（中位）</th>
+<th>token 节省 %</th><th>采用率</th><th>重试成功率 ON</th><th>重试成功率 OFF</th>
+<th>通知条数（中位）</th><th>通知字节（中位）</th><th>ON 断点后输入 token（中位）</th>
+</tr></thead><tbody>
+<tr>
+<td>native-invalid-args</td>
+<td class="num">273</td>
+<td class="num">453</td>
+<td class="num ">39.7%</td>
+<td class="num">100%</td>
+<td class="num">100%</td>
+<td class="num">100%</td>
+<td class="num">5</td>
+<td class="num">1120</td>
+<td class="num">1066</td>
+</tr>
+<tr>
+<td>native-invalid-json</td>
+<td class="num">942</td>
+<td class="num">642</td>
+<td class="num ">-46.7%</td>
+<td class="num">100%</td>
+<td class="num">100%</td>
+<td class="num">100%</td>
+<td class="num">0</td>
+<td class="num">0</td>
+<td class="num">275</td>
+</tr>
+</tbody></table>
+<h2>
+PTC（code）模式
+</h2>
+<table><thead><tr>
+<th>场景</th><th>ON 重试步输出 token（中位）</th><th>OFF 重试步输出 token（中位）</th>
+<th>token 节省 %</th><th>采用率</th><th>重试成功率 ON</th><th>重试成功率 OFF</th>
+<th>通知条数（中位）</th><th>通知字节（中位）</th><th>ON 断点后输入 token（中位）</th>
+</tr></thead><tbody>
+<tr>
+<td>ptc-program-error</td>
+<td class="num">406</td>
+<td class="num">178</td>
+<td class="num ">-128.1%</td>
+<td class="num">33%</td>
+<td class="num">100%</td>
+<td class="num">100%</td>
+<td class="num">0</td>
+<td class="num">0</td>
+<td class="num">237</td>
+</tr>
+</tbody></table>
+<h3>native-invalid-args — 每次运行明细</h3>
+<table class="runs"><thead><tr>
+<th>臂</th><th>重复</th><th>重试步输出 token</th><th>断点后输入 token</th>
+<th>采用</th><th>重试成功</th><th>收敛</th><th>通知条数</th><th>工具调用</th>
+</tr></thead><tbody>
+<tr>
+<td>ON</td>
+<td class="num">1</td>
+<td class="num">256</td>
+<td class="num">3704</td>
+<td>✅ 采用</td>
+<td>✅</td>
+<td>✅</td>
+<td class="num">10</td>
+<td>editPreviousToolCalling, editPreviousToolCalling, editPreviousToolCalling, deploy, editPreviousToolCalling, editPreviousToolCalling, editPreviousToolCalling, editPreviousToolCalling, editPreviousToolCalling, editPreviousToolCalling, editPreviousToolCalling</td>
+</tr>
+<tr>
+<td>ON</td>
+<td class="num">2</td>
+<td class="num">273</td>
+<td class="num">1066</td>
+<td>✅ 采用</td>
+<td>✅</td>
+<td>✅</td>
+<td class="num">5</td>
+<td>editPreviousToolCalling, editPreviousToolCalling, editPreviousToolCalling, editPreviousToolCalling, editPreviousToolCalling, editPreviousToolCalling</td>
+</tr>
+<tr>
+<td>ON</td>
+<td class="num">3</td>
+<td class="num">299</td>
+<td class="num">818</td>
+<td>✅ 采用</td>
+<td>✅</td>
+<td>✅</td>
+<td class="num">4</td>
+<td>editPreviousToolCalling, editPreviousToolCalling, editPreviousToolCalling, editPreviousToolCalling, editPreviousToolCalling</td>
+</tr>
+<tr>
+<td>OFF</td>
+<td class="num">1</td>
+<td class="num">453</td>
+<td class="num">1001</td>
+<td>—</td>
+<td>✅</td>
+<td>✅</td>
+<td class="num">0</td>
+<td>deploy, deploy</td>
+</tr>
+<tr>
+<td>OFF</td>
+<td class="num">2</td>
+<td class="num">496</td>
+<td class="num">171</td>
+<td>—</td>
+<td>✅</td>
+<td>✅</td>
+<td class="num">0</td>
+<td>deploy, deploy</td>
+</tr>
+<tr>
+<td>OFF</td>
+<td class="num">3</td>
+<td class="num">418</td>
+<td class="num">129</td>
+<td>—</td>
+<td>✅</td>
+<td>✅</td>
+<td class="num">0</td>
+<td>deploy, deploy</td>
+</tr>
+</tbody></table>
+<h3>native-invalid-json — 每次运行明细</h3>
+<table class="runs"><thead><tr>
+<th>臂</th><th>重复</th><th>重试步输出 token</th><th>断点后输入 token</th>
+<th>采用</th><th>重试成功</th><th>收敛</th><th>通知条数</th><th>工具调用</th>
+</tr></thead><tbody>
+<tr>
+<td>ON</td>
+<td class="num">1</td>
+<td class="num">942</td>
+<td class="num">1355</td>
+<td>✅ 采用</td>
+<td>✅</td>
+<td>✅</td>
+<td class="num">0</td>
+<td>editPreviousToolCalling</td>
+</tr>
+<tr>
+<td>ON</td>
+<td class="num">2</td>
+<td class="num">1014</td>
+<td class="num">275</td>
+<td>✅ 采用</td>
+<td>✅</td>
+<td>✅</td>
+<td class="num">0</td>
+<td>editPreviousToolCalling</td>
+</tr>
+<tr>
+<td>ON</td>
+<td class="num">3</td>
+<td class="num">357</td>
+<td class="num">258</td>
+<td>✅ 采用</td>
+<td>✅</td>
+<td>✅</td>
+<td class="num">0</td>
+<td>editPreviousToolCalling</td>
+</tr>
+<tr>
+<td>OFF</td>
+<td class="num">1</td>
+<td class="num">906</td>
+<td class="num">541</td>
+<td>—</td>
+<td>✅</td>
+<td>✅</td>
+<td class="num">0</td>
+<td>deploy</td>
+</tr>
+<tr>
+<td>OFF</td>
+<td class="num">2</td>
+<td class="num">642</td>
+<td class="num">142</td>
+<td>—</td>
+<td>✅</td>
+<td>✅</td>
+<td class="num">0</td>
+<td>deploy, deploy</td>
+</tr>
+<tr>
+<td>OFF</td>
+<td class="num">3</td>
+<td class="num">381</td>
+<td class="num">144</td>
+<td>—</td>
+<td>✅</td>
+<td>✅</td>
+<td class="num">0</td>
+<td>deploy</td>
+</tr>
+</tbody></table>
+<h3>ptc-program-error — 每次运行明细</h3>
+<table class="runs"><thead><tr>
+<th>臂</th><th>重复</th><th>重试步输出 token</th><th>断点后输入 token</th>
+<th>采用</th><th>重试成功</th><th>收敛</th><th>通知条数</th><th>工具调用</th>
+</tr></thead><tbody>
+<tr>
+<td>ON</td>
+<td class="num">1</td>
+<td class="num">665</td>
+<td class="num">2474</td>
+<td>—</td>
+<td>✅</td>
+<td>✅</td>
+<td class="num">1</td>
+<td>run_code, run_code</td>
+</tr>
+<tr>
+<td>ON</td>
+<td class="num">2</td>
+<td class="num">406</td>
+<td class="num">237</td>
+<td>✅ 采用</td>
+<td>✅</td>
+<td>✅</td>
+<td class="num">0</td>
+<td>run_code</td>
+</tr>
+<tr>
+<td>ON</td>
+<td class="num">3</td>
+<td class="num">356</td>
+<td class="num">179</td>
+<td>—</td>
+<td>✅</td>
+<td>✅</td>
+<td class="num">0</td>
+<td>run_code</td>
+</tr>
+<tr>
+<td>OFF</td>
+<td class="num">1</td>
+<td class="num">257</td>
+<td class="num">1782</td>
+<td>—</td>
+<td>✅</td>
+<td>✅</td>
+<td class="num">0</td>
+<td>run_code</td>
+</tr>
+<tr>
+<td>OFF</td>
+<td class="num">2</td>
+<td class="num">178</td>
+<td class="num">167</td>
+<td>—</td>
+<td>✅</td>
+<td>✅</td>
+<td class="num">0</td>
+<td>run_code</td>
+</tr>
+<tr>
+<td>OFF</td>
+<td class="num">3</td>
+<td class="num">115</td>
+<td class="num">232</td>
+<td>—</td>
+<td>✅</td>
+<td>✅</td>
+<td class="num">0</td>
+<td>run_code</td>
+</tr>
+</tbody></table>
+<footer>
+方法说明：每场景 × 臂（ON=挂载插件 / OFF=基线）× 3 次独立运行；断点快照为持久化的失败工具调用前缀（恢复式续跑），
+指标取自断点后的权威会话日志：重试步输出 token = 断点后第一条 assistant/message 的 usage.outputTokens（含推理 token，adapter 默认档）；
+采用 = native 出现 editPreviousToolCalling 调用 / PTC 后续 run_code 参数引用 checkpoint 路径；重试成功 = native 断点工具以合法输入重跑（行为级）/ PTC 按 plan §6 判据「断点后的 run_code 调用无 error」。
+原始逐条记录见 .artifacts/eval/results.jsonl。本报告由 pnpm eval:report 生成并持久化于仓库 reports/。
+</footer>
+</body>
+</html>

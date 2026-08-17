@@ -267,12 +267,20 @@ export async function runEvalScenario(options: EvalRunOptions): Promise<EvalRunS
     const postBreakInputTokens = postBreak
       .filter(event => event.type === 'assistant/message')
       .reduce((sum, event) => sum + (event.data.usage?.inputTokens ?? 0), 0)
-    // Behavioral retry success: the breakpoint tool re-ran with valid inputs
-    // (only post-break calls execute live — the recorded breakpoint never
-    // re-runs; the ON arm reaches deploy through the replay sub-dispatch).
+    // Retry success (plan §6 criteria): native — the breakpoint tool re-ran
+    // with valid inputs (only post-break calls execute live — the recorded
+    // breakpoint never re-runs; the ON arm reaches deploy through the replay
+    // sub-dispatch); PTC — the plan's own criterion, "the next run_code call
+    // completes without error" (the model may legitimately fix the program
+    // without reproducing the fixture's marker value).
+    const callNamesById = new Map(postBreak
+      .filter(event => event.type === 'tool/call')
+      .map(event => [event.data.callId, event.data.name ?? '']))
     const retrySuccess = fixture.mode === 'native'
       ? options.deployCalls?.some(call => call.kind === 'valid') === true
-      : options.boomCalls?.some(call => call.value === 'v2-good') === true
+      : postBreak.some(event => event.type === 'tool/result'
+        && event.data.message?.content?.some(block =>
+          callNamesById.get(block.toolCallId) === 'run_code' && block.isError !== true) === true)
     const adopted = fixture.mode === 'native'
       ? toolCalls.includes('editPreviousToolCalling')
       : toolCallArguments.some(argumentsText =>
