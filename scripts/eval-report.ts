@@ -146,6 +146,20 @@ function readRunSession(record: RunRecord): SessionLine[] | undefined {
   }
 }
 
+/** Post-break assistant messages (the prefix occupies turn 1; the followup starts turn 2). */
+function postBreakMessages(record: RunRecord): SessionLine[] {
+  const lines = readRunSession(record)
+  if (lines === undefined) return []
+  return lines.filter(line =>
+    line.type === 'assistant/message' && (line.data as { turn?: number }).turn === 2)
+}
+
+/** Total output tokens across every post-break model step (the full cost). */
+function totalPostBreakOutput(record: RunRecord): number {
+  return postBreakMessages(record)
+    .reduce((sum, line) => sum + (line.data?.usage?.outputTokens ?? 0), 0)
+}
+
 /** Content tokens of one run's retry step (output minus reasoning). */
 function contentTokensForRecord(record: RunRecord): number {
   const lines = readRunSession(record)
@@ -172,6 +186,10 @@ interface ScenarioRow {
   noticeBytes: number
   onInput: number
   offInput: number
+  onTotalOutput: number
+  offTotalOutput: number
+  onSteps: number
+  offSteps: number
   runs: RunRecord[]
 }
 
@@ -205,6 +223,10 @@ function buildScenarioRows(records: RunRecord[]): ScenarioRow[] {
       noticeBytes: median(on.map(run => run.summary.noticeBytes)),
       onInput: median(on.map(run => run.summary.postBreakInputTokens)),
       offInput: median(off.map(run => run.summary.postBreakInputTokens)),
+      onTotalOutput: median(on.map(totalPostBreakOutput)),
+      offTotalOutput: median(off.map(totalPostBreakOutput)),
+      onSteps: median(on.map(run => postBreakMessages(run).length)),
+      offSteps: median(off.map(run => postBreakMessages(run).length)),
       runs,
     }
   })
@@ -251,12 +273,16 @@ function scenarioTable(title: string, rows: ScenarioRow[]): string {
   const body = rows.map((row) => [
     '<tr class="border-t transition-colors hover:bg-muted/50">',
     `<td class="p-3 font-medium">${escapeHtml(row.scenario)}</td>`,
+    `<td class="p-3 text-right tabular-nums">${row.onSteps}</td>`,
+    `<td class="p-3 text-right tabular-nums">${row.offSteps}</td>`,
     `<td class="p-3 text-right tabular-nums">${row.onTokens}</td>`,
     `<td class="p-3 text-right tabular-nums">${row.offTokens}</td>`,
     `<td class="p-3 text-right">${savingsBadge(row.savingsPercent)}</td>`,
     `<td class="p-3 text-right tabular-nums">${row.onContentTokens}</td>`,
     `<td class="p-3 text-right tabular-nums">${row.offContentTokens}</td>`,
     `<td class="p-3 text-right">${savingsBadge(row.contentSavingsPercent)}</td>`,
+    `<td class="p-3 text-right tabular-nums">${row.onTotalOutput}</td>`,
+    `<td class="p-3 text-right tabular-nums">${row.offTotalOutput}</td>`,
     `<td class="p-3 text-right tabular-nums">${percent(row.adoptionRate)}</td>`,
     `<td class="p-3 text-right tabular-nums">${percent(row.onRetryRate)}</td>`,
     `<td class="p-3 text-right tabular-nums">${percent(row.offRetryRate)}</td>`,
@@ -271,7 +297,7 @@ function scenarioTable(title: string, rows: ScenarioRow[]): string {
     '<div class="overflow-x-auto">',
     '<table class="w-full caption-bottom text-sm">',
     '<thead class="bg-muted/50 [&_th]:h-10 [&_th]:px-3 [&_th]:text-left [&_th]:align-middle [&_th]:font-medium [&_th]:text-muted-foreground [&_th]:whitespace-nowrap">',
-    '<tr><th>场景</th><th class="text-right">ON 输出 token<br><span class="font-normal">含推理</span></th><th class="text-right">OFF 输出 token<br><span class="font-normal">含推理</span></th><th class="text-right">节省 %<br><span class="font-normal">含推理</span></th><th class="text-right">ON 内容 token</th><th class="text-right">OFF 内容 token</th><th class="text-right">内容节省 %</th><th class="text-right">采用率</th><th class="text-right">重试成功 ON</th><th class="text-right">重试成功 OFF</th><th class="text-right">通知条数</th><th class="text-right">通知字节</th></tr>',
+    '<tr><th>场景</th><th class="text-right">ON 步数</th><th class="text-right">OFF 步数</th><th class="text-right">ON 第一步输出<br><span class="font-normal">含推理</span></th><th class="text-right">OFF 第一步输出<br><span class="font-normal">含推理</span></th><th class="text-right">第一步节省 %</th><th class="text-right">ON 内容 token</th><th class="text-right">OFF 内容 token</th><th class="text-right">内容节省 %</th><th class="text-right">ON 全程输出</th><th class="text-right">OFF 全程输出</th><th class="text-right">采用率</th><th class="text-right">重试成功 ON</th><th class="text-right">重试成功 OFF</th><th class="text-right">通知条数</th><th class="text-right">通知字节</th></tr>',
     '</thead>',
     `<tbody>${body}</tbody>`,
     '</table>',
@@ -341,8 +367,10 @@ function runTables(rows: ScenarioRow[]): string {
         '<tr class="border-t transition-colors hover:bg-muted/50 align-top">',
         `<td class="p-3"><span class="inline-flex items-center rounded-md border border-border bg-muted px-2 py-0.5 text-xs font-medium">${run.arm === 'on' ? 'ON' : 'OFF'}</span></td>`,
         `<td class="p-3 text-right tabular-nums">${run.repetition}</td>`,
+        `<td class="p-3 text-right tabular-nums">${postBreakMessages(run).length}</td>`,
         `<td class="p-3 text-right tabular-nums">${s.retryStepOutputTokens}</td>`,
         `<td class="p-3 text-right tabular-nums text-muted-foreground">${contentTokensForRecord(run)}</td>`,
+        `<td class="p-3 text-right tabular-nums">${totalPostBreakOutput(run)}</td>`,
         `<td class="p-3 text-right tabular-nums">${s.postBreakInputTokens}</td>`,
         `<td class="p-3">${s.adopted ? '✅' : '<span class="text-muted-foreground">—</span>'}</td>`,
         `<td class="p-3">${s.retrySuccess ? '✅' : '❌'}</td>`,
@@ -368,7 +396,7 @@ function runTables(rows: ScenarioRow[]): string {
       '<div class="overflow-x-auto">',
       '<table class="w-full caption-bottom text-sm">',
       '<thead class="bg-muted/50 [&_th]:h-10 [&_th]:px-3 [&_th]:text-left [&_th]:align-middle [&_th]:font-medium [&_th]:text-muted-foreground [&_th]:whitespace-nowrap">',
-      '<tr><th>臂</th><th class="text-right">重复</th><th class="text-right">输出 token<br><span class="font-normal">含推理</span></th><th class="text-right">内容 token</th><th class="text-right">断点后输入 token</th><th>采用</th><th>重试成功</th><th>收敛</th><th class="text-right">通知条数</th><th>工具调用</th><th>详情</th></tr>',
+      '<tr><th>臂</th><th class="text-right">重复</th><th class="text-right">断点后步数</th><th class="text-right">第一步输出<br><span class="font-normal">含推理</span></th><th class="text-right">第一步内容 token</th><th class="text-right">全程输出 token<br><span class="font-normal">含推理</span></th><th class="text-right">断点后输入 token</th><th>采用</th><th>重试成功</th><th>收敛</th><th class="text-right">通知条数</th><th>工具调用</th><th>详情</th></tr>',
       '</thead>',
       `<tbody>${runRows}</tbody>`,
       '</table>',
@@ -474,10 +502,11 @@ addEventListener('DOMContentLoaded', () => {
 <section class="space-y-3">
   <h2 class="text-lg font-semibold tracking-tight">总体（全部场景合并，中位数）</h2>
   <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
-    ${statCard('ON 内容 token', String(onContent), `${onTokens} 含推理`)}
-    ${statCard('OFF 内容 token', String(offContent), `${offTokens} 含推理`)}
+    ${statCard('ON 内容 token', String(onContent), `${onTokens} 第一步含推理`)}
+    ${statCard('OFF 内容 token', String(offContent), `${offTokens} 第一步含推理`)}
     ${statCard('内容 token 节省', `${contentSavings}%`, `${savings}% 含推理`, contentSavings >= 40 ? 'positive' : contentSavings < 0 ? 'negative' : 'neutral')}
     ${statCard('采用率', percent(adoption), `${percent(rate(onRows.map(run => run.summary.retrySuccess)))} 重试成功`, adoption > 0.5 ? 'positive' : 'neutral')}
+    ${statCard('全程输出 token（中位）', String(median(onRows.map(totalPostBreakOutput))), `OFF ${median(offRows.map(totalPostBreakOutput))}`, median(onRows.map(totalPostBreakOutput)) <= median(offRows.map(totalPostBreakOutput)) ? 'positive' : 'negative')}
   </div>
 </section>
 
@@ -486,7 +515,7 @@ ${tabPanels(rows)}
 <section class="space-y-6">${runTables(rows)}</section>
 
 <footer class="space-y-2 border-t pt-6 text-xs text-muted-foreground">
-<p>方法说明：每场景 × 臂（ON=挂载插件 / OFF=基线）× ${batch.repeats} 次独立运行；断点快照为持久化的失败工具调用前缀（恢复式续跑）。指标取自断点后的权威会话日志：重试步输出 token = 断点后第一条 assistant/message 的 usage.outputTokens（含推理 token）；内容 token = 输出 token − reasoningTokens，衡量模型实际产出的编辑/重生成文本；采用 = native 出现 editPreviousToolCalling / PTC 后续 run_code 参数引用 checkpoint 路径；重试成功 = native 断点工具以合法输入重跑（行为级）/ PTC 按 plan §6 判据「断点后的 run_code 调用无 error」。</p>
+<p>方法说明：每场景 × 臂（ON=挂载插件 / OFF=基线）× ${batch.repeats} 次独立运行；断点快照为持久化的失败工具调用前缀（恢复式续跑）。指标取自断点后的权威会话日志：重试步输出 token = 断点后第一条 assistant/message 的 usage.outputTokens（含推理 token）；内容 token = 输出 token − reasoningTokens，衡量模型实际产出的编辑/重生成文本；「第一步输出」只取断点后第一条 assistant/message（plan §6 指标），「全程输出」合计断点后全部模型步（含推理），两列并看可区分「一轮想得更深」与「多轮重试」；采用 = native 出现 editPreviousToolCalling / PTC 后续 run_code 参数引用 checkpoint 路径；重试成功 = native 断点工具以合法输入重跑（行为级）/ PTC 按 plan §6 判据「断点后的 run_code 调用无 error」。</p>
 <p>每次运行的完整会话（全部工具调用的原始参数与结果）已落盘于 .artifacts/eval/runs/，可在上表「完整调用详情」中点击展开；逐条记录见 .artifacts/eval/results.jsonl。本报告由 pnpm eval:report 生成并持久化于仓库 reports/。</p>
 </footer>
 
