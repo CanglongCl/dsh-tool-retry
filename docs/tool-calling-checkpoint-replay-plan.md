@@ -280,7 +280,7 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工�
 ### 阶段五：评测 ✅（评测系统已实现；真实模型数据运行需 provider key）
 
 - 评测方案见 §6（真模型评测；机制验证已并入 §5 阶段四）。
-- **实现落点**：断点快照语料 `tests/eval-fixtures/<scenario>/session-prefix.jsonl`（可恢复的完整前缀，与 §5.5 语料同源生成）；恢复驱动 `tests/support/real-eval-runner.ts`（published session-persistence-jsonl 恢复 + ON 臂预置 checkpoint 存储/观察）；keyless 恢复机制冒烟 `tests/eval-resume.spec.ts`（脚本化 mock 验证恢复 + 指标管线，进 commit 门禁）；真实模型驱动 `pnpm eval:real`（每场景 × 臂 × N≥3 次、指标：重试步输出 token/采用率/重试成功率/通知条数与字节、按 native/PTC 分表聚合、JSON 落 `.artifacts/eval/`）。
+- **实现落点**：断点快照语料 `tests/eval-fixtures/<scenario>/session-prefix.jsonl`（可恢复的完整前缀，与 §5.5 语料同源生成）；恢复驱动 `tests/support/real-eval-runner.ts`（published session-persistence-jsonl 恢复 + ON 臂预置 checkpoint 存储/观察）；keyless 恢复机制冒烟 `tests/eval-resume.spec.ts`（脚本化 mock 验证恢复 + 指标管线，进 commit 门禁）；真实模型驱动 `pnpm eval:real`（每场景 × 臂 × N≥3 次、指标：重试步输出 token/采用率/重试成功率/通知条数与字节、按 native/PTC 分表聚合、逐 run 追加 `.artifacts/eval/results.jsonl`）；key 走分层凭据链（进程环境 → 仓库 `.env` → `~/.dsh/.env`，绝不打印/入库）；`pnpm eval:report` 渲染自包含 HTML 报告并**持久化到仓库 `reports/NNN-…html`**（顺序编号、git head/模型/依赖版本/逐 run token 元数据、`reports/index.html` 目录自动刷新）。
 - **验收**：真模型评测数据（token 节省、重试成功率、采用率、开销）——数据运行需要 `DEEPSEEK_API_KEY`（无 key 自动跳过；评测系统本体已由 keyless 冒烟与门禁全量验证）。结论支持/否定目标（§1）。
 
 ---
