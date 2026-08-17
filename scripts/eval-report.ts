@@ -309,15 +309,17 @@ function abDiffTable(row: ScenarioRow): string {
   const headlineTone = row.contentSavingsPercent >= 10 ? 'positive' : row.contentSavingsPercent <= -10 ? 'negative' : 'neutral'
   const verdict = row.contentSavingsPercent >= 10 ? '特性优势' : row.contentSavingsPercent <= -10 ? '特性劣势' : '中性'
   const pct1 = (value: number): string => `${value > 0 ? '+' : ''}${Math.round(value * 10) / 10}%`
+  // Δ = ON − OFF: a NEGATIVE delta means ON used less (the savings), so the
+  // tone flips — negative is green, positive is red.
   const tokenDiff = (on: number, off: number): { text: string; tone: 'positive' | 'negative' | 'neutral' } => {
-    const diff = off - on
+    const diff = on - off
     const pct = off > 0 ? diff / off * 100 : 0
-    return { text: `${diff > 0 ? '+' : ''}${diff} (${pct1(pct)})`, tone: diff > 0 ? 'positive' : diff < 0 ? 'negative' : 'neutral' }
+    return { text: `${diff > 0 ? '+' : ''}${diff} (${pct1(pct)})`, tone: diff < 0 ? 'positive' : diff > 0 ? 'negative' : 'neutral' }
   }
   const stepDiff = (on: number, off: number): { text: string; tone: 'positive' | 'negative' | 'neutral' } => {
-    const diff = off - on
+    const diff = on - off
     const ratio = off > 0 ? Math.round(on / off * 10) / 10 : 0
-    return { text: `${diff > 0 ? '+' : ''}${diff} (${ratio}×)`, tone: diff > 0 ? 'positive' : diff < 0 ? 'negative' : 'neutral' }
+    return { text: `${diff > 0 ? '+' : ''}${diff} (${ratio}×)`, tone: diff < 0 ? 'positive' : diff > 0 ? 'negative' : 'neutral' }
   }
   const ppDiff = (on: number, off: number): { text: string; tone: 'positive' | 'negative' | 'neutral' } => {
     const diff = on - off
@@ -338,8 +340,8 @@ function abDiffTable(row: ScenarioRow): string {
     { name: '断点后输入 token', value: run => run.summary.postBreakInputTokens, format: number, diff: tokenDiff },
     { name: '重试成功率', value: run => run.summary.retrySuccess ? 100 : 0, format: value => percent(value / 100), diff: ppDiff },
     { name: '通知条数', value: run => run.summary.noticeCount, format: number, diff: (on, off) => {
-      const diff = off - on
-      return { text: diff === 0 ? '0' : `−${Math.abs(diff)}`, tone: diff < 0 ? 'negative' : 'neutral' }
+      const diff = on - off
+      return { text: diff === 0 ? '0' : `+${diff}`, tone: diff > 0 ? 'negative' : 'neutral' }
     } },
   ]
   const runValue = (spec: MetricSpec, arm: 'on' | 'off', rep: number): number => {
