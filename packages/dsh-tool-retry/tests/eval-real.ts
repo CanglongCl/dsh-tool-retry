@@ -284,7 +284,16 @@ const workers = Array.from({ length: CONCURRENCY }, async () => {
     if (queued === undefined) return
     const { name, arm, rep } = queued
     const runDir = join(OUT_DIR, 'runs', stamp, name, arm, `r${rep}`)
-    const { record } = await spawnRun(queued, runDir)
+    // One automatic retry for transient failures (provider TRANSPORT blips,
+    // child crashes) — such runs are not observations of model behavior.
+    let attempt = 0
+    let record: RunRecord
+    while (true) {
+      attempt += 1
+      ;({ record } = await spawnRun(queued, runDir))
+      if (record.summary.status !== 'error' || attempt >= 2) break
+      console.log(`eval:real ${name} arm=${arm} repeat=${rep}/${REPEATS} attempt ${attempt} errored — retrying once`)
+    }
     records.push(record)
     appendFileSync(join(OUT_DIR, 'results.jsonl'), `${JSON.stringify(record)}\n`)
   }
