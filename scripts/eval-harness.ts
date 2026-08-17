@@ -46,6 +46,7 @@ import {
   buildSummary,
   collectArtifacts,
   loadScenario,
+  revisionsFor,
   seedCheckpoints,
   seedSession,
   spawnRun,
@@ -64,6 +65,10 @@ function flagValue(name: string, envDefault: string): string {
 }
 const REPEATS = Number(flagValue('repeat', process.env.DSH_EVAL_REPEATS ?? '1'))
 const CONCURRENCY = Number(flagValue('concurrency', process.env.DSH_EVAL_CONCURRENCY ?? '6'))
+// Reasoning effort override: the REAL sessions used max, but the eval runs
+// at high (the real value stays recorded per scenario as the fidelity
+// reference); DSH_EVAL_REASONING overrides.
+const REASONING = (process.env.DSH_EVAL_REASONING ?? 'high') as 'off' | 'high' | 'max'
 // Stop-at cuts successful retries in a few steps; the deadline only guards
 // wandering/failed retries (a few slow max-reasoning steps).
 const DEADLINE_MS = Number(process.env.DSH_EVAL_TIMEOUT_MS ?? 4 * 60 * 1000)
@@ -124,11 +129,29 @@ interface Queued {
   arm: 'on' | 'off'
   rep: number
 }
-const queue: Queued[] = scenarios.flatMap(name =>
+const baseQueue: Queued[] = scenarios.flatMap(name =>
   MODES.filter(mode => modeFilter === '' || mode === modeFilter).flatMap(mode =>
     ARMS.filter(arm => armFilter === '' || arm === armFilter).flatMap(arm =>
       Array.from({ length: REPEATS }, (_, index) => ({ name, mode, arm, rep: index + 1 })))))
-console.log(`eval:real ${queue.length} run(s) queued, ${CONCURRENCY} concurrent, harness ${process.env.DSH_HARNESS}`)
+// web-review batch parity: a re-run skips records whose immutable experiment
+// identity already completed (results.jsonl accumulates across batches).
+const finishedExperiments = new Set<string>()
+try {
+  for (const line of readFileSync(join(OUT_DIR, 'results.jsonl'), 'utf8').split('\n')) {
+    if (line.trim() === '') continue
+    const record = JSON.parse(line) as { summary?: { status?: string; revisions?: { experiment?: string } } }
+    if (record.summary?.status === 'completed' || record.summary?.status === 'cutoff') {
+      const id = record.summary.revisions?.experiment
+      if (id !== undefined) finishedExperiments.add(id)
+    }
+  }
+} catch { /* no prior results */ }
+const queue = baseQueue.filter((queued) => {
+  const loaded = loadedByName.get(queued.name)!
+  const id = revisionsFor(loaded, queued.mode, queued.arm, REASONING, queued.rep, repoHead()).experiment
+  return !finishedExperiments.has(id)
+})
+console.log(`eval:real ${queue.length} run(s) queued (${baseQueue.length - queue.length} already finished), ${CONCURRENCY} concurrent, harness ${process.env.DSH_HARNESS}`)
 
 interface RunRecord {
   record: Record<string, unknown>
@@ -139,7 +162,7 @@ function runOne(queued: Queued): Promise<RunRecord> {
   const { name, mode, arm, rep } = queued
   const loaded = loadedByName.get(name)!
   const scenario = loaded.scenario
-  const model = scenario.model ?? { provider: 'deepseek-official', model: 'deepseek-v4-flash', reasoningEffort: 'high' }
+  const model = scenario.model ?? { provider: 'deepseek-official', model: 'deepseek-v4-flash', reasoningEffort: REASONING }
   const sessionId = `${name}-${mode}-${arm}-r${rep}`
   const startedAt = new Date().toISOString()
   const liveRoot = mkdtempSync(join(tmpdir(), 'dsh-tool-retry-eval-run-'))
@@ -163,7 +186,7 @@ function runOne(queued: Queued): Promise<RunRecord> {
     : { kind: 'user' as const, text: scenario.continuation }
   const overlayPath = writeOverlay(liveRoot, {
     sessionId, arm, mode, provider: model.provider, model: model.model,
-    reasoningEffort: model.reasoningEffort, wake,
+    reasoningEffort: REASONING, wake,
     grader: { kind: scenario.kind, mode, checks: scenario.successChecks ?? [] },
   }, sessionsRoot)
   const bin = resolveHarnessCli()
@@ -177,14 +200,14 @@ function runOne(queued: Queued): Promise<RunRecord> {
       ? readFileSync(join(runDir, 'session.jsonl'), 'utf8').split('\n').filter(line => line.trim() !== '')
         .map(line => JSON.parse(line) as never)
       : []
-    const summary = buildSummary(loaded, mode, arm, sessionId, events, workspaceDir, status as 'completed' | 'timeout' | 'error', { repetition: rep, repoHead: repoHead() })
+    const summary = buildSummary(loaded, mode, arm, sessionId, events, workspaceDir, status as 'completed' | 'timeout' | 'error', { repetition: rep, repoHead: repoHead() }, REASONING)
     if (outcome.exitCode !== 0 && outcome.exitCode !== null) {
       writeFileSync(join(runDir, 'stdout.txt'), outcome.stdout)
       writeFileSync(join(runDir, 'stderr.txt'), outcome.stderr)
     }
     const record = {
       stamp, scenario: name, arm, mode, repetition: rep,
-      model: model.model, provider: model.provider, reasoning: model.reasoningEffort,
+      model: model.model, provider: model.provider, reasoning: REASONING,
       runDir: join('runs', stamp, name, mode, arm, `r${rep}`),
       startedAt, finishedAt: new Date().toISOString(), summary,
     }
@@ -192,10 +215,10 @@ function runOne(queued: Queued): Promise<RunRecord> {
     rmSync(liveRoot, { recursive: true, force: true })
     return { record, status }
   }).catch((error: unknown): RunRecord => {
-    const summary = buildSummary(loaded, mode, arm, sessionId, [], workspaceDir, 'error', { repetition: rep, repoHead: repoHead() })
+    const summary = buildSummary(loaded, mode, arm, sessionId, [], workspaceDir, 'error', { repetition: rep, repoHead: repoHead() }, REASONING)
     const record = {
       stamp, scenario: name, arm, mode, repetition: rep,
-      model: model.model, provider: model.provider, reasoning: model.reasoningEffort,
+      model: model.model, provider: model.provider, reasoning: REASONING,
       runDir: join('runs', stamp, name, mode, arm, `r${rep}`),
       startedAt, finishedAt: new Date().toISOString(), summary,
     }

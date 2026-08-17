@@ -346,6 +346,42 @@ export function computeRetrySuccess(scenario: ScenarioMeta, mode: 'native' | 'co
   }
 }
 
+/** The immutable experiment identity (the web-review experimentId pattern):
+ * the same (scenario, arm, mode, model, reasoning, repetition, repoHead,
+ * execution) hashes identically across launches, so a batch re-run can skip
+ * already-completed records. */
+export function revisionsFor(
+  loaded: LoadedScenario,
+  mode: 'native' | 'code',
+  arm: 'on' | 'off',
+  reasoning: string,
+  repetition: number,
+  repoHead: string,
+): { scenario: string; grader: string; execution: string; experiment: string } {
+  const revisionInput = {
+    scenario: readFileSync(join(EVAL_FIXTURES, loaded.scenario.name, 'scenario.json'), 'utf8'),
+    grader: JSON.stringify({ kind: loaded.scenario.kind, mode, checks: loaded.scenario.successChecks ?? [] }),
+    execution: readFileSync(fileURLToPath(import.meta.url), 'utf8'),
+  }
+  const sha = (value: string): string => createHash('sha256').update(value).digest('hex')
+  const experiment = sha(JSON.stringify({
+    scenario: sha(revisionInput.scenario),
+    arm,
+    mode,
+    model: loaded.scenario.model?.model ?? 'deepseek-v4-flash',
+    reasoning,
+    repetition,
+    repoHead,
+    execution: sha(revisionInput.execution),
+  }))
+  return {
+    scenario: sha(revisionInput.scenario),
+    grader: sha(revisionInput.grader),
+    execution: sha(revisionInput.execution),
+    experiment,
+  }
+}
+
 /** Build the post-run summary record (the report's RunRecord.summary shape). */
 export function buildSummary(
   loaded: LoadedScenario,
@@ -356,6 +392,7 @@ export function buildSummary(
   workspaceDir: string,
   runStatus: 'completed' | 'timeout' | 'error',
   revision: { repetition: number; repoHead: string },
+  reasoning: string,
 ): Record<string, unknown> {
   const postBreak = events.slice(loaded.seededRows)
   const firstAssistant = postBreak.find(event => event.type === 'assistant/message')
@@ -383,27 +420,7 @@ export function buildSummary(
   const notices = postBreak.filter(event =>
     event.type === 'user/message' && event.data.source?.plugin === '@canglongcl/dsh-tool-retry')
   const lastTurnEnd = [...events].reverse().find(event => event.type === 'turn/end')
-  const revisionInput = {
-    scenario: readFileSync(join(EVAL_FIXTURES, loaded.scenario.name, 'scenario.json'), 'utf8'),
-    grader: JSON.stringify({ kind: loaded.scenario.kind, mode, checks: loaded.scenario.successChecks ?? [] }),
-    execution: readFileSync(fileURLToPath(import.meta.url), 'utf8'),
-  }
-  const sha = (value: string): string => createHash('sha256').update(value).digest('hex')
-  const revisions = {
-    scenario: sha(revisionInput.scenario),
-    grader: sha(revisionInput.grader),
-    execution: sha(revisionInput.execution),
-    experiment: sha(JSON.stringify({
-      scenario: sha(revisionInput.scenario),
-      arm,
-      mode,
-      model: loaded.scenario.model?.model ?? 'deepseek-v4-flash',
-      reasoning: loaded.scenario.model?.reasoningEffort ?? 'high',
-      repetition: revision.repetition,
-      repoHead: revision.repoHead,
-      execution: sha(revisionInput.execution),
-    })),
-  }
+  const revisions = revisionsFor(loaded, mode, arm, reasoning, revision.repetition, revision.repoHead)
   return {
     scenario: loaded.scenario.name,
     arm,
