@@ -89,6 +89,8 @@ export interface EvalRunOptions {
   runDir?: string
   /** Repetition + repo head for the immutable experiment identity. */
   revision?: { repetition: number; repoHead: string }
+  /** Unique per-run session id suffix (concurrent same-scenario runs). */
+  sessionIdSuffix?: string
   /** Scripted adapter for the keyless smoke; absent = real provider. */
   adapter?: LlmAdapter
   /** Hook logs for the smoke's behavioral assertions. */
@@ -331,7 +333,7 @@ function processStats(events: RunRow[], summary: EvalRunSummary): Record<string,
  */
 export async function runEvalScenario(options: EvalRunOptions): Promise<EvalRunSummary> {
   const fixture = options.fixture
-  const sessionId = fixture.header.id
+  const sessionId = `${fixture.header.id}${options.sessionIdSuffix ?? ''}`
   const checkpointDir = join(CHECKPOINT_ROOT, sessionId)
   rmSync(checkpointDir, { recursive: true, force: true })
   const root = mkdtempSync(join(tmpdir(), 'dsh-tool-retry-eval-'))

@@ -16,7 +16,8 @@
  *      DSH_EVAL_MODEL (default deepseek-v4-flash),
  *      DSH_EVAL_REASONING (default high; off|high|max),
  *      DSH_EVAL_STOP_AT (default retry-success; idle = full convergence),
- *      DSH_EVAL_REPEATS (default 3),
+ *      DSH_EVAL_REPEATS (default 1; also --repeat N),
+ *      DSH_EVAL_CONCURRENCY (default 4; also --concurrency N),
  *      DSH_EVAL_TIMEOUT_MS (per-arm deadline, default 15 min).
  */
 
@@ -35,12 +36,20 @@ if (!['off', 'high', 'max'].includes(REASONING)) {
   console.error(`eval:real — DSH_EVAL_REASONING must be off|high|max, got ${JSON.stringify(REASONING)}`)
   process.exit(1)
 }
+function flagValue(name: string, envDefault: string): string {
+  const argv = process.argv.slice(2)
+  const index = argv.indexOf(`--${name}`)
+  return index === -1 || argv[index + 1] === undefined ? envDefault : argv[index + 1]!
+}
 const STOP_AT = (process.env.DSH_EVAL_STOP_AT ?? 'retry-success')
 if (STOP_AT !== 'idle' && STOP_AT !== 'retry-success') {
   console.error(`eval:real — DSH_EVAL_STOP_AT must be idle|retry-success, got ${JSON.stringify(STOP_AT)}`)
   process.exit(1)
 }
-const REPEATS = Math.max(1, Number(process.env.DSH_EVAL_REPEATS ?? 3))
+// web-review parity: runs are configurable, 1 repeat per scenario by default,
+// and the queue drains over a bounded worker pool (DSH_EVAL_CONCURRENCY).
+const REPEATS = Math.max(1, Number(flagValue('repeat', process.env.DSH_EVAL_REPEATS ?? '1')))
+const CONCURRENCY = Math.max(1, Number(flagValue('concurrency', process.env.DSH_EVAL_CONCURRENCY ?? '4')))
 const DEADLINE_MS = Number(process.env.DSH_EVAL_TIMEOUT_MS ?? 15 * 60 * 1000)
 
 // Provider-key gate over the layered credential chain (nothing is printed).
@@ -141,32 +150,55 @@ const batchStarted = new Date().toISOString()
 const records: RunRecord[] = []
 const reports: ScenarioReport[] = []
 
+// One queued unit of work: a scenario × arm × repetition triple.
+interface Queued {
+  name: string
+  arm: 'on' | 'off'
+  rep: number
+}
+const queue: Queued[] = scenarios.flatMap(name =>
+  (['on', 'off'] as const).flatMap(arm =>
+    Array.from({ length: REPEATS }, (_, index) => ({ name, arm, rep: index + 1 }))))
+console.log(`eval:real ${queue.length} run(s) queued, ${CONCURRENCY} concurrent`)
+
+// Bounded worker pool over a shared cursor (the dsh-web-review batch
+// pattern): each worker claims the next unit until the queue drains. Every
+// run owns an independent temp root, a suffixed session id, and its own
+// checkpoint dir, so same-scenario runs execute safely in parallel.
+let cursor = 0
+const workers = Array.from({ length: CONCURRENCY }, async () => {
+  while (true) {
+    const index = cursor
+    cursor += 1
+    const queued = queue[index]
+    if (queued === undefined) return
+    const { name, arm, rep } = queued
+    const fixture = loadEvalFixture(join(EVAL_FIXTURES, name))
+    const startedAt = new Date().toISOString()
+    const runDir = join(OUT_DIR, 'runs', stamp, name, arm, `r${rep}`)
+    const summary = await runEvalScenario({
+      fixture, arm, model: MODEL, reasoningEffort: REASONING, deadlineMs: DEADLINE_MS,
+      stopAt: STOP_AT, deployCalls: [], boomCalls: [], runDir,
+      revision: { repetition: rep, repoHead: repoHead() },
+      sessionIdSuffix: `-${arm}-r${rep}`,
+    })
+    const record: RunRecord = {
+      stamp, scenario: name, arm, mode: fixture.mode, repetition: rep, model: MODEL, provider: 'deepseek-official',
+      reasoning: REASONING, runDir: join('runs', stamp, name, arm, `r${rep}`),
+      startedAt, finishedAt: new Date().toISOString(), summary,
+    }
+    records.push(record)
+    writeFileSync(join(runDir, 'record.json'), `${JSON.stringify(record, null, 2)}\n`)
+    appendFileSync(join(OUT_DIR, 'results.jsonl'), `${JSON.stringify(record)}\n`)
+    console.log(`eval:real ${name} arm=${arm} repeat=${rep}/${REPEATS} done (${summary.status})`)
+  }
+})
+await Promise.all(workers)
+
 for (const name of scenarios) {
   const fixture = loadEvalFixture(join(EVAL_FIXTURES, name))
-  const on: EvalRunSummary[] = []
-  const off: EvalRunSummary[] = []
-  for (const arm of ['on', 'off'] as const) {
-    for (let rep = 1; rep <= REPEATS; rep += 1) {
-      console.log(`eval:real ${name} arm=${arm} repeat=${rep}/${REPEATS} ...`)
-      const startedAt = new Date().toISOString()
-      const runDir = join(OUT_DIR, 'runs', stamp, name, arm, `r${rep}`)
-      const summary = await runEvalScenario({
-        fixture, arm, model: MODEL, reasoningEffort: REASONING, deadlineMs: DEADLINE_MS,
-        stopAt: STOP_AT, deployCalls: [], boomCalls: [], runDir,
-        revision: { repetition: rep, repoHead: repoHead() },
-      })
-      if (arm === 'on') on.push(summary)
-      else off.push(summary)
-      const record: RunRecord = {
-        stamp, scenario: name, arm, mode: fixture.mode, repetition: rep, model: MODEL, provider: 'deepseek-official',
-        reasoning: REASONING, runDir: join('runs', stamp, name, arm, `r${rep}`),
-        startedAt, finishedAt: new Date().toISOString(), summary,
-      }
-      records.push(record)
-      // The per-run evidence next to the full session log.
-      writeFileSync(join(runDir, 'record.json'), `${JSON.stringify(record, null, 2)}\n`)
-    }
-  }
+  const on = records.filter(record => record.scenario === name && record.arm === 'on').map(record => record.summary)
+  const off = records.filter(record => record.scenario === name && record.arm === 'off').map(record => record.summary)
   const median = (values: number[]): number => {
     const sorted = [...values].sort((a, b) => a - b)
     return sorted[Math.floor(sorted.length / 2)] ?? 0
@@ -192,11 +224,9 @@ for (const name of scenarios) {
   })
 }
 
-// Durable inputs for the report generator: one JSONL line per run + the batch
-// identity with the metadata the HTML report records.
-for (const record of records) {
-  appendFileSync(join(OUT_DIR, 'results.jsonl'), `${JSON.stringify(record)}\n`)
-}
+// Durable inputs for the report generator: the batch identity with the
+// metadata the HTML report records (per-run JSONL lines were appended live
+// by the workers).
 const batch: BatchMeta = {
   stamp,
   model: MODEL,
