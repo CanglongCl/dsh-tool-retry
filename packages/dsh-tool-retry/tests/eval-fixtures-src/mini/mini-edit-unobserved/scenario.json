@@ -1,0 +1,21 @@
+{
+  "name": "mini-edit-unobserved",
+  "mode": "native",
+  "kind": "fs",
+  "fresh": true,
+  "targetTool": false,
+  "task": "不要先读取 README.md，直接用 edit 工具把「这是一个演示项目。」改成「这是一个评测演示项目。」，改完汇报结果。",
+  "title": "最小场景：未读先改（真实 FS_NOT_OBSERVED，参考 real-edit-unobserved）",
+  "description": {
+    "input": "任务要求不读文件直接 edit，观察策略（fs-observation-policy）必然拒绝为 FS_NOT_OBSERVED。失败发生在本次运行内。",
+    "expected": "先读后改成功（README.md 包含「评测演示项目」）。"
+  },
+  "blocks": [],
+  "continuation": "",
+  "workspaceFiles": [
+    { "path": "README.md", "content": "# demo\n\n这是一个演示项目。\n" }
+  ],
+  "successChecks": [
+    { "kind": "fileContains", "path": "README.md", "fragment": "评测演示项目" }
+  ]
+}

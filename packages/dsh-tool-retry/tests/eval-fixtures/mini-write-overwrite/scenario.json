@@ -1,0 +1,21 @@
+{
+  "name": "mini-write-overwrite",
+  "mode": "native",
+  "kind": "fs",
+  "fresh": true,
+  "targetTool": false,
+  "task": "不要先读取 README.md，直接用 write 工具把它的内容整体替换为「# demo\n\n新内容。\n」，写完汇报结果。",
+  "title": "最小场景：未读先写（真实 FS_NOT_OBSERVED，参考 real-write-overwrite）",
+  "description": {
+    "input": "任务要求不读文件直接 write 覆盖，观察策略必然拒绝为 FS_NOT_OBSERVED。失败发生在本次运行内。",
+    "expected": "先读后写成功（README.md 包含「新内容。」）。"
+  },
+  "blocks": [],
+  "continuation": "",
+  "workspaceFiles": [
+    { "path": "README.md", "content": "# demo\n\n旧内容。\n" }
+  ],
+  "successChecks": [
+    { "kind": "fileContains", "path": "README.md", "fragment": "新内容。" }
+  ]
+}

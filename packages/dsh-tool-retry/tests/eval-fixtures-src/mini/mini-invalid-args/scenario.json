@@ -1,0 +1,21 @@
+{
+  "name": "mini-invalid-args",
+  "mode": "native",
+  "kind": "fs",
+  "fresh": true,
+  "targetTool": true,
+  "task": "调用 eval_target 工具，参数传 value: \"v2\"。如果调用失败，就修正参数后重新调用直到成功，然后汇报最终结果。",
+  "title": "最小场景：参数缺必填字段（真实 INVALID_ARGS，参考 real-run-code-missing-desc）",
+  "description": {
+    "input": "任务诱导模型用错误的参数名 value 调用 eval_target（schema 要求必填 version），第一次调用必然 INVALID_ARGS。失败发生在本次运行内。",
+    "expected": "补上 version 字段后调用成功（target-result.txt 出现 OK-）。"
+  },
+  "blocks": [],
+  "continuation": "",
+  "workspaceFiles": [
+    { "path": "README.md", "content": "# mini\n\n最小场景工作区。\n" }
+  ],
+  "successChecks": [
+    { "kind": "fileContains", "path": "target-result.txt", "fragment": "OK-" }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "name": "mini-edit-stale",
+  "mode": "native",
+  "kind": "fs",
+  "fresh": true,
+  "targetTool": false,
+  "task": "用 edit 工具把 notes.md 里的「当前版本是 2.0.0。」改成「当前版本是 3.0.0。」，改完汇报结果。",
+  "title": "最小场景：edit 失配（真实 FS_EDIT_NOT_FOUND，参考 real-edit-stale）",
+  "description": {
+    "input": "任务引用的 old_string「当前版本是 2.0.0。」不在文件里（文件里是 2.1.0），第一次 edit 必然 FS_EDIT_NOT_FOUND。失败发生在本次运行内。",
+    "expected": "修正 old_string 后编辑成功（notes.md 包含「当前版本是 3.0.0。」）。"
+  },
+  "blocks": [],
+  "continuation": "",
+  "workspaceFiles": [
+    { "path": "notes.md", "content": "## 项目说明\n\n当前版本是 2.1.0。\n\n更多细节见 docs。\n" }
+  ],
+  "successChecks": [
+    { "kind": "fileContains", "path": "notes.md", "fragment": "当前版本是 3.0.0。" }
+  ]
+}

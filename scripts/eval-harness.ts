@@ -101,12 +101,13 @@ if (!loadLayeredEnv()) {
 }
 
 const scenarioFilter = flagValue('scenario', '')
+const scenarioNames = new Set(scenarioFilter.split(',').map(name => name.trim()).filter(name => name !== ''))
 const armFilter = flagValue('arm', '')
 const modeFilter = flagValue('mode', '')
 const scenarios = readdirSync(EVAL_FIXTURES, { withFileTypes: true })
   .filter(entry => entry.isDirectory())
   .map(entry => entry.name)
-  .filter(name => scenarioFilter === '' || name === scenarioFilter)
+  .filter(name => scenarioNames.size === 0 || scenarioNames.has(name))
   .sort()
 const loadedByName = new Map<string, LoadedScenario>(
   scenarios.map(name => [name, loadScenario(join(EVAL_FIXTURES, name))]))
