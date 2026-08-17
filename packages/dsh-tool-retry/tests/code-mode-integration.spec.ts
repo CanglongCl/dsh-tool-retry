@@ -110,13 +110,23 @@ function requestText(request: { messages: readonly { content: readonly { type: s
     .join('\n')
 }
 
+/** Structural view of the session log rows this spec reads. */
+interface SessionRow {
+  type: string
+  data: {
+    message?: { content?: { toolCallId?: string; content?: { type?: string; text?: string }[] }[] }
+    callId?: string
+    arguments?: string
+  }
+}
+
 /** Text of one tool/result content in the session log. */
-function resultText(events: readonly { type: string; data: { message: { content: { toolCallId?: string; content?: { type: string; text?: string }[] }[] } } }[], toolCallId: string): string {
+function resultText(events: readonly SessionRow[], toolCallId: string): string {
   const event = events.find(candidate =>
-    candidate.type === 'tool/result' && candidate.data.message.content[0]?.toolCallId === toolCallId)
+    candidate.type === 'tool/result' && candidate.data.message?.content?.[0]?.toolCallId === toolCallId)
   expect(event).toBeDefined()
-  return (event!.data.message.content[0].content ?? [])
-    .filter(block => block.type === 'text').map(block => block.text ?? '').join('\n')
+  const blocks = event!.data.message!.content![0]!.content ?? []
+  return blocks.filter(block => block.type === 'text').map(block => block.text ?? '').join('\n')
 }
 
 let liveHandle: AgentHandle | undefined
@@ -160,13 +170,13 @@ describe('code-mode integration', () => {
     await waitForIdle(ctx, agent)
 
     // c1 succeeded (the inner boom failure was caught): no error, no notice.
-    const c1Text = resultText(agent.session.events, 'c1')
+    const c1Text = resultText(agent.session.events as unknown as SessionRow[], 'c1')
     expect(c1Text).toContain('caught')
     expect(requestText(adapter.requests[1]!)).not.toContain('program was saved')
 
     // c2 failed uncaught: the NEXT request carries the PTC notice with the
     // by-id path, after c2's tool result.
-    const c2Text = resultText(agent.session.events, 'c2')
+    const c2Text = resultText(agent.session.events as unknown as SessionRow[], 'c2')
     expect(c2Text).toContain('uncaught-boom')
     const afterFailure = requestText(adapter.requests[2]!)
     expect(afterFailure).toContain('Your failed `run_code` program was saved.')
@@ -179,7 +189,7 @@ describe('code-mode integration', () => {
     expect(readdirSync(join(checkpointDir, 'by-id')).sort()).toEqual(['c1.json', 'c2.json'])
     // Byte-identical to the model's raw argument string (the whole program).
     for (const id of ['c1', 'c2']) {
-      const callEvent = agent.session.events.find(event => event.type === 'tool/call' && event.data.callId === id)
+      const callEvent = (agent.session.events as unknown as SessionRow[]).find(event => event.type === 'tool/call' && event.data.callId === id)
       expect(callEvent).toBeDefined()
       expect(readFileSync(join(checkpointDir, 'by-id', `${id}.json`), 'utf8'))
         .toBe(callEvent!.data.arguments)
@@ -231,9 +241,9 @@ describe('code-mode integration', () => {
 
     // r1 failed (notice), r2 succeeded — and the corrected program re-ran
     // boom with the replaced value, the behavioral proof of the retry loop.
-    const r1Text = resultText(agent.session.events, 'r1')
+    const r1Text = resultText(agent.session.events as unknown as SessionRow[], 'r1')
     expect(r1Text).toContain('v1-marker')
-    const r2Text = resultText(agent.session.events, 'r2')
+    const r2Text = resultText(agent.session.events as unknown as SessionRow[], 'r2')
     expect(r2Text).not.toContain('selfRead')
     expect(r2Text).not.toContain('code run failed')
     expect(boomCalls.map(call => call.value)).toEqual(['v1-marker', 'v2-good'])
@@ -266,11 +276,11 @@ describe('code-mode integration', () => {
     // The registry's code-mode wire surface collapses to run_code, so the
     // direct call errors out (UNKNOWN_TOOL) — and the failure itself was
     // checkpointed + noticed per zero filtering.
-    const d1Text = resultText(agent.session.events, 'd1')
+    const d1Text = resultText(agent.session.events as unknown as SessionRow[], 'd1')
     expect(d1Text.toLowerCase()).toMatch(/unknown|not registered|not found/)
-    const notice = agent.session.events.find(event =>
+    const notice = (agent.session.events as unknown as SessionRow[]).find(event =>
       event.type === 'user/message'
-      && (event.data.source as { kind?: string; plugin?: string }).plugin === PLUGIN_ID)
+      && (event.data as { source?: { plugin?: string } }).source?.plugin === PLUGIN_ID)
     expect(notice).toBeDefined()
   })
 })
