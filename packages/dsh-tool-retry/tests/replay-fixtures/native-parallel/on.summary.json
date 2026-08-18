@@ -50,13 +50,13 @@
       "id": "deploy_1",
       "afterItsOwnResult": true,
       "beforeNextAssistantMessage": true,
-      "text": "Your failed call's arguments were saved.\n- call id: deploy_1\nTo retry with a small fix, call `editPreviousToolCalling` once:\n  call_id: \"deploy_1\", old_string: \"<fragment to replace>\", new_string: \"<replacement>\"\nIt applies your edit and immediately re-runs the tool. Only rewrite the\narguments from scratch when the whole call must change."
+      "text": "Your failed call's arguments were saved.\n- call id: deploy_1\nTo retry with a small fix, call `editPreviousToolCalling` once:\n  call_id: \"deploy_1\", patch: [{ path: \".field.to.fix\", value: <replacement> }]\n  (or a text replace: old_string: \"<fragment>\", new_string: \"<replacement>\")\nIt applies your edit and immediately re-runs the tool. Only rewrite the\narguments from scratch when the whole call must change."
     },
     {
       "id": "deploy_2",
       "afterItsOwnResult": true,
       "beforeNextAssistantMessage": true,
-      "text": "Your failed call's arguments were saved.\n- call id: deploy_2\nTo retry with a small fix, call `editPreviousToolCalling` once:\n  call_id: \"deploy_2\", old_string: \"<fragment to replace>\", new_string: \"<replacement>\"\nIt applies your edit and immediately re-runs the tool. Only rewrite the\narguments from scratch when the whole call must change."
+      "text": "Your failed call's arguments were saved.\n- call id: deploy_2\nTo retry with a small fix, call `editPreviousToolCalling` once:\n  call_id: \"deploy_2\", patch: [{ path: \".field.to.fix\", value: <replacement> }]\n  (or a text replace: old_string: \"<fragment>\", new_string: \"<replacement>\")\nIt applies your edit and immediately re-runs the tool. Only rewrite the\narguments from scratch when the whole call must change."
     }
   ],
   "replay": {
@@ -95,6 +95,6 @@
     "scriptedRetryOutputTokens": 188,
     "fullRegenerationOutputTokens": 889,
     "savingsPercent": 78.9,
-    "noticeOutputTokens": 680
+    "noticeOutputTokens": 818
   }
 }

@@ -173,10 +173,11 @@ const SCENARIOS: Scenario[] = [
     createdAt: 1,
     breakpoint: stepChunks(1, 1, toolCallBlock(0, 'deploy_1', 'deploy', deployArgs('payments')), 'tool-calls'),
     retry: [
+      // The nested-JSON case: a patch-mode retry (jq-style path edit) — no
+      // escaping enters the model's arguments.
       stepChunks(1, 2, toolCallBlock(0, 'edit_1', 'editPreviousToolCalling', {
         previous_ordinal: 1,
-        old_string: '"kind":"invalid"',
-        new_string: '"kind":"valid"',
+        patch: [{ path: '.config.kind', value: 'valid' }],
       }), 'tool-calls'),
       stepChunks(1, 3, textBlock(0, 'fixed'), 'stop'),
     ],

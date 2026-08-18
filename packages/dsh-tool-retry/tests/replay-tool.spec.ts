@@ -189,6 +189,100 @@ describe('editPreviousToolCalling', () => {
   })
 })
 
+  it('patch mode: edits a nested field without touching escapes and replays the patched object', async () => {
+    const { ctx, fs } = await setup()
+    const session = newSession(ctx)
+    const agent = fakeAgent(session)
+    await call(ctx, 'echo', { text: 'hi', config: { mode: 'dev', retry: { max: 3 } } }, agent)
+
+    const replay = await call(ctx, 'editPreviousToolCalling', {
+      call_id: 'call-1',
+      patch: [{ path: '.text', value: 'patched' }, { path: '.config.mode', value: 'prod' }, { path: '.config.retry.max', value: 5 }],
+    }, agent, { step: 2 })
+    if (replay.isError) throw new Error(`expected patch replay success: ${textOf(replay.content)}`)
+    // The nested echo saw the PATCHED object (text → 'patched'), not the
+    // checkpointed one.
+    expect(textOf(replay.content)).toContain('echoed: patched')
+    // The patch persisted back into the checkpoint without escaping changes.
+    const idFile = [...fs.files.keys()].find(key => key.includes('by-id'))!
+    expect(fs.files.get(idFile)!.content).toBe('{"text":"patched","config":{"mode":"prod","retry":{"max":5}}}')
+  })
+
+  it('patch mode: deleting a field (no value) and array-index paths', async () => {
+    const { ctx, fs } = await setup()
+    const session = newSession(ctx)
+    const agent = fakeAgent(session)
+    await call(ctx, 'echo', { text: 'hi', config: { mode: 'dev', legacy: 'x', items: ['a', 'b', 'c'] } }, agent)
+
+    const replay = await call(ctx, 'editPreviousToolCalling', {
+      call_id: 'call-1',
+      patch: [{ path: '.config.legacy' }, { path: '.config.items[1]' }, { path: '.config.items[0].nope' }],
+    }, agent, { step: 2 })
+    // .config.items[0].nope fails first — path errors abort the batch.
+    expect(replay.isError).toBe(true)
+    expect(textOf(replay.content)).toContain('not found')
+
+    const replay2 = await call(ctx, 'editPreviousToolCalling', {
+      call_id: 'call-1',
+      patch: [{ path: '.config.legacy' }, { path: '.config.items[1]' }],
+    }, agent, { step: 3 })
+    if (replay2.isError) throw new Error(`expected deletion replay success: ${textOf(replay2.content)}`)
+    expect(textOf(replay2.content)).toContain('echoed: hi')
+    const idFile = [...fs.files.keys()].find(key => key.includes('by-id'))!
+    expect(fs.files.get(idFile)!.content).toBe('{"text":"hi","config":{"mode":"dev","items":["a","c"]}}')
+  })
+
+  it('patch mode: rejects a missing path and lists the checkpoint keys', async () => {
+    const { ctx } = await setup()
+    const session = newSession(ctx)
+    const agent = fakeAgent(session)
+    await call(ctx, 'echo', { config: { mode: 'dev' } }, agent)
+
+    const replay = await call(ctx, 'editPreviousToolCalling', {
+      call_id: 'call-1',
+      patch: [{ path: '.config.nope', value: 1 }],
+    }, agent, { step: 2 })
+    expect(replay.isError).toBe(true)
+    expect(textOf(replay.content)).toContain('not found')
+    expect(textOf(replay.content)).toContain('config')
+  })
+
+  it('patch mode: non-JSON checkpoint suggests the raw edit mode', async () => {
+    const { ctx, fs } = await setup()
+    const session = newSession(ctx)
+    const agent = fakeAgent(session)
+    await call(ctx, 'echo', { tex: 'hi' }, agent)
+    // Corrupt the checkpoint to non-JSON.
+    const idFile = [...fs.files.keys()].find(key => key.includes('by-id'))!
+    fs.files.get(idFile)!.content = 'not json'
+    const replay = await call(ctx, 'editPreviousToolCalling', {
+      call_id: idFile.split('/').at(-1)!.replace('.json', ''),
+      patch: [{ path: '.x', value: 1 }],
+    }, agent, { step: 2 })
+    expect(replay.isError).toBe(true)
+    expect(textOf(replay.content)).toContain('not JSON')
+  })
+
+  it('patch mode: exactly one edit payload (raw xor patch)', async () => {
+    const { ctx } = await setup()
+    const session = newSession(ctx)
+    const agent = fakeAgent(session)
+    await failingEcho(ctx, agent)
+    const both = await call(ctx, 'editPreviousToolCalling', {
+      previous_ordinal: 1,
+      old_string: '"tex":"hi"',
+      new_string: '"text":"hi"',
+      patch: [{ path: '.tex', value: 'hi' }],
+    }, agent, { step: 2 })
+    expect(both.isError).toBe(true)
+    expect(textOf(both.content)).toContain('exactly one edit payload')
+    const neither = await call(ctx, 'editPreviousToolCalling', {
+      previous_ordinal: 1,
+    }, agent, { step: 3 })
+    expect(neither.isError).toBe(true)
+    expect(textOf(neither.content)).toContain('exactly one edit payload')
+  })
+
 describe('mode detection', () => {
   it('does not register the replay tool in code mode and injects the PTC section', async () => {
     const ctx = new Context()

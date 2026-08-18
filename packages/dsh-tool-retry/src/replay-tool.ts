@@ -27,9 +27,15 @@ export type ScopeCoverage = (scope: ScopeKey | undefined) => boolean
 interface ReplayArgs {
   previous_ordinal?: number
   call_id?: string
-  old_string: string
-  new_string: string
+  old_string?: string
+  new_string?: string
   replace_all?: boolean
+  /** Structured (jq-style) edits: dot/array paths with replacement values
+   * (omit value to delete the field). Mutually exclusive with
+   * old_string/new_string — this mode parses the checkpointed JSON, applies
+   * the patches, and replays the patched OBJECT (no escaping in the model's
+   * view). */
+  patch?: { path: string; value?: JsonValue }[]
 }
 
 /** The tool's canonical output value (content blocks are JSON records). */
@@ -46,6 +52,29 @@ function textOf(content: readonly ContentBlock[]): string {
     .filter(block => block.type === 'text')
     .map(block => block.text)
     .join('\n')
+}
+
+/**
+ * Tokenize a jq-style patch path: `.config.mode` → ['config', 'mode'],
+ * `items[0].name` → ['items', 0, 'name'], `a[0][1]` → ['a', 0, 1]. Every
+ * character must belong to a token — a path like `a[0x]` is invalid rather
+ * than silently truncated.
+ */
+function parsePatchPath(path: string): (string | number)[] {
+  const tokens: (string | number)[] = []
+  const source = path.trim()
+  const matcher = /\.|[^.\[\]]+|\[\d+\]/gu
+  let consumed = 0
+  for (const match of source.matchAll(matcher)) {
+    if (match.index !== consumed) throw new Error(`invalid patch path "${path}"`)
+    consumed += match[0].length
+    const token = match[0]
+    if (token === '.') continue
+    if (token.startsWith('[')) tokens.push(Number(token.slice(1, -1)))
+    else tokens.push(token)
+  }
+  if (consumed !== source.length) throw new Error(`invalid patch path "${path}"`)
+  return tokens
 }
 
 /** The (turn, step) of one recorded tool/call, if the log holds it. */
@@ -87,17 +116,27 @@ export function registerReplayTool(ctx: Context, io: CheckpointIo, lookup: Store
       },
       old_string: {
         type: 'string',
-        required: true,
-        description: 'Literal text to replace in the checkpointed arguments string. Must match exactly.',
+        description: 'Literal text to replace in the checkpointed arguments string. Must match exactly. Exactly one edit payload of (old_string + new_string) or patch must be provided.',
       },
       new_string: {
         type: 'string',
-        required: true,
-        description: 'Literal replacement text. Use an empty string to delete the match.',
+        description: 'Literal replacement text. Use an empty string to delete the match. Exactly one edit payload of (old_string + new_string) or patch must be provided.',
       },
       replace_all: {
         type: 'boolean',
         description: 'Replace all matches. Defaults to false; when false, old_string must appear exactly once.',
+      },
+      patch: {
+        type: 'array',
+        description: 'Structured edits for JSON arguments (jq-style): [{ path: ".config.mode", value: "prod" }, ...]. Paths use dot segments and [n] array indexes; the checkpoint is parsed as JSON, patched, and replayed as the edited object — no JSON escaping needed. Omit value to delete the field. Exactly one edit payload of (old_string + new_string) or patch must be provided.',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            path: { type: 'string', required: true },
+            value: { type: 'json' },
+          },
+        },
       },
     },
     output: {
@@ -133,6 +172,11 @@ export function registerReplayTool(ctx: Context, io: CheckpointIo, lookup: Store
       const hasId = args.call_id !== undefined && args.call_id !== ''
       if (hasOrdinal === hasId) {
         throw new Error('provide exactly one of previous_ordinal / call_id (both or neither is an error)')
+      }
+      const hasRaw = args.old_string !== undefined && args.new_string !== undefined
+      const hasPatch = args.patch !== undefined && args.patch.length > 0
+      if (hasRaw === hasPatch) {
+        throw new Error('provide exactly one edit payload: (old_string + new_string) or patch (both or neither is an error)')
       }
       const agent = exec.agent
       if (agent === undefined) {
@@ -193,35 +237,96 @@ export function registerReplayTool(ctx: Context, io: CheckpointIo, lookup: Store
         throw new Error(`checkpoint file does not exist: ${fileTarget.displayPath}`)
       }
 
-      // 3. Literal edit through the same intent slot as the fs edit tool.
-      // The observation table is in-memory and does NOT survive a process
-      // restart/resume — a checkpoint written by an earlier process would
-      // otherwise fail the policy as FS_NOT_OBSERVED. Re-observe first with
-      // the plugin's own write-then-emit pattern (same content, this call's
-      // exec actor), exactly like checkpoint() records it.
+      // 3. Apply the edit payload. The observation table is in-memory and
+      // does NOT survive a process restart/resume — a checkpoint written by
+      // an earlier process would otherwise fail the policy as
+      // FS_NOT_OBSERVED. Re-observe first with the plugin's own
+      // write-then-emit pattern (same content, this call's exec actor),
+      // exactly like checkpoint() records it.
       const existing = await ctx.fs.readText(fileTarget, exec.signal)
       const rewrite = await ctx.fs.writeText(fileTarget, existing, undefined, exec.signal)
       ctx.emit('fs/observed', fileTarget, { kind: 'present', version: rewrite.version }, exec)
-      const intent = await ctx.waterfall('fs/edit-intent', fileTarget, exec, () => undefined)
-      const outcome = await ctx.fs.editText(
-        fileTarget,
-        {
-          oldString: args.old_string,
-          newString: args.new_string,
-          replaceAll: args.replace_all ?? false,
-        },
-        intent,
-        exec.signal,
-      )
-      ctx.emit('fs/observed', fileTarget, { kind: 'present', version: outcome.version }, exec)
-
-      // 4. Read back and parse; the checkpoint must stay valid JSON.
-      const edited = await ctx.fs.readText(fileTarget, exec.signal)
       let newArgs: unknown
-      try {
-        newArgs = edited ? JSON.parse(edited) : {}
-      } catch {
-        throw new Error('checkpoint content must remain valid JSON after the edit (your old_string changed its structure)')
+      if (hasPatch) {
+        // Structured mode: parse the checkpointed JSON, apply dot/array-path
+        // patches, and persist the patched object — the model never touches
+        // the stored string's escaping.
+        let parsed: unknown
+        try {
+          parsed = existing ? JSON.parse(existing) : {}
+        } catch {
+          throw new Error('checkpoint content is not JSON — patch mode needs JSON arguments; use old_string/new_string instead')
+        }
+        for (const entry of args.patch!) {
+          // value is optional: omitting it deletes the field (jq-style del).
+          // The registry snapshot already detaches json-typed values; the
+          // round-trip is a defensive plain-JSON guard only.
+          const hasValue = entry.value !== undefined
+          const value = hasValue ? JSON.parse(JSON.stringify(entry.value)) as unknown : undefined
+          const tokens = parsePatchPath(entry.path)
+          if (tokens.length === 0) throw new Error('patch path must not be empty')
+          const missing = (): never => {
+            const keys = parsed !== null && typeof parsed === 'object'
+              ? Object.keys(parsed as Record<string, unknown>)
+              : []
+            throw new Error(`patch path "${entry.path}" not found (checkpoint keys: ${keys.join(', ') || '(none)'})`)
+          }
+          let parent: Record<string, unknown> | unknown[] | undefined
+          let current: unknown = parsed
+          let key: string | number | undefined
+          for (const token of tokens) {
+            if (typeof token === 'number') {
+              if (!Array.isArray(current)) missing()
+              if (token >= (current as unknown[]).length) missing()
+              parent = current as unknown[]
+              key = token
+              current = (current as unknown[])[token]
+            } else if (current !== null && typeof current === 'object' && !Array.isArray(current)) {
+              const object = current as Record<string, unknown>
+              if (!Object.hasOwn(object, token)) missing()
+              parent = object
+              key = token
+              current = object[token]
+            } else {
+              missing()
+            }
+          }
+          if (parent === undefined || key === undefined) missing()
+          if (Array.isArray(parent)) {
+            const index = Number(key)
+            if (hasValue) (parent as unknown[])[index] = value
+            else (parent as unknown[]).splice(index, 1)
+          } else if (hasValue) {
+            (parent as Record<string, unknown>)[String(key)] = value
+          } else {
+            delete (parent as Record<string, unknown>)[String(key)]
+          }
+        }
+        const patchedText = JSON.stringify(parsed)
+        const patchedWrite = await ctx.fs.writeText(fileTarget, patchedText, undefined, exec.signal)
+        ctx.emit('fs/observed', fileTarget, { kind: 'present', version: patchedWrite.version }, exec)
+        newArgs = parsed
+      } else {
+        // Raw mode: literal edit through the same intent slot as the fs edit
+        // tool, then read back and parse.
+        const intent = await ctx.waterfall('fs/edit-intent', fileTarget, exec, () => undefined)
+        const outcome = await ctx.fs.editText(
+          fileTarget,
+          {
+            oldString: args.old_string!,
+            newString: args.new_string!,
+            replaceAll: args.replace_all ?? false,
+          },
+          intent,
+          exec.signal,
+        )
+        ctx.emit('fs/observed', fileTarget, { kind: 'present', version: outcome.version }, exec)
+        const edited = await ctx.fs.readText(fileTarget, exec.signal)
+        try {
+          newArgs = edited ? JSON.parse(edited) : {}
+        } catch {
+          throw new Error('checkpoint content must remain valid JSON after the edit (your old_string changed its structure)')
+        }
       }
 
       // 5. Nested replay: parent token marks it a sub-dispatch (no
