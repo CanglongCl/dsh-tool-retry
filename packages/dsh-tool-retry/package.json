@@ -1,7 +1,7 @@
 {
   "name": "@canglongcl/dsh-tool-retry",
   "description": "DSH tool-call checkpoint & replay plugin: every model-direct tool call is auto-checkpointed (success or failure), failures inject a minimal notice, and native mode adds a one-call edit-and-replay tool",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "publishConfig": {
     "access": "public",
