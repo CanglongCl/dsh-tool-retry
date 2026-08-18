@@ -110,7 +110,24 @@ pnpm eval:real         # real-model evaluation (plan §6: per scenario x arm x N
 pnpm eval:report        # render the HTML report, persisted to reports/NNN-...html (git hash/model/reasoning/token metadata, click-to-expand full tool calls per run)
 pnpm check             # repo gate: typecheck + tests + fixture/gen-config idempotence + official allowlist
 pnpm package:official  # assemble the publishable official tarball under dist/
+pnpm release:verify   # release identity verification (first CI step; mandatory before tag-triggered publishing)
 ```
+
+## Publishing to npm
+
+Releases run entirely in GitHub Actions; locally you only sync versions and push a tag:
+
+1. Keep the `version` in `packages/dsh-tool-retry/package.json` and the root `package.json` in sync, commit, and push to main;
+2. Tag the release: `git tag v<version> && git push origin v<version>`.
+
+The pipeline [.github/workflows/release-npm.yml](./.github/workflows/release-npm.yml) then runs:
+
+1. `pnpm release:verify` — checks package identity (name, public access, repository metadata, root/package version sync, tag/version match);
+2. `pnpm check` — the repo quality gate (typecheck, unit suite, fixture and config idempotence, official allowlist);
+3. `pnpm package:official` — assembles the tarball, verifies the SHA256, and uploads it as a build artifact;
+4. the publish job (tag-triggered only) — publishes **those exact verified bytes** to npmjs.org via npm Trusted Publishing (GitHub OIDC, no long-lived token); prerelease versions automatically use the `next` tag.
+
+Prerequisite: the npm account must enable Trusted Publishing for the `@canglongcl` scope and authorize the GitHub repository `CanglongCl/dsh-tool-retry`; no npm token is stored or allowed in the repo.
 
 ## Known limitations
 

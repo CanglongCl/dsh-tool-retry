@@ -11,6 +11,7 @@
     "setup:harness": "tsx scripts/dev.ts --setup-only",
     "build": "pnpm gen-config && pnpm --filter ./packages/dsh-tool-retry build",
     "package:official": "pnpm build && tsx scripts/package-official.ts",
+    "release:verify": "tsx scripts/verify-release.ts",
     "build:watch": "pnpm --filter ./packages/dsh-tool-retry watch",
     "dev": "tsx scripts/dev.ts",
     "dev:headless": "tsx scripts/dev-headless.ts",

@@ -115,7 +115,24 @@ pnpm eval:report        # 生成 HTML 评测报告并持久化到仓库 reports/
 pnpm eval:archive       # 归档评测证据：只存每轮 session.jsonl(gzip)+record.json 到 ~/.dsh/eval-archives（DSH_EVAL_ARCHIVE_DIR 可改），并清理 runs/ 下已归档批次（--keep 保留；--stamp 指定批次）
 pnpm check             # 仓库门禁：typecheck + 单测 + 语料/gen-config 幂等 + 官方包 allowlist
 pnpm package:official  # 组装可发布的官方 tarball 到 dist/
+pnpm release:verify   # 发布身份校验（CI 流水线第一步；tag 触发发布前强制）
 ```
+
+## 发布到 npm
+
+发版由 GitHub Actions 完成，本地只需要两步：
+
+1. 同步版本号：`packages/dsh-tool-retry/package.json` 与根 `package.json` 的 `version` 保持一致，提交并推送 main；
+2. 打版本标签：`git tag v<版本号> && git push origin v<版本号>`。
+
+流水线 [.github/workflows/release-npm.yml](./.github/workflows/release-npm.yml) 自动执行：
+
+1. `pnpm release:verify` —— 校验包身份（名称、公开权限、仓库元数据、根/包版本一致、tag 与版本匹配）；
+2. `pnpm check` —— 仓库质量门禁（typecheck、单测、语料与生成配置幂等、官方包 allowlist）；
+3. `pnpm package:official` —— 组装 tarball 并核对 SHA256，上传为构建产物；
+4. publish 作业（仅 `v*` 标签触发）—— 用 npm Trusted Publishing（GitHub OIDC，无长期 token）把 **验证过的同一份产物** 发布到 npmjs.org；预发布版本自动走 `next` 标签。
+
+前置条件：npm 账号为 `@canglongcl` scope 启用 Trusted Publishing 并授权 GitHub 仓库 `CanglongCl/dsh-tool-retry`；仓库内不存放任何 npm token。
 
 ## 已知限制
 

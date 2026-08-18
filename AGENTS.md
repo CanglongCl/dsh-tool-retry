@@ -37,6 +37,8 @@ Rules for the dsh-tool-retry plugin: automatic checkpointing of every model-dire
 - The npm package identity is @canglongcl/dsh-tool-retry; every publishable manifest and command keeps access: public.
 - The source manifest keeps private: true; only the allowlisted staged manifest (which omits private) is published.
 - Never print, commit, embed, or persist real npm/provider credentials anywhere in the repo.
+- The npm release pipeline is CI-only: `.github/workflows/release-npm.yml` runs `pnpm release:verify` (scripts/verify-release.ts), `pnpm check`, and `pnpm package:official` on PR/push/tag, uploads the exact tarball, and a matching `v*` tag publishes that artifact via npm Trusted Publishing (GitHub OIDC, `id-token: write`) — no long-lived npm token may ever enter the workflow or the repo.
+- The release runbook is the project skill `npm-release` (`.agents/skills/npm-release/SKILL.md`): load it before bumping versions, tagging, diagnosing a release workflow run, or editing the release pipeline.
 
 ## Core design invariants
 
