@@ -33,7 +33,7 @@
       "id": "rc_1",
       "afterItsOwnResult": true,
       "beforeNextAssistantMessage": true,
-      "text": "Your failed `run_code` program was saved.\n- path: <checkpoint>/by-id/rc_1.json\nTo apply a small fix, read and JSON.parse it in a new `run_code`\nprogram, replace the fragment, and run the corrected program with the\nAsyncFunction constructor."
+      "text": "Your failed `run_code` program was saved.\n- path: <checkpoint>/by-id/rc_1.json\nTo retry with a small fix, read that file with tools.read, JSON.parse it,\napply a literal replace to the real program text (prev.code), then run\nthe corrected program via:\n  new AsyncFunction(\"tools\", \"console\", \"'use strict';\\n\" + corrected)(tools, console)\nOnly rewrite the program from scratch when the whole program must change."
     }
   ],
   "replay": {
@@ -57,6 +57,6 @@
     "scriptedRetryOutputTokens": 610,
     "fullRegenerationOutputTokens": 117,
     "savingsPercent": -421.4,
-    "noticeOutputTokens": 324
+    "noticeOutputTokens": 495
   }
 }

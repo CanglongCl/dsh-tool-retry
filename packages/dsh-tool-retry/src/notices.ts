@@ -81,7 +81,7 @@ export const REPLAY_GUIDANCE = [
   'Use this only when a small correction is needed; otherwise call the tool again with fresh arguments.',
 ].join(' ')
 
-/** Failure notice C (native): saved + call id + how to use it. */
+/** Failure notice C (native): saved + call id + a concrete one-call retry. */
 export function nativeNotice(callId: string): UserMessage {
   return createUserMessage({
     source: { kind: 'plugin', plugin: PLUGIN_ID, form: 'notice', summary: 'Failed tool call saved — small fixes can replay it' },
@@ -90,14 +90,16 @@ export function nativeNotice(callId: string): UserMessage {
       text: [
         "Your failed call's arguments were saved.",
         `- call id: ${callId}`,
-        `To apply a small fix and re-run the call, use \`${REPLAY_TOOL_NAME}\``,
-        `(with call_id "${callId}" — it stays valid).`,
+        `To retry with a small fix, call \`${REPLAY_TOOL_NAME}\` once:`,
+        `  call_id: "${callId}", old_string: "<fragment to replace>", new_string: "<replacement>"`,
+        'It applies your edit and immediately re-runs the tool. Only rewrite the',
+        'arguments from scratch when the whole call must change.',
       ].join('\n'),
     }],
   })
 }
 
-/** Failure notice D (PTC): saved + by-id path + how to use it. */
+/** Failure notice D (PTC): saved + by-id path + a concrete loader retry. */
 export function ptcNotice(dir: string, idFileName: string): UserMessage {
   return createUserMessage({
     source: { kind: 'plugin', plugin: PLUGIN_ID, form: 'notice', summary: 'Failed run_code program saved — small fixes can replay it' },
@@ -106,9 +108,11 @@ export function ptcNotice(dir: string, idFileName: string): UserMessage {
       text: [
         'Your failed `run_code` program was saved.',
         `- path: ${dir}/by-id/${idFileName}`,
-        'To apply a small fix, read and JSON.parse it in a new `run_code`',
-        'program, replace the fragment, and run the corrected program with the',
-        'AsyncFunction constructor.',
+        'To retry with a small fix, read that file with tools.read, JSON.parse it,',
+        'apply a literal replace to the real program text (prev.code), then run',
+        'the corrected program via:',
+        '  new AsyncFunction("tools", "console", "\'use strict\';\\n" + corrected)(tools, console)',
+        'Only rewrite the program from scratch when the whole program must change.',
       ].join('\n'),
     }],
   })
