@@ -193,13 +193,11 @@ const SCENARIOS: Scenario[] = [
       stepChunks(1, 2, [
         ...toolCallBlock(0, 'edit_1', 'editPreviousToolCalling', {
           previous_ordinal: 1,
-          old_string: '"kind":"invalid"',
-          new_string: '"kind":"valid"',
+          patch: [{ path: '.config.kind', value: 'valid' }],
         }),
         ...toolCallBlock(1, 'edit_2', 'editPreviousToolCalling', {
           call_id: 'deploy_2',
-          old_string: '"kind":"invalid"',
-          new_string: '"kind":"valid"',
+          patch: [{ path: '.config.kind', value: 'valid' }],
         }),
       ], 'tool-calls'),
       stepChunks(1, 3, textBlock(0, 'done'), 'stop'),

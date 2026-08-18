@@ -95,7 +95,7 @@
         "index": 0,
         "id": "edit_1",
         "name": "editPreviousToolCalling",
-        "argumentsDelta": "rdinal\":1,\"old_string\":\"\\\"kind\\\":\\\"invalid\\\"\",\"new_string\":\"\\\"kind\\\":\\\"valid\\\"\"}"
+        "argumentsDelta": "rdinal\":1,\"patch\":[{\"path\":\".config.kind\",\"value\":\"valid\"}]}"
       },
       {
         "type": "block-end",
@@ -104,7 +104,7 @@
           "type": "tool-call",
           "id": "edit_1",
           "name": "editPreviousToolCalling",
-          "arguments": "{\"previous_ordinal\":1,\"old_string\":\"\\\"kind\\\":\\\"invalid\\\"\",\"new_string\":\"\\\"kind\\\":\\\"valid\\\"\"}"
+          "arguments": "{\"previous_ordinal\":1,\"patch\":[{\"path\":\".config.kind\",\"value\":\"valid\"}]}"
         }
       },
       {
@@ -124,7 +124,7 @@
         "index": 1,
         "id": "edit_2",
         "name": "editPreviousToolCalling",
-        "argumentsDelta": "deploy_2\",\"old_string\":\"\\\"kind\\\":\\\"invalid\\\"\",\"new_string\":\"\\\"kind\\\":\\\"valid\\\"\"}"
+        "argumentsDelta": "deploy_2\",\"patch\":[{\"path\":\".config.kind\",\"value\":\"valid\"}]}"
       },
       {
         "type": "block-end",
@@ -133,7 +133,7 @@
           "type": "tool-call",
           "id": "edit_2",
           "name": "editPreviousToolCalling",
-          "arguments": "{\"call_id\":\"deploy_2\",\"old_string\":\"\\\"kind\\\":\\\"invalid\\\"\",\"new_string\":\"\\\"kind\\\":\\\"valid\\\"\"}"
+          "arguments": "{\"call_id\":\"deploy_2\",\"patch\":[{\"path\":\".config.kind\",\"value\":\"valid\"}]}"
         }
       },
       {

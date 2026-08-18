@@ -31,9 +31,9 @@
     ]
   },
   "tokens": {
-    "scriptedRetryOutputTokens": 188,
+    "scriptedRetryOutputTokens": 148,
     "fullRegenerationOutputTokens": 889,
-    "savingsPercent": 78.9,
+    "savingsPercent": 83.4,
     "noticeOutputTokens": 0
   }
 }

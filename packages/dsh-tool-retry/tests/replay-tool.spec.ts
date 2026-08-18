@@ -1,7 +1,8 @@
 /**
  * `editPreviousToolCalling` unit tests: ordinal/call_id routing, selector
- * validation, edit errors, JSON-parse failure, replay passthrough, and the
- * code-mode registration suppression (mirrors the tool-fs edit template).
+ * validation, patch entry validation (value | old/new), path errors,
+ * JSON-parse failure, replay passthrough, and the code-mode registration
+ * suppression (mirrors the tool-fs edit template).
  */
 
 import { beforeEach, describe, expect, it } from 'vitest'
@@ -45,6 +46,25 @@ async function setup(): Promise<{ ctx: Context; fs: FakeFs }> {
       return { echoed: String(args.text) }
     },
   }))
+  ctx.tools.register(defineTool({
+    name: 'submit',
+    description: 'submits a mode; the body rejects any mode other than "prod"',
+    parameters: {
+      mode: { type: 'string', required: true, description: 'the mode to submit' },
+    },
+    output: {
+      schema: {
+        type: 'object',
+        additionalProperties: false,
+        properties: { ok: { type: 'boolean', required: true } },
+      },
+      render: (_args, value) => [{ type: 'text', text: `submit ok: ${String(value.ok)}` }],
+    },
+    async execute(args) {
+      if (String(args.mode) !== 'prod') throw new Error('mode must be "prod"')
+      return { ok: true }
+    },
+  }))
   const fs = ctx.fs as FakeFs
   return { ctx, fs }
 }
@@ -53,9 +73,9 @@ function rootOf(sessionId: string): string {
   return join(CHECKPOINT_ROOT, sessionId)
 }
 
-/** One checkpointed failing `echo` call (typo key `tex`), then the replay. */
-async function failingEcho(ctx: Context, agent: Agent): Promise<void> {
-  const result = await call(ctx, 'echo', { tex: 'hi' }, agent)
+/** One checkpointed failing `submit` call (`mode: "dev"`). */
+async function failingSubmit(ctx: Context, agent: Agent): Promise<void> {
+  const result = await call(ctx, 'submit', { mode: 'dev' }, agent)
   expect(result.isError).toBe(true)
 }
 
@@ -68,21 +88,20 @@ describe('editPreviousToolCalling', () => {
     const { ctx, fs } = await setup()
     const session = newSession(ctx)
     const agent = fakeAgent(session)
-    await failingEcho(ctx, agent)
+    await failingSubmit(ctx, agent)
 
     const replay = await call(ctx, 'editPreviousToolCalling', {
       previous_ordinal: 1,
-      old_string: '"tex":"hi"',
-      new_string: '"text":"hi"',
+      patch: [{ path: '.mode', value: 'prod' }],
     }, agent, { step: 2 })
     if (replay.isError) throw new Error(`expected replay success: ${textOf(replay.content)}`)
-    expect(textOf(replay.content)).toContain('Replayed echo with the edited arguments')
-    expect(textOf(replay.content)).toContain('echoed: hi')
-    expect(replay.meta).toMatchObject({ replayedCallId: 'call-1:replay', toolName: 'echo' })
+    expect(textOf(replay.content)).toContain('Replayed submit with the edited arguments')
+    expect(textOf(replay.content)).toContain('submit ok: true')
+    expect(replay.meta).toMatchObject({ replayedCallId: 'call-1:replay', toolName: 'submit' })
 
     // The by-id file holds the edited arguments.
     const root = rootOf(String(session.id))
-    expect(fs.files.get(`key:${join(root, 'by-id', 'call-1.json')}`)?.content).toBe('{"text":"hi"}')
+    expect(fs.files.get(`key:${join(root, 'by-id', 'call-1.json')}`)?.content).toBe('{"mode":"prod"}')
 
     // Zero filtering + nested skip: the edit tool itself is checkpointed,
     // the nested replay is not.
@@ -98,18 +117,17 @@ describe('editPreviousToolCalling', () => {
     const { ctx } = await setup()
     const session = newSession(ctx)
     const agent = fakeAgent(session)
-    await failingEcho(ctx, agent)
+    await failingSubmit(ctx, agent)
     // A later round replaces the round map, so call_id must resolve through
     // the history index.
-    await call(ctx, 'echo', { text: 'later' }, agent, { step: 2 })
+    await call(ctx, 'submit', { mode: 'prod' }, agent, { step: 2 })
 
     const replay = await call(ctx, 'editPreviousToolCalling', {
       call_id: 'call-1',
-      old_string: '"tex":"hi"',
-      new_string: '"text":"fixed"',
+      patch: [{ path: '.mode', value: 'prod' }],
     }, agent, { step: 3 })
     if (replay.isError) throw new Error(`expected replay success: ${textOf(replay.content)}`)
-    expect(textOf(replay.content)).toContain('echoed: fixed')
+    expect(textOf(replay.content)).toContain('submit ok: true')
   })
 
   it('rejects both and neither selector', async () => {
@@ -117,12 +135,12 @@ describe('editPreviousToolCalling', () => {
     const session = newSession(ctx)
     const agent = fakeAgent(session)
     const both = await call(ctx, 'editPreviousToolCalling', {
-      previous_ordinal: 1, call_id: 'call-x', old_string: 'a', new_string: 'b',
+      previous_ordinal: 1, call_id: 'call-x', patch: [{ path: '.mode', value: 'prod' }],
     }, agent)
     expect(both.isError).toBe(true)
     expect(textOf(both.content)).toContain('exactly one')
     const neither = await call(ctx, 'editPreviousToolCalling', {
-      old_string: 'a', new_string: 'b',
+      patch: [{ path: '.mode', value: 'prod' }],
     }, agent, { step: 2 })
     expect(neither.isError).toBe(true)
     expect(textOf(neither.content)).toContain('exactly one')
@@ -133,63 +151,50 @@ describe('editPreviousToolCalling', () => {
     const session = newSession(ctx)
     const agent = fakeAgent(session)
     const ordinal = await call(ctx, 'editPreviousToolCalling', {
-      previous_ordinal: 5, old_string: 'a', new_string: 'b',
+      previous_ordinal: 5, patch: [{ path: '.mode', value: 'prod' }],
     }, agent)
     expect(ordinal.isError).toBe(true)
     expect(textOf(ordinal.content)).toContain('no checkpoint for previous_ordinal 5')
     const unknown = await call(ctx, 'editPreviousToolCalling', {
-      call_id: 'no-such-id', old_string: 'a', new_string: 'b',
+      call_id: 'no-such-id', patch: [{ path: '.mode', value: 'prod' }],
     }, agent, { step: 2 })
     expect(unknown.isError).toBe(true)
     expect(textOf(unknown.content)).toContain('no checkpoint found for call_id "no-such-id"')
   })
 
-  it('surfaces an old_string mismatch from the literal edit', async () => {
+  it('surfaces an old_string mismatch from a string-internal edit', async () => {
     const { ctx } = await setup()
     const session = newSession(ctx)
     const agent = fakeAgent(session)
-    await failingEcho(ctx, agent)
+    await failingSubmit(ctx, agent)
     const replay = await call(ctx, 'editPreviousToolCalling', {
       previous_ordinal: 1,
-      old_string: 'does-not-appear',
-      new_string: 'x',
+      patch: [{ path: '.mode', old_string: 'does-not-appear', new_string: 'x' }],
     }, agent, { step: 2 })
     expect(replay.isError).toBe(true)
-    expect(textOf(replay.content)).toContain('old_string not found')
-  })
-
-  it('rejects an edit that breaks the checkpoint JSON', async () => {
-    const { ctx } = await setup()
-    const session = newSession(ctx)
-    const agent = fakeAgent(session)
-    await failingEcho(ctx, agent)
-    const replay = await call(ctx, 'editPreviousToolCalling', {
-      previous_ordinal: 1,
-      old_string: '{"tex":"hi"}',
-      new_string: 'not json',
-    }, agent, { step: 2 })
-    expect(replay.isError).toBe(true)
-    expect(textOf(replay.content)).toContain('must remain valid JSON')
+    expect(textOf(replay.content)).toContain('old_string was not found in the value at ".mode"')
   })
 
   it('propagates a replay failure and still checkpoints/notifies itself', async () => {
     const { ctx } = await setup()
     const session = newSession(ctx)
     const agent = fakeAgent(session)
-    await failingEcho(ctx, agent)
+    await failingSubmit(ctx, agent)
+    // The patched args break the schema (mode must be a string) — the nested
+    // replay fails, and the failing edit call itself is checkpointed and
+    // notified (zero filtering).
     const replay = await call(ctx, 'editPreviousToolCalling', {
       previous_ordinal: 1,
-      old_string: '"tex":"hi"',
-      new_string: '"text":42',
+      patch: [{ path: '.mode', value: 42 }],
     }, agent, { step: 2 })
     expect(replay.isError).toBe(true)
-    expect(textOf(replay.content)).toContain('Replay of echo failed')
-    // Zero filtering: the failing edit call itself got a notice.
+    expect(textOf(replay.content)).toContain('Replay of submit failed')
     expect(noticeText(replay.additionalContexts)).toContain('call id: call-2')
   })
 })
 
-  it('patch mode: edits a nested field without touching escapes and replays the patched object', async () => {
+describe('patch entries', () => {
+  it('value form: edits nested fields and replays the patched object', async () => {
     const { ctx, fs } = await setup()
     const session = newSession(ctx)
     const agent = fakeAgent(session)
@@ -203,12 +208,93 @@ describe('editPreviousToolCalling', () => {
     // The nested echo saw the PATCHED object (text → 'patched'), not the
     // checkpointed one.
     expect(textOf(replay.content)).toContain('echoed: patched')
-    // The patch persisted back into the checkpoint without escaping changes.
+    // The patch persisted back into the checkpoint.
     const idFile = [...fs.files.keys()].find(key => key.includes('by-id'))!
     expect(fs.files.get(idFile)!.content).toBe('{"text":"patched","config":{"mode":"prod","retry":{"max":5}}}')
   })
 
-  it('patch mode: deleting a field (no value) and array-index paths', async () => {
+  it('old/new form: matches the DECODED text of a stringified-JSON value (no escaping)', async () => {
+    const { ctx, fs } = await setup()
+    const session = newSession(ctx)
+    const agent = fakeAgent(session)
+    await call(ctx, 'echo', { text: 'hi', payload: '{"mode":"dev"}' }, agent)
+
+    const replay = await call(ctx, 'editPreviousToolCalling', {
+      call_id: 'call-1',
+      patch: [{ path: '.payload', old_string: '"mode":"dev"', new_string: '"mode":"prod"' }],
+    }, agent, { step: 2 })
+    if (replay.isError) throw new Error(`expected old/new replay success: ${textOf(replay.content)}`)
+    expect(textOf(replay.content)).toContain('echoed: hi')
+    // The checkpoint stores the RAW string: the inner quotes are escaped
+    // there, but the model wrote plain quotes — the replace ran on the
+    // decoded value and the escaped form was never touched by hand.
+    const idFile = [...fs.files.keys()].find(key => key.includes('by-id'))!
+    expect(fs.files.get(idFile)!.content).toBe('{"text":"hi","payload":"{\\"mode\\":\\"prod\\"}"}')
+  })
+
+  it('old/new form: long string values edit only the changed fragment', async () => {
+    const { ctx, fs } = await setup()
+    const session = newSession(ctx)
+    const agent = fakeAgent(session)
+    const plan = 'Section A — 1000 chars of surrounding text. THE MARKER TO FIX. Section Z — more text.'
+    await call(ctx, 'echo', { text: 'hi', plan }, agent)
+
+    const replay = await call(ctx, 'editPreviousToolCalling', {
+      call_id: 'call-1',
+      patch: [{ path: '.plan', old_string: 'THE MARKER TO FIX', new_string: 'FIXED' }],
+    }, agent, { step: 2 })
+    if (replay.isError) throw new Error(`expected fragment replay success: ${textOf(replay.content)}`)
+    const idFile = [...fs.files.keys()].find(key => key.includes('by-id'))!
+    expect(fs.files.get(idFile)!.content).toContain('FIXED')
+    expect(fs.files.get(idFile)!.content).toContain('Section Z')
+  })
+
+  it('old/new form: multiple matches require uniqueness or replace_all; empty new_string deletes', async () => {
+    const { ctx, fs } = await setup()
+    const session = newSession(ctx)
+    const agent = fakeAgent(session)
+    await call(ctx, 'echo', { text: 'a a b' }, agent)
+
+    const ambiguous = await call(ctx, 'editPreviousToolCalling', {
+      call_id: 'call-1',
+      patch: [{ path: '.text', old_string: 'a', new_string: 'x' }],
+    }, agent, { step: 2 })
+    expect(ambiguous.isError).toBe(true)
+    expect(textOf(ambiguous.content)).toContain('appears 2 times')
+
+    const replaceAll = await call(ctx, 'editPreviousToolCalling', {
+      call_id: 'call-1',
+      patch: [{ path: '.text', old_string: 'a', new_string: 'x', replace_all: true }],
+    }, agent, { step: 3 })
+    if (replaceAll.isError) throw new Error(`expected replace_all success: ${textOf(replaceAll.content)}`)
+    expect(textOf(replaceAll.content)).toContain('echoed: x x b')
+    const idFile = [...fs.files.keys()].find(key => key.includes('by-id'))!
+    expect(fs.files.get(idFile)!.content).toBe('{"text":"x x b"}')
+
+    const deleted = await call(ctx, 'editPreviousToolCalling', {
+      call_id: 'call-1',
+      patch: [{ path: '.text', old_string: 'x x b', new_string: '' }],
+    }, agent, { step: 4 })
+    if (deleted.isError) throw new Error(`expected empty-new_string success: ${textOf(deleted.content)}`)
+    expect(fs.files.get(idFile)!.content).toBe('{"text":""}')
+  })
+
+  it('old/new form: rejects a non-string target and points at value', async () => {
+    const { ctx } = await setup()
+    const session = newSession(ctx)
+    const agent = fakeAgent(session)
+    await call(ctx, 'echo', { text: 'hi', count: 3 }, agent)
+
+    const replay = await call(ctx, 'editPreviousToolCalling', {
+      call_id: 'call-1',
+      patch: [{ path: '.count', old_string: 'a', new_string: 'b' }],
+    }, agent, { step: 2 })
+    expect(replay.isError).toBe(true)
+    expect(textOf(replay.content)).toContain('does not point to a string')
+    expect(textOf(replay.content)).toContain('use value')
+  })
+
+  it('deleting a field (no value, no old/new) and array-index paths', async () => {
     const { ctx, fs } = await setup()
     const session = newSession(ctx)
     const agent = fakeAgent(session)
@@ -218,14 +304,15 @@ describe('editPreviousToolCalling', () => {
       call_id: 'call-1',
       patch: [{ path: '.config.legacy' }, { path: '.config.items[1]' }, { path: '.config.items[0].nope' }],
     }, agent, { step: 2 })
-    // .config.items[0].nope fails first — path errors abort the batch.
+    // .config.items[0].nope fails — path errors abort the batch.
     expect(replay.isError).toBe(true)
     expect(textOf(replay.content)).toContain('not found')
-    // The failed replay's own notice lists ITS keys and points back at the
-    // original call id (retry the original, not the failed attempt).
+    // The failed replay's own notice points back at the ORIGINAL call id
+    // (retry the original, not the failed attempt) — and no keys line.
     const chase = noticeText(replay.additionalContexts)
-    expect(chase).toContain('checkpoint keys: call_id, patch')
+    expect(chase).toContain('To retry with a small fix:')
     expect(chase).toContain('call id "call-1"')
+    expect(chase).not.toContain('checkpoint keys')
 
     const replay2 = await call(ctx, 'editPreviousToolCalling', {
       call_id: 'call-1',
@@ -237,7 +324,7 @@ describe('editPreviousToolCalling', () => {
     expect(fs.files.get(idFile)!.content).toBe('{"text":"hi","config":{"mode":"dev","items":["a","c"]}}')
   })
 
-  it('patch mode: rejects a missing path and lists the checkpoint keys', async () => {
+  it('rejects a missing path and lists the checkpoint keys', async () => {
     const { ctx } = await setup()
     const session = newSession(ctx)
     const agent = fakeAgent(session)
@@ -252,7 +339,7 @@ describe('editPreviousToolCalling', () => {
     expect(textOf(replay.content)).toContain('config')
   })
 
-  it('patch mode: non-JSON checkpoint suggests the raw edit mode', async () => {
+  it('rejects a non-JSON checkpoint', async () => {
     const { ctx, fs } = await setup()
     const session = newSession(ctx)
     const agent = fakeAgent(session)
@@ -268,25 +355,31 @@ describe('editPreviousToolCalling', () => {
     expect(textOf(replay.content)).toContain('not JSON')
   })
 
-  it('patch mode: exactly one edit payload (raw xor patch)', async () => {
+  it('validates entry payloads (value xor old/new, empty patch)', async () => {
     const { ctx } = await setup()
     const session = newSession(ctx)
     const agent = fakeAgent(session)
-    await failingEcho(ctx, agent)
+    await failingSubmit(ctx, agent)
     const both = await call(ctx, 'editPreviousToolCalling', {
       previous_ordinal: 1,
-      old_string: '"tex":"hi"',
-      new_string: '"text":"hi"',
-      patch: [{ path: '.tex', value: 'hi' }],
+      patch: [{ path: '.mode', value: 'prod', old_string: 'dev', new_string: 'prod' }],
     }, agent, { step: 2 })
     expect(both.isError).toBe(true)
-    expect(textOf(both.content)).toContain('exactly one edit payload')
-    const neither = await call(ctx, 'editPreviousToolCalling', {
+    expect(textOf(both.content)).toContain('must carry exactly one of: value, or old_string + new_string')
+    const half = await call(ctx, 'editPreviousToolCalling', {
       previous_ordinal: 1,
+      patch: [{ path: '.mode', old_string: 'dev' }],
     }, agent, { step: 3 })
-    expect(neither.isError).toBe(true)
-    expect(textOf(neither.content)).toContain('exactly one edit payload')
+    expect(half.isError).toBe(true)
+    expect(textOf(half.content)).toContain('old_string and new_string must be provided together')
+    const empty = await call(ctx, 'editPreviousToolCalling', {
+      previous_ordinal: 1,
+      patch: [],
+    }, agent, { step: 4 })
+    expect(empty.isError).toBe(true)
+    expect(textOf(empty.content)).toContain('patch must contain at least one entry')
   })
+})
 
 describe('mode detection', () => {
   it('does not register the replay tool in code mode and injects the PTC section', async () => {
@@ -319,17 +412,15 @@ describe('mode detection', () => {
     expect(rendered).not.toContain('eval(fixed);')
     expect(rendered).not.toContain('fix it in place with tools.edit')
 
-    // A failing outer run_code gets the PTC notice: saved + by-id path + the
-    // verified retry route (submit the corrected program as the new run).
-    // The fake codeRuntime has no worker, so the transport's execute throws
-    // and the failure passes through post-execute.
+    // A failing outer run_code gets the PTC notice: saved + by-id path, and
+    // the recipe pointer (the recipe itself lives in the static section).
     const failed = await call(ctx, 'run_code', { code: 'throw new Error("boom")' }, agent)
     expect(failed.isError).toBe(true)
     const notice = noticeText(failed.additionalContexts)
     expect(notice).toContain('Your failed `run_code` program was saved.')
     expect(notice).toContain('/by-id/call-1.json')
-    expect(notice).toContain('apply a literal replace to the real program text')
-    expect(notice).toContain('new AsyncFunction("tools", "console"')
+    expect(notice).toContain('follow the retry recipe in the "TOOL-CALL')
+    expect(notice).not.toContain('apply a literal replace to the real program text')
   })
 
   it('registers the replay tool and the native section by default', async () => {
@@ -349,6 +440,10 @@ describe('mode detection', () => {
     expect(rendered).toContain('TOOL-CALL CHECKPOINT & REPLAY')
     expect(rendered).toContain('editPreviousToolCalling')
     expect(rendered).not.toContain('Tools called INSIDE a program')
+    // The static section carries exactly one small retry example; the rules
+    // live in the tool's own description (no duplicate guidance section).
+    expect(rendered).toContain('old_string: "dev", new_string: "prod"')
+    expect(rendered).not.toContain('patch (preferred for JSON arguments)')
   })
 })
 
@@ -362,12 +457,12 @@ describe('restart recovery', () => {
     const session = ctx.sessions.create(SessionId('resume-ordinal-session'), {
       seed: [{
         type: 'tool/call', seq: 0, time: 1,
-        data: { turn: 1, step: 1, callId: 'old-1', name: 'echo', arguments: '{"tex":"hi"}' },
+        data: { turn: 1, step: 1, callId: 'old-1', name: 'submit', arguments: '{"mode":"dev"}' },
       }] as never,
     })
     const agent = fakeAgent(session)
     // Pre-seed the checkpoint store exactly as the plugin leaves it on disk.
-    fs.files.set(`key:${join(root, 'by-id', 'old-1.json')}`, { content: '{"tex":"hi"}', version: FsVersion('v0') })
+    fs.files.set(`key:${join(root, 'by-id', 'old-1.json')}`, { content: '{"mode":"dev"}', version: FsVersion('v0') })
     const target = await ctx.fs.resolve(join(root, 'by-id', 'old-1.json'))
     ctx.emit('fs/observed', target, { kind: 'present', version: FsVersion('v0') }, { agent })
 
@@ -376,13 +471,12 @@ describe('restart recovery', () => {
     // which runs after the tool body).
     const replay = await call(ctx, 'editPreviousToolCalling', {
       previous_ordinal: 1,
-      old_string: '"tex":"hi"',
-      new_string: '"text":"hi"',
+      patch: [{ path: '.mode', value: 'prod' }],
     }, agent, { turn: 2, step: 1 })
     if (replay.isError) throw new Error(`expected resume replay success: ${textOf(replay.content)}`)
-    expect(textOf(replay.content)).toContain('Replayed echo with the edited arguments')
-    expect(textOf(replay.content)).toContain('echoed: hi')
+    expect(textOf(replay.content)).toContain('Replayed submit with the edited arguments')
+    expect(textOf(replay.content)).toContain('submit ok: true')
     // The edit landed on the by-id file (the only real store).
-    expect(fs.files.get(`key:${join(root, 'by-id', 'old-1.json')}`)?.content).toBe('{"text":"hi"}')
+    expect(fs.files.get(`key:${join(root, 'by-id', 'old-1.json')}`)?.content).toBe('{"mode":"prod"}')
   })
 })

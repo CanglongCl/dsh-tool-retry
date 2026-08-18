@@ -134,8 +134,7 @@ describe('agent-loop integration', () => {
       textResponse('acknowledged'),
       toolCallResponse('t2', 'editPreviousToolCalling', {
         previous_ordinal: 1,
-        old_string: '"bad"',
-        new_string: '"good"',
+        patch: [{ path: '.value', old_string: 'bad', new_string: 'good' }],
       }),
       textResponse('done'),
     )
@@ -216,11 +215,11 @@ describe('agent-loop integration', () => {
         return parallelToolCallResponse([
           {
             rawCallId: 'r1', name: 'editPreviousToolCalling',
-            args: { previous_ordinal: 1, old_string: '"bad-one"', new_string: '"good-one"' },
+            args: { previous_ordinal: 1, patch: [{ path: '.value', old_string: 'bad-one', new_string: 'good-one' }] },
           },
           {
             rawCallId: 'r2', name: 'editPreviousToolCalling',
-            args: { call_id: 'p2', old_string: '"bad-two"', new_string: '"good-two"' },
+            args: { call_id: 'p2', patch: [{ path: '.value', old_string: 'bad-two', new_string: 'good-two' }] },
           },
         ])
       },
@@ -266,12 +265,12 @@ describe('agent-loop integration', () => {
       toolCallResponse('m1', 'boom', { value: 'bad' }),
       // First retry: the edited arguments still fail, so the replay errors.
       toolCallResponse('m2', 'editPreviousToolCalling', {
-        call_id: 'm1', old_string: '"bad"', new_string: '"bad-again"',
+        call_id: 'm1', patch: [{ path: '.value', old_string: 'bad', new_string: 'bad-again' }],
       }),
       // Second retry against the SAME call id: the by-id file survived the
       // intervening rounds (call_id routing never touches the round map).
       toolCallResponse('m3', 'editPreviousToolCalling', {
-        call_id: 'm1', old_string: '"bad-again"', new_string: '"good"',
+        call_id: 'm1', patch: [{ path: '.value', old_string: 'bad-again', new_string: 'good' }],
       }),
       textResponse('done'),
     )

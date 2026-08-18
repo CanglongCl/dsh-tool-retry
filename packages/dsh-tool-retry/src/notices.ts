@@ -12,8 +12,6 @@ import { PLUGIN_ID } from './invariant.ts'
 
 /** Static section name/order: tool guidance band, before the SDK section (150). */
 export const CHECKPOINT_SECTION_ORDER = 149
-/** Replay-tool guidance section name/order: right after `tool:edit` (102). */
-export const REPLAY_GUIDANCE_ORDER = 103
 export const REPLAY_TOOL_NAME = 'editPreviousToolCalling'
 
 /** Static section A (native) with the session directory filled in. */
@@ -29,17 +27,12 @@ export function nativeSection(dir: string): string {
     '  line is appended to history.jsonl.',
     "- A checkpoint's content is byte-for-byte identical to the arguments you sent",
     '  for that call.',
-    `To retry with a small correction, call \`${REPLAY_TOOL_NAME}\` once with`,
-    "either previous_ordinal (the call's position 1/2/\u2026 in your previous message)",
-    "or call_id (for an OLDER call — a failed",
-    "call's id was given in its failure notice, and any call's id can be looked",
-    'up in the tail of history.jsonl), plus exactly one edit payload:',
-    '  patch: [{ path: ".config.mode", value: "prod" }, ...]  (JSON arguments —',
-    '  dot segments and [n] indexes; no JSON escaping; omit value to delete)',
-    '  old_string: "<fragment>", new_string: "<replacement>"  (literal text replace)',
-    'It applies your edit and immediately re-invokes the original',
-    'tool with the edited arguments. Use this only when a small correction is',
-    'needed; otherwise call the tool again with fresh arguments.',
+    'After a failed call, a notice gives you the call id, so you can retry with',
+    'one small fix, e.g.:',
+    `  ${REPLAY_TOOL_NAME}({ call_id: "<id>", patch: [{ path: ".config.mode",`,
+    '    old_string: "dev", new_string: "prod" }] })',
+    "Follow the rules in that tool's own description, and retry this way only",
+    'for a small correction.',
   ].join('\n')
 }
 
@@ -72,54 +65,30 @@ export function ptcSection(dir: string): string {
   ].join('\n')
 }
 
-/** Tool guidance section for the replay tool (native only). */
-export const REPLAY_GUIDANCE = [
-  `Edit and replay a previous tool call's checkpointed arguments in ONE call.`,
-  `For a call in your PREVIOUS message, pass previous_ordinal (its position 1/2/\u2026 in that message);`,
-  `for an OLDER call, pass call_id (a failed call's id was given in its failure notice; any id can be looked up in the tail of history.jsonl).`,
-  'previous_ordinal is only reliable when this replay call is the FIRST tool call of your message:',
-  'after any earlier tool call in the same message (or for a parallel sibling), pass call_id instead.',
-  'Exactly one of previous_ordinal / call_id must be provided, plus exactly one edit payload:',
-  'patch (preferred for JSON arguments): [{ path: ".config.mode", value: "prod" }, ...] — dot segments and [n] array indexes;',
-  'the checkpoint is parsed, patched, and replayed as the edited object (no JSON escaping); omit value to delete a field.',
-  'patch paths start from the checkpoint\'s TOP-LEVEL keys (a failure notice lists them); to patch an EARLIER call after a failed retry, use the ORIGINAL call id.',
-  'or old_string / new_string / replace_all: a literal replace inside the raw argument string.',
-  'Your edit is applied to the checkpoint and the original tool is immediately re-invoked with the edited arguments.',
-  'Use this only when a small correction is needed; otherwise call the tool again with fresh arguments.',
-].join(' ')
-
 /** Failure notice C (native): saved + call id + a concrete one-call retry.
- * The optional hint carries the checkpoint's top-level keys (patch paths
- * start from them) and, when the failed call was itself an edit of another
- * call, the original call id the retry should target instead. */
-export function nativeNotice(callId: string, hint?: { keys?: string[]; editedCallId?: string }): UserMessage {
+ * When the failed call was itself an edit of another call, the hint carries
+ * the original call id the retry should target instead. */
+export function nativeNotice(callId: string, hint?: { editedCallId?: string }): UserMessage {
+  const retryTarget = hint?.editedCallId ?? callId
   const lines = [
     "Your failed call's arguments were saved.",
     `- call id: ${callId}`,
+    'To retry with a small fix:',
+    `  ${REPLAY_TOOL_NAME}({ call_id: "${retryTarget}", patch: [{ path: ".field.to.fix",`,
+    '    old_string: "<fragment>", new_string: "<replacement>" }] })',
+    '  (to replace the whole value at the path instead: value: <replacement>)',
   ]
-  if (hint?.keys !== undefined && hint.keys.length > 0) {
-    lines.push(`- checkpoint keys: ${hint.keys.join(', ')}`)
-  }
-  const retryTarget = hint?.editedCallId ?? callId
-  lines.push(
-    `To retry with a small fix, call \`${REPLAY_TOOL_NAME}\` once:`,
-    `  call_id: "${retryTarget}", patch: [{ path: ".field.to.fix", value: <replacement> }]`,
-    '  (or a text replace: old_string: "<fragment>", new_string: "<replacement>")',
-  )
   if (hint?.editedCallId !== undefined && hint.editedCallId !== callId) {
     lines.push(`(the call above failed while editing call id "${hint.editedCallId}" — retry that original call id)`)
   }
-  lines.push(
-    'It applies your edit and immediately re-runs the tool. Only rewrite the',
-    'arguments from scratch when the whole call must change.',
-  )
   return createUserMessage({
     source: { kind: 'plugin', plugin: PLUGIN_ID, form: 'notice', summary: 'Failed tool call saved — small fixes can replay it' },
     content: [{ type: 'text', text: lines.join('\n') }],
   })
 }
 
-/** Failure notice D (PTC): saved + by-id path + a concrete loader retry. */
+/** Failure notice D (PTC): saved + by-id path; the retry recipe lives in the
+ * static PTC section (the only place it is written). */
 export function ptcNotice(dir: string, idFileName: string): UserMessage {
   return createUserMessage({
     source: { kind: 'plugin', plugin: PLUGIN_ID, form: 'notice', summary: 'Failed run_code program saved — small fixes can replay it' },
@@ -128,11 +97,8 @@ export function ptcNotice(dir: string, idFileName: string): UserMessage {
       text: [
         'Your failed `run_code` program was saved.',
         `- path: ${dir}/by-id/${idFileName}`,
-        'To retry with a small fix, read that file with tools.read, JSON.parse it,',
-        'apply a literal replace to the real program text (prev.code), then run',
-        'the corrected program via:',
-        '  new AsyncFunction("tools", "console", "\'use strict\';\\n" + corrected)(tools, console)',
-        'Only rewrite the program from scratch when the whole program must change.',
+        'To retry with a small fix, follow the retry recipe in the "TOOL-CALL',
+        'CHECKPOINT & REPLAY" prompt section.',
       ].join('\n'),
     }],
   })

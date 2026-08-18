@@ -184,16 +184,16 @@ function errorMessage(error: unknown): string {
 
 /**
  * Failure-notice hint derived from the failed call's RAW argument string:
- * the top-level keys (patch paths start from them) and, when the failed call
- * was itself an `editPreviousToolCalling` attempt, the original call id the
- * retry should target instead of the failed attempt's own id. Best-effort —
- * a parse failure contributes nothing, and an ordinal-form replay call has
- * already re-pointed the round map so its original id is unrecoverable here.
+ * when the failed call was itself an `editPreviousToolCalling` attempt, the
+ * original call id the retry should target instead of the failed attempt's
+ * own id. Best-effort — a parse failure contributes nothing, and an
+ * ordinal-form replay call has already re-pointed the round map so its
+ * original id is unrecoverable here.
  */
 function nativeNoticeHint(
   raw: string | undefined,
   exec: { name?: string },
-): { keys?: string[]; editedCallId?: string } | undefined {
+): { editedCallId?: string } | undefined {
   if (raw === undefined) return undefined
   let parsed: unknown
   try {
@@ -203,14 +203,6 @@ function nativeNoticeHint(
   }
   if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined
   const record = parsed as Record<string, unknown>
-  const keys = Object.keys(record).slice(0, 6)
-  let editedCallId: string | undefined
-  if (exec.name === REPLAY_TOOL_NAME && typeof record.call_id === 'string') {
-    editedCallId = record.call_id
-  }
-  if (keys.length === 0 && editedCallId === undefined) return undefined
-  return {
-    ...(keys.length > 0 ? { keys } : {}),
-    ...(editedCallId !== undefined ? { editedCallId } : {}),
-  }
+  if (exec.name !== REPLAY_TOOL_NAME || typeof record.call_id !== 'string') return undefined
+  return { editedCallId: record.call_id }
 }

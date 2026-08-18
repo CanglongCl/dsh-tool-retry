@@ -116,9 +116,10 @@ describe('checkpoint pipeline', () => {
     expect(notice).toContain("Your failed call's arguments were saved.")
     expect(notice).toContain('call id: call-1')
     expect(notice).toContain('editPreviousToolCalling')
-    // The raw args parse as an object — the notice lists the top-level keys
-    // (patch paths start from them).
-    expect(notice).toContain('checkpoint keys: tex')
+    // The concrete retry suggestion: a placeholder path example, no keys line.
+    expect(notice).toContain('To retry with a small fix:')
+    expect(notice).toContain('path: ".field.to.fix"')
+    expect(notice).not.toContain('checkpoint keys')
 
     // UNKNOWN_TOOL.
     const unknown = await call(ctx, 'no-such-tool', {}, agent, { step: 2 })

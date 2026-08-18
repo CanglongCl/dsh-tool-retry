@@ -27,7 +27,7 @@
 - **静态注入**：在 system prompt 中写入该机制说明（目录、编号约定、id/jsonl 约定、重放工具用法），让 AI 提前知悉「可以修改并重试」；
 - **动态注入**：通过 `tools/post-execute` 生命周期钩子，在调用失败后向模型注入**极简提示**——只写「已保存 + 调用 id（PTC 版为 by-id 路径）+ 用法」三件事，不做其他解释（失败原因由 harness 的 tool/result 自行返回）；**每次失败都注入，不做任何工具名/错误码过滤**（五轮评审：覆盖发生在工具体执行之后，零过滤无时序问题，见 §3.3）；
 - 重放：
-  - **native 模式**：工具 `editPreviousToolCalling`，输入 **id**（真实 callId 或上一步序号 `"1"/"2"…`）+ 一种编辑载荷（`old_string/new_string/replace_all` 字面替换，或 `patch: [{path, value}]` jq 风格结构化补丁），内部路由到对应文件完成「编辑 → 读取 → 以新参数重放原工具」，模型无需填路径；
+  - **native 模式**：工具 `editPreviousToolCalling`，输入 **id**（真实 callId 或上一步序号 `"1"/"2"…`）+ `patch: [{path, value | old_string/new_string/replace_all}]` 结构化补丁（path 定位值，value 整值替换、old/new 在字符串值解码文本内做字面替换——转义不进模型视野），内部路由到对应文件完成「补丁 → 持久化 → 以新参数重放原工具」，模型无需填路径；
   - **PTC 模式（code）**：**不注册、不注入该工具**——模型在 `run_code` 程序内用 fs 工具读/编辑 checkpoint 文件，把内容作为新程序或其他工具的输入。
 
 量化目标（第五阶段评测验证）：失败重试的 token 消耗显著下降（建议基线目标：重试步输出 token 节省 ≥ 40%，见 §6），重试成功率不低于「全量重新生成参数」的基线；暂存/通知的固定开销最小化（单条通知 + 顺序 id 别名维护）。
@@ -207,10 +207,11 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工�
 #### 3.5.2 native 模式：`editPreviousToolCalling` 工具（输入 id，内部路由）
 
 - **注册条件**：`run_code` 不可见（native）才注册；code/both 不注册（§3.5.1）。
-- **签名（评审修订 + patch 模式）**：**`{ previous_ordinal?, call_id?, old_string?, new_string?, replace_all?, patch? }`**——定位参数**二选一、恰填一个**（都填或都不填 → 明确错误结果）；编辑载荷**二选一、恰填一个**（`old_string+new_string` 与 `patch` 都填或都不填 → 明确错误）：
-  - **`previous_ordinal`（数字）**：上一步序号 1/2/…（模型知道自己消息里的调用顺序；最常用路径）；
-  - **`call_id`（字符串）**：真实 callId——通知注入的 id 或 `history.jsonl` 里的 id（历史场景、多次重试）；
-  - **`patch`（结构化，jq 风格，推荐用于 JSON 参数）**：`[{ path: ".config.mode", value: "prod" }, …]`——点号段 + `[n]` 数组下标（支持 `.a[0][1]` 链式），省略 `value` 即删除该字段（数组下标 splice）；工具把 checkpoint 解析为 JSON、逐条应用补丁、把补丁后的**对象**持久化并直接作为新参数重放——嵌套 JSON 的转义完全不进入模型视野（解决 long-config 类场景下 raw 替换因双重转义而不可用的实测问题）。路径缺失/非法 → 错误结果附顶层键列表。
+- **签名（评审修订 + patch 唯一载荷）**：**`{ previous_ordinal?, call_id?, patch }`**——定位参数**二选一、恰填一个**（都填或都不填 → 明确错误结果）；`patch` 是唯一编辑载荷（必填、非空）。每个条目 `{ path, value? | old_string?, new_string?, replace_all? }`，path 定位后**二选一**语义：
+  - **`value`**（整值替换）：把 path 处的值整个换掉——任意 JSON 类型，改类型、改数字、换对象都无歧义；`value` 与 `old_string` 都省略 → **删除该字段**（数组下标 splice）；
+  - **`old_string + new_string`**（串内替换）：path 处的值必须是**字符串**，在其**解码后的文本**上做字面替换——字符串化 JSON 的值直接用真实引号匹配，转义完全不进入模型视野（解决 long-config 类场景 raw 替换因双重转义而不可用的实测问题）；`replace_all` 默认 false，old_string 出现不止一次时报错并给出次数（模型应加长片段使其唯一或显式 replace_all）。长字符串 value（如 10K plan 改一小节）只发改动片段，不发整值。
+  - **路径**：点号段 + `[n]` 数组下标（支持 `.a[0][1]` 链式），从 checkpoint 顶层 key 出发；路径缺失/非法 → 错误结果附顶层键列表。
+  - **固有边界**：改字段名（key 改名）不可表达——路径只改值不改键；改类型只能用 value 形式。两者都超出时模型重发新调用。
   模型不需要填写任何文件路径，由工具内部路由。
 - **使用约定（七轮评审）**：修改**上一个**调用（无论成败）用 `previous_ordinal`（对应 `previous/n.json` 别名）；修改**更早**调用用 `call_id`——失败调用的 id 已在其失败时的通知中注入（context 可见，直接用），成功调用的 id 只能查 `history.jsonl`。
 - **instruction**：描述为「按 id 定位上一次（或历史）工具调用的 checkpoint，编辑后立即以编辑后内容重新调用原工具」；专属系统指引段 `ctx.systemPrompt.section({ name:'tool:editPreviousToolCalling', order: 103, text })`（紧邻 `tool:edit` 的 102）。
@@ -223,7 +224,7 @@ tools/post-execute 瀑布  ← 本特性监听器（"after-tool-calling"；工�
   6. `JSON.parse` → 新 arguments；解析失败 → 错误结果「checkpoint 内容必须保持合法 JSON」；
   7. **嵌套重放**：`ctx.tools.execute({ callId: CallId('<原callId>:replay'), name: toolName, arguments: newArgs, agent: exec.agent, rootCallId: exec.rootCallId, parent: exec.token, signal: exec.signal })`；
   8. 结果渲染：成功 → `"Replayed <toolName> with the edited arguments:"` + 重放结果的 content；失败 → 抛错使本工具结果为 `isError: true`（模型可继续修正重试，其失败本身也会被落盘+通知，零过滤）。
-- **单次调用完成编辑+重放**（五轮评审）：模型**不需要**先用内置 `edit` 改 checkpoint——编辑载荷（raw 或 patch）在工具体内应用；因此覆盖时序与重放无冲突（§2.2/§3.2）。patch 模式持久化的是 `JSON.stringify(patched)`（无换行，与 checkpoint 原始格式一致），重放参数即补丁后的解析对象。
+- **单次调用完成编辑+重放**（五轮评审）：模型**不需要**先用内置 `edit` 改 checkpoint——patch 在工具体内应用；因此覆盖时序与重放无冲突（§2.2/§3.2）。持久化的是 `JSON.stringify(patched)`（无换行，与 checkpoint 原始格式一致），重放参数即补丁后的解析对象。
 - **关键设计点 `parent: exec.token`**：把重放标记为嵌套子调用——(a) 重放完整走 pre/execute/post/result 管线，审批等策略对新参数再次生效；(b) 重放是嵌套子调用，**不会**被本插件再次落盘/通知。
 - **审计日志**：v1 不新增 session 事件类型；重放结果随本工具 `tool/result` 的 content 与 `meta`（`{ replayedCallId, toolName, checkpointPath }`）落盘。可选迭代：新增 `tool/replay` 事件类型（需 core/session schema + UI 卡片，属于改 harness 核心——除非必要否则不做）——见 §7 决策点 8。
 - **并发**：不声明 `isConcurrencySafe` → 默认独占执行（`executionMode` 分类 fail-closed，:1276-1285）。

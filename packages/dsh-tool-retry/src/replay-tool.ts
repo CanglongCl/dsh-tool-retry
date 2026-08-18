@@ -15,7 +15,7 @@ import { defineTool, type JsonValue } from '@deepseek-ai/dsh-tools'
 import { join } from 'node:path'
 import type { CheckpointIo, SessionCheckpoint } from './checkpoint.ts'
 import { sanitizeId } from './invariant.ts'
-import { REPLAY_GUIDANCE, REPLAY_GUIDANCE_ORDER, REPLAY_TOOL_NAME } from './notices.ts'
+import { REPLAY_TOOL_NAME } from './notices.ts'
 
 /** Resolve (or create) a store for a session id (plugin-owned per-session map). */
 export type StoreLookup = (sessionId: string) => SessionCheckpoint
@@ -23,19 +23,24 @@ export type StoreLookup = (sessionId: string) => SessionCheckpoint
 /** Whether one assembling scope belongs to this plugin's scope chain. */
 export type ScopeCoverage = (scope: ScopeKey | undefined) => boolean
 
+/** One patch entry: a path plus exactly one of value / old_string+new_string. */
+interface PatchEntry {
+  path: string
+  /** Whole-value replacement (any JSON value). */
+  value?: JsonValue
+  /** Literal replace inside the string value at the path. */
+  old_string?: string
+  new_string?: string
+  replace_all?: boolean
+}
+
 /** The tool's validated arguments. */
 interface ReplayArgs {
   previous_ordinal?: number
   call_id?: string
-  old_string?: string
-  new_string?: string
-  replace_all?: boolean
-  /** Structured (jq-style) edits: dot/array paths with replacement values
-   * (omit value to delete the field). Mutually exclusive with
-   * old_string/new_string — this mode parses the checkpointed JSON, applies
-   * the patches, and replays the patched OBJECT (no escaping in the model's
-   * view). */
-  patch?: { path: string; value?: JsonValue }[]
+  /** The only edit payload: parsed-checkpoint patches (path + value xor
+   * old/new), so JSON escaping never enters the model's view. */
+  patch?: PatchEntry[]
 }
 
 /** The tool's canonical output value (content blocks are JSON records). */
@@ -96,45 +101,47 @@ function callTurnStep(sessionEvents: readonly unknown[], callId: string): { turn
  * global registry entries).
  */
 export function registerReplayTool(ctx: Context, io: CheckpointIo, lookup: StoreLookup, covers: ScopeCoverage): void {
-  ctx.systemPrompt.section({
-    name: 'tool:editPreviousToolCalling',
-    order: REPLAY_GUIDANCE_ORDER,
-    text: (context) => covers(context.scope) ? REPLAY_GUIDANCE : '',
-  })
-
+  void covers
   ctx.tools.register(defineTool({
     name: REPLAY_TOOL_NAME,
-    description: 'Edit the checkpointed arguments of a previous tool call and immediately re-run that tool with the edited arguments.',
+    description: 'Edit the checkpointed arguments of a previous tool call and immediately re-run that tool with the edited arguments. Each patch entry either sets one value (value) or applies a literal replace inside one string (old_string/new_string). Use this only when a small correction is needed; otherwise call the original tool again with fresh arguments.',
     parameters: {
       previous_ordinal: {
         type: 'number',
-        description: "The call's position (1/2/\u2026) in your previous message. Exactly one of previous_ordinal / call_id must be provided.",
+        description: "The call's position (1/2/\u2026) in your previous message. Only reliable when this replay call is the FIRST tool call of your message — after any earlier call in the same message, or for a parallel sibling, pass call_id instead. Exactly one of previous_ordinal / call_id must be provided.",
       },
       call_id: {
         type: 'string',
         description: 'The call id of an older call (from its failure notice or the tail of history.jsonl). Exactly one of previous_ordinal / call_id must be provided.',
       },
-      old_string: {
-        type: 'string',
-        description: 'Literal text to replace in the checkpointed arguments string. Must match exactly. Exactly one edit payload of (old_string + new_string) or patch must be provided.',
-      },
-      new_string: {
-        type: 'string',
-        description: 'Literal replacement text. Use an empty string to delete the match. Exactly one edit payload of (old_string + new_string) or patch must be provided.',
-      },
-      replace_all: {
-        type: 'boolean',
-        description: 'Replace all matches. Defaults to false; when false, old_string must appear exactly once.',
-      },
       patch: {
         type: 'array',
-        description: 'Structured edits for JSON arguments (jq-style): [{ path: ".config.mode", value: "prod" }, ...]. Paths use dot segments and [n] array indexes; the checkpoint is parsed as JSON, patched, and replayed as the edited object — no JSON escaping needed. Omit value to delete the field. Exactly one edit payload of (old_string + new_string) or patch must be provided.',
+        description: 'One or more edits, applied in order to the parsed checkpoint. A path uses dot segments and [n] array indexes starting from the checkpoint\'s TOP-LEVEL keys. Each entry carries EXACTLY ONE of: value (replace the whole value at the path — any JSON type; omit value AND old_string to delete the field), or old_string + new_string (a literal replace inside the string value at the path; the string\'s decoded text is matched, so JSON quoting never enters old_string; it must appear exactly once unless replace_all is true).',
         items: {
           type: 'object',
           additionalProperties: false,
           properties: {
-            path: { type: 'string', required: true },
-            value: { type: 'json' },
+            path: {
+              type: 'string',
+              required: true,
+              description: 'Dot/array path from a top-level key to the target value (e.g. ".config.mode", "items[0].name").',
+            },
+            value: {
+              type: 'json',
+              description: 'The whole replacement value at the path (any JSON value). Omit value AND old_string to delete the field (array indexes splice the item out). Mutually exclusive with old_string/new_string.',
+            },
+            old_string: {
+              type: 'string',
+              description: 'Literal text to replace inside the string value at the path. Must match exactly; when replace_all is false (default) it must appear exactly once — if it appears more than once, include more surrounding text to make it unique.',
+            },
+            new_string: {
+              type: 'string',
+              description: 'Literal replacement text. Use an empty string to delete the match. Mutually exclusive with value.',
+            },
+            replace_all: {
+              type: 'boolean',
+              description: 'Replace all matches. Defaults to false.',
+            },
           },
         },
       },
@@ -173,10 +180,8 @@ export function registerReplayTool(ctx: Context, io: CheckpointIo, lookup: Store
       if (hasOrdinal === hasId) {
         throw new Error('provide exactly one of previous_ordinal / call_id (both or neither is an error)')
       }
-      const hasRaw = args.old_string !== undefined && args.new_string !== undefined
-      const hasPatch = args.patch !== undefined && args.patch.length > 0
-      if (hasRaw === hasPatch) {
-        throw new Error('provide exactly one edit payload: (old_string + new_string) or patch (both or neither is an error)')
+      if (args.patch === undefined || args.patch.length === 0) {
+        throw new Error('patch must contain at least one entry')
       }
       const agent = exec.agent
       if (agent === undefined) {
@@ -246,88 +251,91 @@ export function registerReplayTool(ctx: Context, io: CheckpointIo, lookup: Store
       const existing = await ctx.fs.readText(fileTarget, exec.signal)
       const rewrite = await ctx.fs.writeText(fileTarget, existing, undefined, exec.signal)
       ctx.emit('fs/observed', fileTarget, { kind: 'present', version: rewrite.version }, exec)
-      let newArgs: unknown
-      if (hasPatch) {
-        // Structured mode: parse the checkpointed JSON, apply dot/array-path
-        // patches, and persist the patched object — the model never touches
-        // the stored string's escaping.
-        let parsed: unknown
-        try {
-          parsed = existing ? JSON.parse(existing) : {}
-        } catch {
-          throw new Error('checkpoint content is not JSON — patch mode needs JSON arguments; use old_string/new_string instead')
+      // Patch mode: parse the checkpointed JSON, apply the entries in order,
+      // and persist the patched object — the model never touches the stored
+      // string's escaping.
+      let parsed: unknown
+      try {
+        parsed = existing ? JSON.parse(existing) : {}
+      } catch {
+        throw new Error('checkpoint content is not JSON — patch edits need JSON arguments')
+      }
+      for (const entry of args.patch!) {
+        const hasValue = Object.hasOwn(entry, 'value')
+        const hasOld = entry.old_string !== undefined
+        const hasNew = entry.new_string !== undefined
+        if (hasValue && (hasOld || hasNew)) {
+          throw new Error('patch entry must carry exactly one of: value, or old_string + new_string')
         }
-        for (const entry of args.patch!) {
-          // value is optional: omitting it deletes the field (jq-style del).
-          // The registry snapshot already detaches json-typed values; the
-          // round-trip is a defensive plain-JSON guard only.
-          const hasValue = entry.value !== undefined
-          const value = hasValue ? JSON.parse(JSON.stringify(entry.value)) as unknown : undefined
-          const tokens = parsePatchPath(entry.path)
-          if (tokens.length === 0) throw new Error('patch path must not be empty')
-          const missing = (): never => {
-            const keys = parsed !== null && typeof parsed === 'object'
-              ? Object.keys(parsed as Record<string, unknown>)
-              : []
-            throw new Error(`patch path "${entry.path}" not found (checkpoint keys: ${keys.join(', ') || '(none)'})`)
-          }
-          let parent: Record<string, unknown> | unknown[] | undefined
-          let current: unknown = parsed
-          let key: string | number | undefined
-          for (const token of tokens) {
-            if (typeof token === 'number') {
-              if (!Array.isArray(current)) missing()
-              if (token >= (current as unknown[]).length) missing()
-              parent = current as unknown[]
-              key = token
-              current = (current as unknown[])[token]
-            } else if (current !== null && typeof current === 'object' && !Array.isArray(current)) {
-              const object = current as Record<string, unknown>
-              if (!Object.hasOwn(object, token)) missing()
-              parent = object
-              key = token
-              current = object[token]
-            } else {
-              missing()
-            }
-          }
-          if (parent === undefined || key === undefined) missing()
-          if (Array.isArray(parent)) {
-            const index = Number(key)
-            if (hasValue) (parent as unknown[])[index] = value
-            else (parent as unknown[]).splice(index, 1)
-          } else if (hasValue) {
-            (parent as Record<string, unknown>)[String(key)] = value
+        if (hasOld !== hasNew) {
+          throw new Error('old_string and new_string must be provided together')
+        }
+        // The registry snapshot already detaches json-typed values; the
+        // round-trip is a defensive plain-JSON guard only.
+        const value = hasValue ? JSON.parse(JSON.stringify(entry.value)) as unknown : undefined
+        const tokens = parsePatchPath(entry.path)
+        if (tokens.length === 0) throw new Error('patch path must not be empty')
+        const missing = (): never => {
+          const keys = parsed !== null && typeof parsed === 'object'
+            ? Object.keys(parsed as Record<string, unknown>)
+            : []
+          throw new Error(`patch path "${entry.path}" not found (checkpoint keys: ${keys.join(', ') || '(none)'})`)
+        }
+        let parent: Record<string, unknown> | unknown[] | undefined
+        let current: unknown = parsed
+        let key: string | number | undefined
+        for (const token of tokens) {
+          if (typeof token === 'number') {
+            if (!Array.isArray(current)) missing()
+            if (token >= (current as unknown[]).length) missing()
+            parent = current as unknown[]
+            key = token
+            current = (current as unknown[])[token]
+          } else if (current !== null && typeof current === 'object' && !Array.isArray(current)) {
+            const object = current as Record<string, unknown>
+            if (!Object.hasOwn(object, token)) missing()
+            parent = object
+            key = token
+            current = object[token]
           } else {
-            delete (parent as Record<string, unknown>)[String(key)]
+            missing()
           }
         }
-        const patchedText = JSON.stringify(parsed)
-        const patchedWrite = await ctx.fs.writeText(fileTarget, patchedText, undefined, exec.signal)
-        ctx.emit('fs/observed', fileTarget, { kind: 'present', version: patchedWrite.version }, exec)
-        newArgs = parsed
-      } else {
-        // Raw mode: literal edit through the same intent slot as the fs edit
-        // tool, then read back and parse.
-        const intent = await ctx.waterfall('fs/edit-intent', fileTarget, exec, () => undefined)
-        const outcome = await ctx.fs.editText(
-          fileTarget,
-          {
-            oldString: args.old_string!,
-            newString: args.new_string!,
-            replaceAll: args.replace_all ?? false,
-          },
-          intent,
-          exec.signal,
-        )
-        ctx.emit('fs/observed', fileTarget, { kind: 'present', version: outcome.version }, exec)
-        const edited = await ctx.fs.readText(fileTarget, exec.signal)
-        try {
-          newArgs = edited ? JSON.parse(edited) : {}
-        } catch {
-          throw new Error('checkpoint content must remain valid JSON after the edit (your old_string changed its structure)')
+        if (parent === undefined || key === undefined) missing()
+        if (hasOld) {
+          // String-internal replace: match the value's DECODED text, so JSON
+          // quoting never enters old_string (a stringified-JSON value is
+          // matched with plain quotes).
+          if (typeof current !== 'string') {
+            throw new Error(`patch path "${entry.path}" does not point to a string (old_string/new_string edits strings only — use value to replace it instead)`)
+          }
+          const oldString = entry.old_string as string
+          const replaceAll = entry.replace_all === true
+          const occurrences = current.split(oldString).length - 1
+          if (occurrences === 0) {
+            throw new Error(`old_string was not found in the value at "${entry.path}"`)
+          }
+          if (occurrences > 1 && !replaceAll) {
+            throw new Error(`old_string appears ${String(occurrences)} times in the value at "${entry.path}" — include more surrounding text to make it unique, or pass replace_all: true`)
+          }
+          const edited = replaceAll
+            ? current.split(oldString).join(entry.new_string as string)
+            : current.replace(oldString, entry.new_string as string)
+          if (Array.isArray(parent)) (parent as unknown[])[Number(key)] = edited
+          else (parent as Record<string, unknown>)[String(key)] = edited
+        } else if (hasValue) {
+          if (Array.isArray(parent)) (parent as unknown[])[Number(key)] = value
+          else (parent as Record<string, unknown>)[String(key)] = value
+        } else {
+          // Neither value nor old/new: delete the field (arrays splice).
+          if (Array.isArray(parent)) (parent as unknown[]).splice(Number(key), 1)
+          else delete (parent as Record<string, unknown>)[String(key)]
         }
       }
+      const patchedText = JSON.stringify(parsed)
+      const patchedWrite = await ctx.fs.writeText(fileTarget, patchedText, undefined, exec.signal)
+      ctx.emit('fs/observed', fileTarget, { kind: 'present', version: patchedWrite.version }, exec)
+      const newArgs = parsed
 
       // 5. Nested replay: parent token marks it a sub-dispatch (no
       // re-checkpoint, no notice; pre/execute/post/result still run).
