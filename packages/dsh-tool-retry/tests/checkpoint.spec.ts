@@ -110,12 +110,15 @@ describe('checkpoint pipeline', () => {
     const agent = fakeAgent(session)
 
     // Plain tool failure.
-    const failed = await call(ctx, 'boom', {}, agent)
+    const failed = await call(ctx, 'boom', { tex: 'hi' }, agent)
     expect(failed.isError).toBe(true)
     const notice = noticeText(failed.additionalContexts)
     expect(notice).toContain("Your failed call's arguments were saved.")
     expect(notice).toContain('call id: call-1')
     expect(notice).toContain('editPreviousToolCalling')
+    // The raw args parse as an object — the notice lists the top-level keys
+    // (patch paths start from them).
+    expect(notice).toContain('checkpoint keys: tex')
 
     // UNKNOWN_TOOL.
     const unknown = await call(ctx, 'no-such-tool', {}, agent, { step: 2 })

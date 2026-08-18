@@ -59,6 +59,7 @@ interface RunRecord {
     postBreakInputTokens: number
     retrySuccess: boolean
     adopted: boolean
+    replayAttempts?: number
     noticeCount: number
     noticeBytes: number
     toolCalls: string[]
@@ -210,6 +211,7 @@ interface ScenarioRow {
   offContentTokens: number
   contentSavingsPercent: number
   adoptionRate: number
+  attempts: number
   onRetryRate: number
   offRetryRate: number
   notices: number
@@ -252,6 +254,7 @@ function buildScenarioRows(records: RunRecord[]): ScenarioRow[] {
       offContentTokens,
       contentSavingsPercent: offContentTokens > 0 ? Math.round((1 - onContentTokens / offContentTokens) * 1000) / 10 : 0,
       adoptionRate: rate(on.map(run => run.summary.adopted)),
+      attempts: median(on.map(run => run.summary.replayAttempts ?? 0)),
       onRetryRate: rate(on.map(run => run.summary.retrySuccess)),
       offRetryRate: rate(off.map(run => run.summary.retrySuccess)),
       notices: median(on.map(run => run.summary.noticeCount)),
@@ -447,6 +450,7 @@ function abDiffTable(row: ScenarioRow): string {
     badge(`内容 token ${row.contentSavingsPercent >= 0 ? '省' : '多'} ${Math.abs(row.contentSavingsPercent)}%`, headlineTone),
     badge(verdict, headlineTone),
     badge(`采用率 ${percent(row.adoptionRate)}`, row.adoptionRate >= 0.5 ? 'positive' : 'neutral'),
+    badge(`重放尝试 ${row.attempts}`, row.attempts > 0 ? 'positive' : 'neutral'),
     '</span>',
     '</div>',
     descriptionBlock,

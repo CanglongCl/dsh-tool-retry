@@ -82,27 +82,40 @@ export const REPLAY_GUIDANCE = [
   'Exactly one of previous_ordinal / call_id must be provided, plus exactly one edit payload:',
   'patch (preferred for JSON arguments): [{ path: ".config.mode", value: "prod" }, ...] — dot segments and [n] array indexes;',
   'the checkpoint is parsed, patched, and replayed as the edited object (no JSON escaping); omit value to delete a field.',
+  'patch paths start from the checkpoint\'s TOP-LEVEL keys (a failure notice lists them); to patch an EARLIER call after a failed retry, use the ORIGINAL call id.',
   'or old_string / new_string / replace_all: a literal replace inside the raw argument string.',
   'Your edit is applied to the checkpoint and the original tool is immediately re-invoked with the edited arguments.',
   'Use this only when a small correction is needed; otherwise call the tool again with fresh arguments.',
 ].join(' ')
 
-/** Failure notice C (native): saved + call id + a concrete one-call retry. */
-export function nativeNotice(callId: string): UserMessage {
+/** Failure notice C (native): saved + call id + a concrete one-call retry.
+ * The optional hint carries the checkpoint's top-level keys (patch paths
+ * start from them) and, when the failed call was itself an edit of another
+ * call, the original call id the retry should target instead. */
+export function nativeNotice(callId: string, hint?: { keys?: string[]; editedCallId?: string }): UserMessage {
+  const lines = [
+    "Your failed call's arguments were saved.",
+    `- call id: ${callId}`,
+  ]
+  if (hint?.keys !== undefined && hint.keys.length > 0) {
+    lines.push(`- checkpoint keys: ${hint.keys.join(', ')}`)
+  }
+  const retryTarget = hint?.editedCallId ?? callId
+  lines.push(
+    `To retry with a small fix, call \`${REPLAY_TOOL_NAME}\` once:`,
+    `  call_id: "${retryTarget}", patch: [{ path: ".field.to.fix", value: <replacement> }]`,
+    '  (or a text replace: old_string: "<fragment>", new_string: "<replacement>")',
+  )
+  if (hint?.editedCallId !== undefined && hint.editedCallId !== callId) {
+    lines.push(`(the call above failed while editing call id "${hint.editedCallId}" — retry that original call id)`)
+  }
+  lines.push(
+    'It applies your edit and immediately re-runs the tool. Only rewrite the',
+    'arguments from scratch when the whole call must change.',
+  )
   return createUserMessage({
     source: { kind: 'plugin', plugin: PLUGIN_ID, form: 'notice', summary: 'Failed tool call saved — small fixes can replay it' },
-    content: [{
-      type: 'text',
-      text: [
-        "Your failed call's arguments were saved.",
-        `- call id: ${callId}`,
-        `To retry with a small fix, call \`${REPLAY_TOOL_NAME}\` once:`,
-        `  call_id: "${callId}", patch: [{ path: ".field.to.fix", value: <replacement> }]`,
-        '  (or a text replace: old_string: "<fragment>", new_string: "<replacement>")',
-        'It applies your edit and immediately re-runs the tool. Only rewrite the',
-        'arguments from scratch when the whole call must change.',
-      ].join('\n'),
-    }],
+    content: [{ type: 'text', text: lines.join('\n') }],
   })
 }
 

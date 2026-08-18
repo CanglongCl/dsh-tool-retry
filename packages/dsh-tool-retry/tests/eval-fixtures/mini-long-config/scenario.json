@@ -4,11 +4,11 @@
   "kind": "fs",
   "fresh": true,
   "targetTool": true,
-  "task": "调用 eval_submit 工具，config 参数把下面这段 JSON 整段原样传入。如果调用失败，就修正后重试成功，然后汇报结果。\n\nconfig：\n{\"service\": \"eval-demo\", \"version\": \"2.4.1\", \"replicas\": 4, \"endpoint\": \"https://eval.example.com/api/v2\", \"timeoutSeconds\": 30, \"retryPolicy\": {\"maxAttempts\": 3, \"backoffMs\": 500}, \"logging\": {\"level\": \"INFO\", \"format\": \"json\"}, \"database\": {\"host\": \"db.internal\", \"port\": 5432, \"poolSize\": 32, \"ssl\": true}, \"features\": {\"darkLaunch\": true, \"killSwitch\": false, \"tracing\": true}, \"mode\": \"dev\"}\n",
-  "title": "最小场景：长配置修正一个字段（计划驳回式的长参数修改）",
+  "task": "调用 eval_submit 工具，config 参数以对象形式传入下面这段 JSON（键值结构原样保留，不要把它变成字符串）。如果调用失败，就修正后重试成功，然后汇报结果。\n\nconfig：\n{\"service\": \"eval-demo\", \"version\": \"2.4.1\", \"replicas\": 4, \"endpoint\": \"https://eval.example.com/api/v2\", \"timeoutSeconds\": 30, \"retryPolicy\": {\"maxAttempts\": 3, \"backoffMs\": 500}, \"logging\": {\"level\": \"INFO\", \"format\": \"json\"}, \"database\": {\"host\": \"db.internal\", \"port\": 5432, \"poolSize\": 32, \"ssl\": true}, \"features\": {\"darkLaunch\": true, \"killSwitch\": false, \"tracing\": true}, \"mode\": \"dev\"}\n",
+  "title": "最小场景：长结构化配置修正一个字段（patch 模式目标形状）",
   "description": {
-    "input": "任务给出约 600 字的长配置 JSON，其中 mode 是 \"dev\"——工具体必然拒绝（mode 必须 prod）。失败调用的参数很长。",
-    "expected": "只把 mode 改成 prod 后成功（target-result.txt 出现 OK-prod）。长参数下 ON 臂的 editPreviousToolCalling 应显著省 token。"
+    "input": "任务给出约 600 字的长配置 JSON（结构化对象），其中 mode 是 \"dev\"——工具体必然拒绝（mode 必须 prod）。失败调用的参数是长结构化 JSON。",
+    "expected": "只把 mode 改成 prod 后成功（target-result.txt 出现 OK-prod）。长参数下 ON 臂的 editPreviousToolCalling（patch 模式改一个字段）应显著省 token。"
   },
   "blocks": [],
   "continuation": "",

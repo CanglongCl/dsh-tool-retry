@@ -439,6 +439,15 @@ export function buildSummary(
       && nameByCallId.get(event.data.message?.content?.[0]?.toolCallId) === 'run_code'
       && event.data.message?.content?.some(block => block.isError !== true) === true
       && toolCallArguments.some(text => text.includes('previous/1.json') || text.includes('/by-id/')))
+  // Attempt adoption: how many times the model chose the replay path,
+  // regardless of whether the attempt succeeded (adopted counts only
+  // successful replays).
+  const replayAttempts = mode === 'native'
+    ? postBreak.filter(event => event.type === 'tool/call' && event.data.name === 'editPreviousToolCalling').length
+    : postBreak.filter(event =>
+      event.type === 'tool/call'
+      && event.data.name === 'run_code'
+      && ((event.data.arguments ?? '').includes('previous/1.json') || (event.data.arguments ?? '').includes('/by-id/'))).length
   const notices = postBreak.filter(event =>
     event.type === 'user/message' && event.data.source?.plugin === '@canglongcl/dsh-tool-retry')
   const lastTurnEnd = [...events].reverse().find(event => event.type === 'turn/end')
@@ -454,6 +463,7 @@ export function buildSummary(
     postBreakInputTokens,
     retrySuccess,
     adopted,
+    replayAttempts,
     noticeCount: notices.length,
     noticeBytes: notices.reduce((sum, event) =>
       sum + (event.data.content?.find(block => block.type === 'text')?.text?.length ?? 0), 0),

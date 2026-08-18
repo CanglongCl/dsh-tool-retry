@@ -196,13 +196,13 @@ function registerTargetTool(ctx: Context): void {
   ctx.tools.register(defineTool({
     name: 'eval_submit',
     description: 'Submit a service configuration; the body rejects any config whose mode is not \"prod\".',
-    parameters: { config: { type: 'string', required: true, description: 'The full configuration JSON string to submit.' } },
+    parameters: { config: { type: 'object', required: true, additionalProperties: true, description: 'The full configuration object to submit (structured JSON — one field of it is wrong and must be fixed).' } },
     output: {
       schema: { type: 'object', additionalProperties: false, properties: { ok: { type: 'boolean', required: true } } },
       render: (_args, value) => [{ type: 'text', text: `submit ok: ${String(value.ok)}` }],
     },
     async execute(args) {
-      const config = JSON.parse(String(args.config)) as { mode?: string }
+      const config = args.config as { mode?: string }
       if (config.mode !== 'prod') throw new Error('config rejected: mode must be "prod"')
       await fsWrite('target-result.txt', `OK-${config.mode}\n`)
       return { ok: true }

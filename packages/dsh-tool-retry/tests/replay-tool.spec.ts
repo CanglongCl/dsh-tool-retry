@@ -221,6 +221,11 @@ describe('editPreviousToolCalling', () => {
     // .config.items[0].nope fails first — path errors abort the batch.
     expect(replay.isError).toBe(true)
     expect(textOf(replay.content)).toContain('not found')
+    // The failed replay's own notice lists ITS keys and points back at the
+    // original call id (retry the original, not the failed attempt).
+    const chase = noticeText(replay.additionalContexts)
+    expect(chase).toContain('checkpoint keys: call_id, patch')
+    expect(chase).toContain('call id "call-1"')
 
     const replay2 = await call(ctx, 'editPreviousToolCalling', {
       call_id: 'call-1',
