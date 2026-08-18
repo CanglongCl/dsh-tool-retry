@@ -81,8 +81,11 @@ function resultText(events: readonly SessionRow[], toolCallId: string): string {
 }
 
 /** Scripted post-break output tokens (deltas of the retry steps). */
-function scriptedRetryTokens(overrideFile: string): number {
-  const entries = JSON.parse(readFileSync(overrideFile, 'utf8')) as {
+function scriptedRetryTokens(overrideFile: string, checkpointDir: string): number {
+  // The override fixture is materialized with the real checkpoint dir; scrub
+  // it back to the token so the arithmetic is machine-independent.
+  const text = readFileSync(overrideFile, 'utf8').replaceAll(checkpointDir, '<checkpoint>')
+  const entries = JSON.parse(text) as {
     kind: 'chunks'
     chunks: { type: string; text?: string; argumentsDelta?: string }[]
   }[]
@@ -237,7 +240,7 @@ async function runArm(options: ArmOptions): Promise<Record<string, unknown>> {
       const aliases: Record<string, string> = {}
       for (const name of readdirSync(join(checkpointDir, 'previous')).sort()) {
         const path = join(checkpointDir, 'previous', name)
-        aliases[`previous/${name}`] = lstatSync(path).isSymbolicLink() ? readlinkSync(path) : 'copy'
+        aliases[`previous/${name}`] = lstatSync(path).isSymbolicLink() ? scrub(readlinkSync(path)) : 'copy'
       }
       summary.checkpoint = {
         exists: true,
@@ -252,13 +255,13 @@ async function runArm(options: ArmOptions): Promise<Record<string, unknown>> {
       event.type === 'tool/call' && (event.data.callId === 'deploy_1' || event.data.callId === 'rc_1'))
     if (breakpointArgs !== undefined) {
       const regenerate = breakpointArgs.data.arguments ?? ''
-      const retryTokens = scriptedRetryTokens(overrideFile)
+      const retryTokens = scriptedRetryTokens(overrideFile, checkpointDir)
       summary.tokens = {
         scriptedRetryOutputTokens: retryTokens,
         fullRegenerationOutputTokens: regenerate.length,
         savingsPercent: Math.round((1 - retryTokens / regenerate.length) * 1000) / 10,
         noticeOutputTokens: notices
-          .map(notice => (notice.data.content?.[0]?.text ?? '').length)
+          .map(notice => scrub(notice.data.content?.[0]?.text ?? '').length)
           .reduce((sum, length) => sum + length, 0),
       }
     }
