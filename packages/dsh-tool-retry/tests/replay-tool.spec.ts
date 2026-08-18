@@ -230,7 +230,7 @@ describe('mode detection', () => {
     expect(notice).toContain('Your failed `run_code` program was saved.')
     expect(notice).toContain('/by-id/call-1.json')
     expect(notice).toContain('apply a literal replace to the real program text')
-    expect(notice).toContain('AsyncFunction constructor.')
+    expect(notice).toContain('new AsyncFunction("tools", "console"')
   })
 
   it('registers the replay tool and the native section by default', async () => {
