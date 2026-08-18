@@ -26,6 +26,11 @@ const REPORTS_DIR = join(ROOT, 'reports')
 const FIXTURES_DIR = join(ROOT, 'packages', 'dsh-tool-retry', 'tests', 'eval-fixtures')
 const TAILWIND_CSS = join(ROOT, 'scripts', 'report.css')
 const TAILWIND_CLI = join(ROOT, 'node_modules', '@tailwindcss', 'cli', 'dist', 'index.mjs')
+/** `--slim`: skip inlining the per-run full session log (the drill-down
+ * modal shows the record summary only). Used for batches whose inlined
+ * sessions exceed the GitHub 100MB per-file limit; the full logs stay in
+ * the local .artifacts tree. */
+const SLIM = process.argv.includes('--slim')
 
 interface BatchMeta {
   stamp: string
@@ -430,7 +435,9 @@ function abDiffTable(row: ScenarioRow): string {
     const content = [
       `<div class="text-xs text-muted-foreground">工具：${escapeHtml(run.summary.toolCalls.join(', ') || '—')}</div>`,
       renderRunMeta(run),
-      renderSessionFriendly(run),
+      SLIM
+        ? '<div class="mt-2 rounded-md border bg-muted/40 p-2.5 text-xs text-muted-foreground">slim 版报告不内嵌完整会话日志；完整证据在本地 .artifacts/eval/ 对应 runDir 的 session.jsonl（可用 `pnpm eval:report --batch <stamp>` 重新生成完整版）。</div>'
+        : renderSessionFriendly(run),
     ].join('\n')
     return `<template id="${modalId}">${content}</template>`
   }).join('\n')
