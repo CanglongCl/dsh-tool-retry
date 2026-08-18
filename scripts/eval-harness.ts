@@ -201,7 +201,7 @@ function runOne(queued: Queued): Promise<RunRecord> {
       ? { kind: 'fresh', task: loaded.scenario.task ?? '' }
       : { kind: 'resume', sessionId },
     targetTool: loaded.scenario.targetTool === true,
-    ...(loaded.scenario.planReview === undefined ? {} : { planReview: JSON.stringify(loaded.scenario.planReview) }),
+    ...(loaded.scenario.planReview === undefined ? {} : { planReview: loaded.scenario.planReview }),
   }, sessionsRoot)
   const bin = resolveHarnessCli()
   return spawnRun(bin, workspaceDir, overlayPath, dshHome, mode, DEADLINE_MS + 30_000).then((outcome) => {

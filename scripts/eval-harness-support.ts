@@ -224,8 +224,8 @@ export interface RunConfig {
   grader: { kind: 'deploy' | 'boom' | 'fs' | 'plan'; mode: 'native' | 'code'; checks: { kind: string; path: string; fragment?: string }[] }
   start: { kind: 'fresh'; task: string } | { kind: 'resume'; sessionId: string }
   targetTool: boolean
-  /** JSON { rejectCount?, feedback? } — scripted plan-review answers. */
-  planReview?: string
+  /** Scripted plan-review answers (serialized into the overlay config). */
+  planReview?: { rejectCount?: number; feedback?: string }
 }
 
 /** Write the per-run cordis overlay (the dsh-web-review writeOverlay port). */
