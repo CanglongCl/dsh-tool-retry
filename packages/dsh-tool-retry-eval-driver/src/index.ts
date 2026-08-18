@@ -306,9 +306,22 @@ async function run(ctx: Context, config: Config, io: RunnerIo): Promise<void> {
     // feedback (a LIVE failure the checkpoint/notice channel can react to),
     // later reviews approve so the turn can converge.
     const spec = JSON.parse(config.planReview) as { rejectCount?: number; feedback?: string }
-    await ctx.plugin(UserQuestionService)
+    // The headless profile may already mount the user-questions service
+    // (without a provider); mount it only when absent, then register the
+    // scripted provider on whichever instance exists.
+    let questions = (() => {
+      try {
+        return ctx.get('userQuestions') as UserQuestionService | undefined
+      } catch {
+        return undefined
+      }
+    })()
+    if (questions === undefined) {
+      await ctx.plugin(UserQuestionService)
+      questions = ctx.get('userQuestions') as UserQuestionService
+    }
     let pending = spec.rejectCount ?? 1
-    ctx.userQuestions.registerProvider({
+    questions.registerProvider({
       ask: async (request) => {
         const question = request.questions[0]
         if (question === undefined) throw new Error('eval plan-review stub: no question to answer')
