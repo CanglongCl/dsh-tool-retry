@@ -358,7 +358,7 @@ function abDiffTable(row: ScenarioRow): string {
   }
   const number = (value: number): string => String(value)
   const metrics: MetricSpec[] = [
-    { name: '重试正文 token', hint: '断点后第一条回复的正文 token（输出 − 推理）——模型实际产出的修改/重写文本', value: contentTokensForRecord, format: number, diff: tokenDiff },
+    { name: '重试正文 token', hint: '断点后第一条回复的正文 token（输出 − 推理）。回复里的工具调用参数也算在内：无插件 = 重写全部参数，有插件 = 只写一小段编辑（两者之差即节省）', value: contentTokensForRecord, format: number, diff: tokenDiff },
     { name: '重试步数', hint: '断点后模型走了几步（断点后 assistant 回复条数）', value: run => postBreakMessages(run).length, format: number, diff: stepDiff },
     { name: '首步总输出', hint: '断点后第一条回复的全部输出 token（含推理）', value: run => run.summary.retryStepOutputTokens, format: number, diff: tokenDiff },
     { name: '全程总输出', hint: '断点后所有回复的总输出 token（含推理）', value: totalPostBreakOutput, format: number, diff: tokenDiff },
