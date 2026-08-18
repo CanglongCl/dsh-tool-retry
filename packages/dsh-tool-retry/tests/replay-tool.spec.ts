@@ -440,9 +440,12 @@ describe('mode detection', () => {
     expect(rendered).toContain('TOOL-CALL CHECKPOINT & REPLAY')
     expect(rendered).toContain('editPreviousToolCalling')
     expect(rendered).not.toContain('Tools called INSIDE a program')
-    // The static section carries exactly one small retry example; the rules
-    // live in the tool's own description (no duplicate guidance section).
+    // The static section carries three XML-shaped retry examples (one field,
+    // not the whole call); the rules live in the tool's own description.
+    expect(rendered).toContain('wrong fragment inside one of my own args')
+    expect(rendered).toContain('{ path: ".old_string", old_string: "2.0.0。", new_string: "2.1.0。" }')
     expect(rendered).toContain('old_string: "dev", new_string: "prod"')
+    expect(rendered).toContain('{ path: ".version", value: 2 }')
     expect(rendered).not.toContain('patch (preferred for JSON arguments)')
   })
 })
