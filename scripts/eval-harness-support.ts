@@ -48,6 +48,11 @@ export interface ScenarioMeta {
   fresh?: boolean
   task?: string
   targetTool?: boolean
+  /** Scripted plan-review answers for plan scenarios: the first
+   * `rejectCount` live reviews are rejected with `feedback` (the recorded
+   * user's own words), later reviews auto-approve — the headless profile
+   * has no interactive user-questions channel. */
+  planReview?: { rejectCount?: number; feedback?: string }
 }
 
 export interface LoadedScenario {
@@ -219,6 +224,8 @@ export interface RunConfig {
   grader: { kind: 'deploy' | 'boom' | 'fs' | 'plan'; mode: 'native' | 'code'; checks: { kind: string; path: string; fragment?: string }[] }
   start: { kind: 'fresh'; task: string } | { kind: 'resume'; sessionId: string }
   targetTool: boolean
+  /** JSON { rejectCount?, feedback? } — scripted plan-review answers. */
+  planReview?: string
 }
 
 /** Write the per-run cordis overlay (the dsh-web-review writeOverlay port). */
@@ -239,6 +246,7 @@ export function writeOverlay(runDir: string, config: RunConfig, sessionsRoot: st
     `        grader: '${JSON.stringify(config.grader).replaceAll("'", "''")}'`,
     `        start: '${JSON.stringify(config.start).replaceAll("'", "''")}'`,
     `        targetTool: '${config.targetTool ? 'true' : 'false'}'`,
+    ...(config.planReview === undefined ? [] : [`        planReview: '${JSON.stringify(config.planReview).replaceAll("'", "''")}'`]),
   ]
   if (config.arm === 'on') {
     rows.push('    - id: tool-retry', `      name: '${PLUGIN_ALIAS}'`)

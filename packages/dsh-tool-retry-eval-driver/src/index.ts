@@ -18,6 +18,7 @@ import { defineTool } from '@deepseek-ai/dsh-tools'
 import { createUserMessage } from '@deepseek-ai/dsh-llm/message'
 import { ReasoningEffortId } from '@deepseek-ai/dsh-llm'
 import { SessionId } from '@deepseek-ai/dsh-session'
+import { UserQuestionService } from '@deepseek-ai/dsh-user-questions'
 import { MockAdapter } from './mock-adapter.ts'
 
 /** Stable Cordis plugin name (the overlay row id). */
@@ -50,6 +51,10 @@ export interface Config {
   /** 'true' mounts the deterministic eval_target tool (minimal live scenario:
    * version 'v1' throws, anything else writes OK-<version> to target-result.txt). */
   targetTool: string
+  /** JSON { rejectCount?, feedback? } — scripted plan-review answers: the
+   * first rejectCount live reviews are rejected with the recorded user's
+   * feedback, later reviews auto-approve. */
+  planReview: string
 }
 
 export const Config: z<Config> = z.object({
@@ -62,6 +67,7 @@ export const Config: z<Config> = z.object({
   grader: z.string(),
   start: z.string(),
   targetTool: z.string(),
+  planReview: z.string(),
 })
 
 /** Process-facing effects of one run (mirrors the headless bundle). */
@@ -293,6 +299,27 @@ async function run(ctx: Context, config: Config, io: RunnerIo): Promise<void> {
     ctx.llm.registerAdapter(['mock'], new MockAdapter(JSON.parse(config.mock) as never[]))
   }
   if (config.targetTool === 'true') registerTargetTool(ctx)
+  if (config.planReview !== undefined && config.planReview !== '') {
+    // The headless profile has no interactive user-questions channel, so a
+    // plan review would fail with NO_PROVIDER forever. Script the answers:
+    // the first rejectCount live reviews decline with the recorded user's
+    // feedback (a LIVE failure the checkpoint/notice channel can react to),
+    // later reviews approve so the turn can converge.
+    const spec = JSON.parse(config.planReview) as { rejectCount?: number; feedback?: string }
+    await ctx.plugin(UserQuestionService)
+    let pending = spec.rejectCount ?? 1
+    ctx.userQuestions.registerProvider({
+      ask: async (request) => {
+        const question = request.questions[0]
+        if (question === undefined) throw new Error('eval plan-review stub: no question to answer')
+        if (pending > 0) {
+          pending -= 1
+          return { answers: [{ id: question.id, selected: ['Keep planning'], custom: spec.feedback ?? '' }] }
+        }
+        return { answers: [{ id: question.id, selected: ['Approve'] }] }
+      },
+    })
+  }
   const effort = config.reasoningEffort ?? ''
   const current: ModelSelectionRef['current'] = {
     provider: config.provider,

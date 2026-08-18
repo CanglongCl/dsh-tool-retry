@@ -26,5 +26,9 @@
     "provider": "deepseek-official",
     "model": "deepseek-v4-flash",
     "reasoningEffort": "max"
+  },
+  "planReview": {
+    "rejectCount": 1,
+    "feedback": "proto是否有外部词法parser处理，而不是自己手写？"
   }
 }
