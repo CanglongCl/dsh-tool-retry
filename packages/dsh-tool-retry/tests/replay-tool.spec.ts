@@ -229,7 +229,7 @@ describe('mode detection', () => {
     const notice = noticeText(failed.additionalContexts)
     expect(notice).toContain('Your failed `run_code` program was saved.')
     expect(notice).toContain('/by-id/call-1.json')
-    expect(notice).toContain('run the corrected program with the')
+    expect(notice).toContain('apply a literal replace to the real program text')
     expect(notice).toContain('AsyncFunction constructor.')
   })
 
