@@ -26,11 +26,10 @@ const REPORTS_DIR = join(ROOT, 'reports')
 const FIXTURES_DIR = join(ROOT, 'packages', 'dsh-tool-retry', 'tests', 'eval-fixtures')
 const TAILWIND_CSS = join(ROOT, 'scripts', 'report.css')
 const TAILWIND_CLI = join(ROOT, 'node_modules', '@tailwindcss', 'cli', 'dist', 'index.mjs')
-/** `--slim`: skip inlining the per-run full session log (the drill-down
- * modal shows the record summary only). Used for batches whose inlined
- * sessions exceed the GitHub 100MB per-file limit; the full logs stay in
- * the local .artifacts tree. */
-const SLIM = process.argv.includes('--slim')
+// Reports embed only aggregate tables + a lazy evidence frame; the per-run
+// full session is served on demand by the panel's /evidence route (from
+// .artifacts/eval/runs first, then from the eval-archive), so report HTMLs
+// stay a few hundred KB regardless of session sizes.
 
 interface BatchMeta {
   stamp: string
@@ -80,7 +79,7 @@ interface RunRecord {
   }
 }
 
-interface SessionLine {
+export interface SessionLine {
   type?: string
   data?: {
     callId?: string
@@ -432,12 +431,20 @@ function abDiffTable(row: ScenarioRow): string {
   // Modal templates for every run of this scenario (one per detail button).
   const templates = row.runs.map((run) => {
     const modalId = `modal-${sanitizeAttr(`${row.scenario}-${run.arm}-r${run.repetition}`)}`
+    const evidenceRel = (run.runDir ?? '').replace(/^runs\//u, '')
+    const evidenceFrame = evidenceRel === ''
+      ? ''
+      : [
+          `<div class="mt-2 rounded-lg border bg-muted/30 p-2.5" data-evidence="${escapeHtml(evidenceRel)}">`,
+          '<p class="text-xs text-muted-foreground">完整会话证据按需从本机面板加载（断点前/恢复后逐事件视图）。</p>',
+          '<button type="button" data-load-evidence class="mt-1.5 rounded-md border border-border bg-muted px-2 py-1 text-xs font-medium hover:bg-muted/70">加载会话证据</button>',
+          '<div data-evidence-body class="mt-2"></div>',
+          '</div>',
+        ].join('\n')
     const content = [
       `<div class="text-xs text-muted-foreground">工具：${escapeHtml(run.summary.toolCalls.join(', ') || '—')}</div>`,
       renderRunMeta(run),
-      SLIM
-        ? '<div class="mt-2 rounded-md border bg-muted/40 p-2.5 text-xs text-muted-foreground">slim 版报告不内嵌完整会话日志；完整证据在本地 .artifacts/eval/ 对应 runDir 的 session.jsonl（可用 `pnpm eval:report --batch <stamp>` 重新生成完整版）。</div>'
-        : renderSessionFriendly(run),
+      evidenceFrame,
     ].join('\n')
     return `<template id="${modalId}">${content}</template>`
   }).join('\n')
@@ -528,10 +535,17 @@ function readRunProcess(record: RunRecord): { perStepTokens?: { step: number; in
  * usage, tool calls with raw arguments, results with error badges). The
  * viewer splits it into two tabs — the pre-break prefix (the recorded task
  * the eval starts from) and the post-break run (what the model actually did
- * after resume). */
-function renderSessionFriendly(record: RunRecord): string {
-  const lines = readRunSession(record) ?? []
-  const breakpoint = record.summary.prefixEventCount ?? 0
+ * after resume). The panel serves it on demand as
+ * /evidence/<runDir>/session.html — report HTMLs embed only the lazy frame
+ * and stay a few hundred KB regardless of session sizes.
+ */
+export function renderSessionFriendly(record: RunRecord): string {
+  return renderSessionLines(readRunSession(record) ?? [], record.summary.prefixEventCount ?? 0)
+}
+
+/** Render already-parsed session lines (the panel serves this on demand from
+ * the live runs tree or the eval-archive, gunzipping as needed). */
+export function renderSessionLines(lines: SessionLine[], breakpoint: number): string {
   const prefixLines = lines.slice(0, breakpoint)
   const postLines = lines.slice(breakpoint)
   const textOf = (content: { type?: string; text?: string }[] | undefined): string =>
@@ -659,14 +673,14 @@ function renderSessionFriendly(record: RunRecord): string {
       '</details></div>',
     ].join('\n')
   }).join('\n')
-  const tabId = sanitizeAttr(`${record.scenario}-${record.arm}-r${record.repetition}-session`)
+  const tabId = `session-${Math.random().toString(36).slice(2, 9)}`
   return [
     '<div class="rounded-lg border bg-muted/30">',
     // Tab switcher: 断点前（题目）/ 恢复后运行，各自独立滚动。
     '<div class="flex items-center gap-1 border-b px-2 py-1.5">',
     `<button type="button" data-tab-toggle="${tabId}" data-tab-pane="${tabId}-prefix" class="rounded-md px-2 py-1 text-xs font-medium bg-muted">断点前（题目 · ${prefixLines.length} 事件）</button>`,
     `<button type="button" data-tab-toggle="${tabId}" data-tab-pane="${tabId}-post" class="rounded-md px-2 py-1 text-xs font-medium text-muted-foreground">恢复后运行（${postLines.length} 事件）</button>`,
-    `<span class="ml-auto text-[11px] text-muted-foreground">本地 ${escapeHtml(record.runDir ?? '')}/session.jsonl · 共 ${lines.length} 事件</span>`,
+    `<span class="ml-auto text-[11px] text-muted-foreground">共 ${lines.length} 事件</span>`,
     '</div>',
     `<div id="${tabId}-prefix" class="max-h-[60vh] space-y-1.5 overflow-y-auto p-3">${renderEvents(prefixLines)}</div>`,
     `<div id="${tabId}-post" class="max-h-[60vh] space-y-1.5 overflow-y-auto p-3 hidden">${renderEvents(postLines)}</div>`,
@@ -748,20 +762,16 @@ addEventListener('DOMContentLoaded', () => {
   const modal = document.getElementById('call-modal');
   const modalTitle = document.getElementById('call-modal-title');
   const modalBody = document.getElementById('call-modal-body');
-  const openModal = (button) => {
-    const template = document.querySelector(button.getAttribute('data-open-modal'));
-    if (!template) return;
-    modalTitle.textContent = button.getAttribute('data-run-label') || '调用详情';
-    modalBody.innerHTML = template.innerHTML;
-    // Session viewer tabs (断点前 / 恢复后): wire AFTER insertion, since the
-    // pane ids map to the pair scope and are unique per modal template.
-    for (const toggle of modalBody.querySelectorAll('[data-tab-toggle]')) {
+  // Session viewer tabs (断点前 / 恢复后): wire dynamically inserted
+  // fragments — pane ids are unique per modal template, scoped per toggle.
+  const wireSessionTabs = (container) => {
+    for (const toggle of container.querySelectorAll('[data-tab-toggle]')) {
       toggle.addEventListener('click', () => {
         const group = toggle.getAttribute('data-tab-toggle');
-        for (const pane of modalBody.querySelectorAll('[data-tab-pane]')) {
+        for (const pane of container.querySelectorAll('[data-tab-pane]')) {
           pane.classList.toggle('hidden', pane.id !== toggle.getAttribute('data-tab-pane'));
         }
-        for (const sibling of modalBody.querySelectorAll('[data-tab-toggle="' + group + '"]')) {
+        for (const sibling of container.querySelectorAll('[data-tab-toggle="' + group + '"]')) {
           sibling.classList.remove('bg-muted');
           sibling.classList.add('text-muted-foreground');
         }
@@ -769,8 +779,42 @@ addEventListener('DOMContentLoaded', () => {
         toggle.classList.remove('text-muted-foreground');
       });
     }
+  };
+  const openModal = (button) => {
+    const template = document.querySelector(button.getAttribute('data-open-modal'));
+    if (!template) return;
+    modalTitle.textContent = button.getAttribute('data-run-label') || '调用详情';
+    modalBody.innerHTML = template.innerHTML;
     modal.classList.remove('hidden');
   };
+  // Lazy evidence: fetch the friendly session fragment from the local panel
+  // (served from .artifacts/eval/runs or the eval-archive), degrade with a
+  // hint when the machine hosting this page has neither.
+  modalBody.addEventListener('click', (event) => {
+    const btn = event.target.closest('[data-load-evidence]');
+    if (!btn) return;
+    const frame = btn.closest('[data-evidence]');
+    if (!frame) return;
+    const rel = frame.getAttribute('data-evidence');
+    const body = frame.querySelector('[data-evidence-body]');
+    btn.disabled = true;
+    btn.textContent = '加载中…';
+    fetch('/evidence/' + rel + '/session.html')
+      .then((response) => {
+        if (!response.ok) throw new Error(String(response.status));
+        return response.text();
+      })
+      .then((html) => {
+        body.innerHTML = html;
+        wireSessionTabs(body);
+        btn.remove();
+      })
+      .catch(() => {
+        btn.disabled = false;
+        btn.textContent = '重试加载';
+        body.innerHTML = '<p class="rounded-md bg-muted/40 p-2.5 text-xs text-muted-foreground">完整会话证据不在本机面板可达范围内（需要 .artifacts/eval/runs 或 eval-archive）。可运行 pnpm eval:real 重新生成，或将报告部署在存有证据的机器上。</p>';
+      });
+  });
   const closeModal = () => modal.classList.add('hidden');
   for (const button of document.querySelectorAll('[data-open-modal]')) {
     button.addEventListener('click', () => openModal(button));

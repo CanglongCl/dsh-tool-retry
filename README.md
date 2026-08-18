@@ -89,6 +89,7 @@ patch:                       # 唯一的编辑载荷：按路径改一处
 评测套件已落地并随每次改动重跑（`scripts/eval-harness*.ts`；HTML 报告持久化在 [reports/](./reports/index.html)，含每轮完整工具调用可点击展开）：
 
 - **跑法**：`pnpm eval:real` 在真实 DSH CLI 中逐场景跑 ON/OFF 双臂——ON 臂只多挂本插件一行，失败发生在运行中（保证通知通道真实触发）；`--repeat N` 压方差，`pnpm eval:report` 生成报告入库；另有 keyless 机制 A/B（固定剧本、进 CI，验证落盘/通知/重放路径，不测模型行为）。
+- **证据分离**：报告 HTML 只含结论表（每份几百 KB），完整会话证据不塞进 HTML——报告弹窗按需向本地面板（`pnpm eval:web` 的 `/evidence/` 路由）加载，面板先从 `.artifacts/eval/runs` 取、取不到再从 `pnpm eval:archive` 归档目录（gzip）解压取。因此证据不复制进 git：仓库永远只有轻量报告，归档目录可自由同步到任何存储。
 - **语料**：最小实况场景（长/短参数、计划驳回、类型错误等形状）+ 真实会话裁剪（真实 10.5K 字 plan 等）。
 - **最近一批核心结论**（报告 019/022，deepseek-v4-flash，reasoning high）：
   - **长参数 +「改一处」型失败：采用 ≈94%**——mini 五个长场景 ×3 重复为 14/15，真实 10.5K 字 plan 一行修复为 2/2；每次重试少重发 190 ~ 10,700 字节参数（OFF 臂整份重发，ON 臂 patch 仅数十到数百字节）；
@@ -110,7 +111,8 @@ pnpm test              # 单测 + 集成 + 代码模式集成 + keyless A/B + ev
 pnpm build:fixtures    # 重新生成断点语料（replay-fixtures/ + eval-fixtures/，check 校验幂等）
 pnpm e2e:real          # 真实 API e2e（native + PTC，需 DEEPSEEK_API_KEY，无 key 自动跳过）
 pnpm eval:real         # 真实模型评测（§6：每场景 × 臂 × N 次；key 走 环境→仓库 .env→~/.dsh/.env 凭据链）
-pnpm eval:report        # 生成 HTML 评测报告并持久化到仓库 reports/NNN-….html（含 git hash/模型/推理强度/token 元数据，每次运行可点击展开完整工具调用）
+pnpm eval:report        # 生成 HTML 评测报告并持久化到仓库 reports/NNN-….html（结论表；完整会话证据在弹窗里按需从本地面板加载）
+pnpm eval:archive       # 归档评测证据：只存每轮 session.jsonl(gzip)+record.json 到 ~/.dsh/eval-archives（DSH_EVAL_ARCHIVE_DIR 可改），并清理 runs/ 下已归档批次（--keep 保留；--stamp 指定批次）
 pnpm check             # 仓库门禁：typecheck + 单测 + 语料/gen-config 幂等 + 官方包 allowlist
 pnpm package:official  # 组装可发布的官方 tarball 到 dist/
 ```

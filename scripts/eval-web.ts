@@ -15,12 +15,74 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { spawn } from 'node:child_process'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { gunzipSync } from 'node:zlib'
+import { homedir } from 'node:os'
+import { dirname, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { renderSessionLines, type SessionLine } from './eval-report.ts'
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)))
 const PORT = Number(process.env.DSH_EVAL_WEB_PORT ?? 8090)
 const HARNESS = process.env.DSH_HARNESS?.trim() ?? ''
+const RUNS_DIR = join(ROOT, '.artifacts', 'eval', 'runs')
+const ARCHIVE_DIR = process.env.DSH_EVAL_ARCHIVE_DIR?.trim() || join(homedir(), '.dsh', 'eval-archives')
+
+/** Serve one evidence file from the live runs tree, then the archive (plain
+ * or .gz). Returns undefined when neither machine location has it. */
+function readEvidence(rel: string): Buffer | undefined {
+  if (rel === '' || rel.includes('..') || rel.startsWith('/')) return undefined
+  const candidates = [
+    { root: RUNS_DIR, path: join(RUNS_DIR, rel), gz: false },
+    { root: ARCHIVE_DIR, path: join(ARCHIVE_DIR, rel), gz: false },
+    { root: ARCHIVE_DIR, path: join(ARCHIVE_DIR, `${rel}.gz`), gz: true },
+  ]
+  for (const candidate of candidates) {
+    const path = resolve(candidate.path)
+    if (!path.startsWith(candidate.root + sep)) continue
+    if (existsSync(path) && statSync(path).isFile()) {
+      const raw = readFileSync(path)
+      return candidate.gz ? gunzipSync(raw) : raw
+    }
+  }
+  return undefined
+}
+
+function serveEvidence(res: ServerResponse, urlPath: string): void {
+  const rel = urlPath.slice('/evidence/'.length).split('?')[0] ?? ''
+  if (rel.endsWith('/session.html')) {
+    const base = rel.slice(0, -'/session.html'.length)
+    const session = readEvidence(`${base}/session.jsonl`)
+    if (session === undefined) {
+      res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' })
+      res.end('evidence not available on this machine (no live run dir and no archive entry)')
+      return
+    }
+    let breakpoint = 0
+    const record = readEvidence(`${base}/record.json`)
+    if (record !== undefined) {
+      try {
+        breakpoint = (JSON.parse(record.toString('utf8')) as { summary?: { prefixEventCount?: number } }).summary?.prefixEventCount ?? 0
+      } catch { /* keep 0 */ }
+    }
+    let lines: SessionLine[] = []
+    try {
+      lines = session.toString('utf8').split('\n').filter(line => line.trim() !== '')
+        .map(line => JSON.parse(line) as SessionLine)
+    } catch { /* render empty on parse failure */ }
+    res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
+    res.end(renderSessionLines(lines, breakpoint))
+    return
+  }
+  const file = readEvidence(rel)
+  if (file === undefined) {
+    res.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' })
+    res.end('evidence not found')
+    return
+  }
+  const type = rel.endsWith('.json') ? 'application/json; charset=utf-8' : 'application/x-ndjson; charset=utf-8'
+  res.writeHead(200, { 'content-type': type })
+  res.end(file)
+}
 
 interface BatchState {
   pid: number | undefined
@@ -163,6 +225,10 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
   }
   if (url.startsWith('/reports/')) {
     serveReport(res, url)
+    return
+  }
+  if (url.startsWith('/evidence/')) {
+    serveEvidence(res, url)
     return
   }
   if (url === '/api/status') {
