@@ -8,7 +8,7 @@ Tool-call checkpoint & replay for DeepSeek Harness (DSH). Every model tool-call 
 
 - **One unified logic across PTC (Code Mode / run_code) and native**: only model-direct tool-call blocks are checkpointed — in PTC that is the whole run_code program; tools called inside a program are never stored.
 - **Two access forms**: by call id (by-id/, kept for the whole session) or by parallel-block order in the previous message (previous/1.json, previous/2.json… — symlink/shortcut aliases, re-pointed each round).
-- **Zero filtering, one minimal notice per failure** ("saved + id + usage" only; the failure reason comes from the harness tool/result itself).
+- **Zero filtering for the store, byte-gated notices**: every direct call is checkpointed (any tool, any error code); the failure notice fires only when the raw arguments are ≥150 UTF-8 bytes — below that, a fresh re-send is cheaper than the replay call's routing structure, so the hint would be a net loss. The notice says "saved + id + usage" only; the failure reason comes from the harness tool/result itself.
 - **No harness source modification**: an independent npm plugin registered through a user preset.
 
 ## Installation
@@ -37,14 +37,16 @@ The plugin is an agent-level capability and registers through a **user preset** 
 2. To retry with a small fix, call editPreviousToolCalling once:
 
 ```yaml
-previous_ordinal: 1          # position in your previous message (alternative to call_id)
-call_id: "call_00_…"         # exactly one of the two
-old_string: "<original fragment>"
-new_string: "<corrected fragment>"
-replace_all: false
+call_id: "call_00_…"         # location: call id or previous_ordinal (exactly one)
+patch:                       # the ONLY edit payload: fix one field by path
+  - path: ".plan"            # dot segments + [n] indexes, from a top-level key
+    old_string: "keep the Python 2 runtime"   # fragment replace inside the string value (matches the DECODED text, no JSON escaping)
+    new_string: "switch to the Rust runtime"
+  # or replace the whole value / change its type: { path: ".version", value: 2 }
+  # or delete a field: { path: ".config.legacy" } (omit both value and old/new)
 ```
 
-The tool applies the edit, parses the edited content as the new arguments, and immediately re-invokes the original tool — no read first, no path needed.
+The tool parses the checkpoint, applies the patch, persists it, and immediately re-invokes the original tool — no read first, no path needed.
 
 3. For older successful calls: tail <checkpoint-dir>/history.jsonl for the id, then replay by call_id.
 
@@ -62,11 +64,11 @@ No tool is registered. After a failed run the notice gives the checkpoint path; 
 
 ### Failure notice
 
-One minimal notice per failure (saved + id + usage). No repeated failure reason, no explanation — the full mechanics live in the static system-prompt section.
+One minimal notice per failure with ≥150-byte raw arguments (saved + id + a placeholder retry example). No repeated failure reason, no explanation. editPreviousToolCalling's own failures always notify — the notice points the retry back at the ORIGINAL call id (corrective, not economic). The static system-prompt section carries three XML-shaped examples (plan rejected — fix one section / stale edit fragment / wrong type — replace the whole value); the tool's own description is the single source of the usage rules.
 
 ### Replay tool editPreviousToolCalling (native only)
 
-Signature { previous_ordinal?, call_id?, old_string, new_string, replace_all } — exactly one of previous_ordinal / call_id, routed internally. Replays run the full tool pipeline (approval policies re-apply to the new arguments).
+Signature { previous_ordinal?, call_id?, patch } — exactly one of previous_ordinal / call_id; patch is the only payload (required, non-empty) with entries { path, value? | old_string?, new_string?, replace_all? }: value replaces the whole value at the path (any JSON type; omitting it deletes the field, array indexes splice); old/new applies a literal replace inside the string value at the path, matched against its DECODED text (JSON escaping never enters the model's view; duplicate matches error with the count, replace_all replaces all). A missing path errors with the top-level key list. Replays run the full tool pipeline (approval policies re-apply to the new arguments).
 
 ### Mode adaptation
 
@@ -81,7 +83,15 @@ Signature { previous_ordinal?, call_id?, old_string, new_string, replace_all } �
 
 ## Evaluation
 
-See §6 of docs/tool-calling-checkpoint-replay-plan.md: **mechanism verification** (a keyless scripted A/B over llm-replay — fixed transcript, no key, CI-gated; verifies checkpointing/notification/replay paths and fixed overhead, not model behavior) plus **real-model evaluation** (python SDK jsonrpc-agent, isolated workspace/session-id per arm — the only way to answer whether models actually adopt the path and how much they really save). This will land as an eval/ suite in this repo (mirroring dsh-web-review's eval structure).
+The eval suite lives in this repo and is re-run with every change (scripts/eval-harness*.ts; HTML reports persisted under reports/ with the full per-run tool calls):
+
+- **How it runs**: `pnpm eval:real` drives the REAL DSH CLI per scenario in ON/OFF arms — the ON arm adds exactly one plugin row, and failures happen LIVE in the run (so the notice channel really fires); `--repeat N` controls variance, `pnpm eval:report` renders the report. A keyless mechanism A/B (fixed transcript, CI-gated) verifies the checkpoint/notice/replay paths without measuring model behavior.
+- **Corpus**: minimal live scenarios (short/long args, plan rejection, type errors) plus crops of real sessions (a real 10.5K-char plan among them).
+- **Latest headline numbers** (reports 019/022, deepseek-v4-flash, reasoning high):
+  - **Long args + "fix one spot" failures: ~94% adoption** — 14/15 across five mini long-arg scenarios ×3 repeats, 2/2 on the real 10.5K-char plan with a one-line fix; each retry re-sends 190–10,700 fewer argument bytes (OFF re-emits the whole thing, ON patches tens-to-hundreds of bytes);
+  - **Short args (<150 bytes): no notice, 0 attempts, 0 waste** — a fresh re-send beats a routing-laden replay there, and the byte gate enforces exactly that;
+  - **Research-type feedback (the real plan rejection): 0 adoption by design** — the model's reasoning quotes the "small corrections only, otherwise re-send" guidance verbatim and rewrites (~40% changed), keeping the replay path inside the economic zone where it actually saves;
+  - **Success rate**: retrySuccess is effectively 100% across all measurable scenarios; honest caveat — at mini scale the ~+1K input overhead of notice+examples makes total-token deltas mixed, and the decisive net savings appear on failures whose single re-send is hundreds of bytes or more (10K scale: decisive).
 
 ## Development
 

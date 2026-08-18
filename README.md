@@ -8,7 +8,7 @@
 
 - **PTC（Code Mode / run_code）与 native 模式逻辑统一**：都只暂存模型的 tool call block——PTC 下即整个 run_code 程序的参数，不暂存程序内部调用的工具。
 - **两种 access 方式**：按调用 id 访问（by-id/，全量保留），或按「上一条消息」中的并行 block 顺序访问（previous/1.json、previous/2.json…，软链/快捷方式，每轮重建）。
-- **零过滤、每次失败都注入**极简通知（只写「已保存 + id + 用法」，失败原因由 harness 自身的 tool/result 返回）。
+- **落盘零过滤、通知按字节阈值门控**：每个直调都落盘（任何工具、任何错误码）；失败通知只在原始参数 ≥150 字节时注入——更短时重发新调用比重放的路由结构更便宜，提示是净亏。通知只写「已保存 + id + 用法」，失败原因由 harness 自身的 tool/result 返回。
 - **不改动 harness 仓库任何代码**：独立 npm 插件 + 用户预设注册。
 
 ## 安装
@@ -40,14 +40,16 @@ dsh web
 2. 需要小幅修正重试时，调用一次 editPreviousToolCalling：
 
 ```yaml
-previous_ordinal: 1          # 上一条消息里的第几个 block（也可以不用序号）
-call_id: "call_00_…"         # 二选一：序号或 call id
-old_string: "<原参数片段>"
-new_string: "<修正后的片段>"
-replace_all: false
+call_id: "call_00_…"         # 定位：call id 或 previous_ordinal（二选一，恰填一个）
+patch:                       # 唯一的编辑载荷：按路径改一处
+  - path: ".plan"            # 点号段 + [n] 数组下标，从参数顶层 key 出发
+    old_string: "继续使用 Python 2 运行时"   # 字符串值内的片段替换（匹配解码后文本，无需处理 JSON 转义）
+    new_string: "改为 Rust 运行时"
+  # 或整值替换 / 改类型：{ path: ".version", value: 2 }
+  # 或删除字段：{ path: ".config.legacy" }（value 与 old/new 都省略）
 ```
 
-工具内部完成「编辑 checkpoint → 解析为新参数 → 立即重放原工具」三步，无需先 read、无需填路径。
+工具内部完成「解析 checkpoint → 应用补丁 → 持久化 → 立即重放原工具」，无需先 read、无需填路径。
 
 3. 修改更早的成功调用：用 bash tail 查看 <checkpoint-dir>/history.jsonl 取 id，再按 call_id 重放。
 
@@ -65,11 +67,11 @@ replace_all: false
 
 ### 失败通知
 
-每次失败注入一条极简通知（已保存 + id + 用法），不重复失败原因、不做解释——完整机制说明只写在静态 system prompt 段中。
+失败且原始参数 ≥150 字节时注入一条极简通知（已保存 + id + 一个用占位符写成的重试示例），不重复失败原因、不做解释。`editPreviousToolCalling` 自身失败始终通知：其通知把重试目标切回原 call id（纠错而非经济性）。静态 system prompt 段附三个 XML 形状示例（plan 驳回改一节 / edit 片段过期 / 整值改类型），用法规则的唯一出处是工具自身的 description。
 
 ### 重放工具 editPreviousToolCalling（仅 native）
 
-签名 { previous_ordinal?, call_id?, old_string, new_string, replace_all }，序号与 call id 二选一，内部路由到对应文件；重放走完整工具管线（审批等策略对新参数再次生效）。
+签名 { previous_ordinal?, call_id?, patch }，序号与 call id 二选一；patch 为唯一载荷（必填、非空），条目 { path, value? | old_string?, new_string?, replace_all? }：value 整值替换（任意 JSON 类型；省略即删字段，数组下标 splice）；old/new 在路径处字符串值的**解码文本**上替换（JSON 转义不进模型视野；出现多次时报出次数，replace_all 可全替换）。路径缺失时报错并列出顶层 key。内部路由到对应文件；重放走完整工具管线（审批等策略对新参数再次生效）。
 
 ### 模式适配
 
@@ -84,7 +86,15 @@ replace_all: false
 
 ## 插件能力评测
 
-评测方案见 [docs/tool-calling-checkpoint-replay-plan.md](./docs/tool-calling-checkpoint-replay-plan.md) 的 §6：**机制验证**（llm-replay keyless 脚本化 A/B——固定剧本、无 key、进 CI，验证三轨落盘/通知/重放路径与固定开销，不测模型行为）+ **真模型评测**（python SDK jsonrpc-agent，独立 workspace/session-id 对照，唯一能回答「模型是否会使用、实际省多少」的手段）。实施后将落地为仓库内的 eval/ 套件（参照 dsh-web-review 的 eval 结构）。
+评测套件已落地并随每次改动重跑（`scripts/eval-harness*.ts`；HTML 报告持久化在 [reports/](./reports/index.html)，含每轮完整工具调用可点击展开）：
+
+- **跑法**：`pnpm eval:real` 在真实 DSH CLI 中逐场景跑 ON/OFF 双臂——ON 臂只多挂本插件一行，失败发生在运行中（保证通知通道真实触发）；`--repeat N` 压方差，`pnpm eval:report` 生成报告入库；另有 keyless 机制 A/B（固定剧本、进 CI，验证落盘/通知/重放路径，不测模型行为）。
+- **语料**：最小实况场景（长/短参数、计划驳回、类型错误等形状）+ 真实会话裁剪（真实 10.5K 字 plan 等）。
+- **最近一批核心结论**（报告 019/022，deepseek-v4-flash，reasoning high）：
+  - **长参数 +「改一处」型失败：采用 ≈94%**——mini 五个长场景 ×3 重复为 14/15，真实 10.5K 字 plan 一行修复为 2/2；每次重试少重发 190 ~ 10,700 字节参数（OFF 臂整份重发，ON 臂 patch 仅数十到数百字节）；
+  - **短参数（<150 字节）：不提示、0 尝试、0 负账**——重发新调用比带路由结构的重放更便宜，阈值门控按设计生效；
+  - **研究型反馈（真实 plan 驳回）0 采用，且是设计内行为**：模型推理中逐字引用「仅小修正才用、否则重发」的指引，选择整份重写（改动约 40% 内容）——重放的经济区间被引导文案精确约束在它真正省钱的失败上；
+  - **成功率**：全部可测场景 retrySuccess 接近全绿；诚实底线：mini 规模下通知/示例约 +1K 输入开销使总 token 账时正时负，净节省出现在单次重发参数量级 ≥数百字节的失败上，10K 规模为决定性节省。
 
 ## 参与开发
 
