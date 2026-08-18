@@ -57,19 +57,20 @@ describe.skipIf(!existsSync(LIB_PATH))('built bundle boundary', () => {
       const session = ctx.sessions.create(SessionId(SESSION))
       const agent = { id: session.id, session } as never
       const id = 'call-bundle-1'
+      const longArgs = JSON.stringify({ detail: 'x'.repeat(200) })
       session.append('tool/call', {
-        turn: 1, step: 1, callId: CallId(id), name: 'boom', arguments: '{}',
+        turn: 1, step: 1, callId: CallId(id), name: 'boom', arguments: longArgs,
       })
       const result = await ctx.tools.execute({
         signal: new AbortController().signal,
         callId: CallId(id),
         name: 'boom',
-        arguments: {},
+        arguments: { detail: 'x'.repeat(200) },
         agent,
       })
       expect(result.isError).toBe(true)
       expect(result.additionalContexts?.[0]).toBeDefined()
-      expect(readFileSync(join(checkpointDir, 'by-id', `${id}.json`), 'utf8')).toBe('{}')
+      expect(readFileSync(join(checkpointDir, 'by-id', `${id}.json`), 'utf8')).toBe(longArgs)
       expect(readFileSync(join(checkpointDir, 'history.jsonl'), 'utf8')).toContain(`"id":"${id}"`)
     } finally {
       rmSync(checkpointDir, { recursive: true, force: true })
