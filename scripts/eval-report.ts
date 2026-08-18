@@ -350,19 +350,21 @@ function abDiffTable(row: ScenarioRow): string {
   }
   interface MetricSpec {
     name: string
+    /** One-line plain-language explanation shown under the header label. */
+    hint: string
     value: (run: RunRecord) => number
     format: (value: number) => string
     diff: (on: number, off: number) => { text: string; tone: 'positive' | 'negative' | 'neutral' }
   }
   const number = (value: number): string => String(value)
   const metrics: MetricSpec[] = [
-    { name: '内容 token', value: contentTokensForRecord, format: number, diff: tokenDiff },
-    { name: '断点后步数', value: run => postBreakMessages(run).length, format: number, diff: stepDiff },
-    { name: '第一步输出(含推理)', value: run => run.summary.retryStepOutputTokens, format: number, diff: tokenDiff },
-    { name: '全程输出(含推理)', value: totalPostBreakOutput, format: number, diff: tokenDiff },
-    { name: '断点后输入 token', value: run => run.summary.postBreakInputTokens, format: number, diff: tokenDiff },
-    { name: '重试成功率', value: run => run.summary.retrySuccess ? 100 : 0, format: value => percent(value / 100), diff: ppDiff },
-    { name: '通知条数', value: run => run.summary.noticeCount, format: number, diff: (on, off) => {
+    { name: '重试正文 token', hint: '断点后第一条回复的正文 token（输出 − 推理）——模型实际产出的修改/重写文本', value: contentTokensForRecord, format: number, diff: tokenDiff },
+    { name: '重试步数', hint: '断点后模型走了几步（断点后 assistant 回复条数）', value: run => postBreakMessages(run).length, format: number, diff: stepDiff },
+    { name: '首步总输出', hint: '断点后第一条回复的全部输出 token（含推理）', value: run => run.summary.retryStepOutputTokens, format: number, diff: tokenDiff },
+    { name: '全程总输出', hint: '断点后所有回复的总输出 token（含推理）', value: totalPostBreakOutput, format: number, diff: tokenDiff },
+    { name: '重试输入 token', hint: '断点后模型请求携带的上下文 token（历史+前缀）', value: run => run.summary.postBreakInputTokens, format: number, diff: tokenDiff },
+    { name: '重试成功', hint: '重试达到本场景判据的比例（文件含目标片段 / 重新提交成功 / run_code 无错等）', value: run => run.summary.retrySuccess ? 100 : 0, format: value => percent(value / 100), diff: ppDiff },
+    { name: '通知条数', hint: '插件失败通知条数（仅「有插件」一侧会产生）', value: run => run.summary.noticeCount, format: number, diff: (on, off) => {
       const diff = on - off
       // ON with fewer notices = savings = green, per the Δ convention.
       return { text: diff === 0 ? '0' : `${diff > 0 ? '+' : ''}${diff}`, tone: diff < 0 ? 'positive' : diff > 0 ? 'negative' : 'neutral' }
@@ -397,12 +399,12 @@ function abDiffTable(row: ScenarioRow): string {
     const detail = rep === undefined ? '<td class="p-2 text-center"></td>' : detailCell('off', rep)
     return [
       '<tr>',
-      `<td class="p-2 pl-3 text-right text-xs text-muted-foreground">${label} OFF</td>`,
+      `<td class="p-2 pl-3 text-right text-xs text-muted-foreground">${label} · 无插件</td>`,
       offCells,
       detail,
       '</tr>',
       '<tr>',
-      `<td class="p-2 pl-3 text-right text-xs font-medium">${label} ON</td>`,
+      `<td class="p-2 pl-3 text-right text-xs font-medium">${label} · 有插件</td>`,
       onCells,
       rep === undefined ? '<td class="p-2 text-center"></td>' : detailCell('on', rep),
       '</tr>',
@@ -448,11 +450,14 @@ function abDiffTable(row: ScenarioRow): string {
     '</span>',
     '</div>',
     descriptionBlock,
+    '<div class="border-b bg-muted/20 px-4 py-2 text-[11px] text-muted-foreground">',
+    '每行含义：<b>无插件</b> = 基线（重新生成参数重试）；<b>有插件</b> = 挂载本插件（失败自动存盘并收到通知，可用 editPreviousToolCalling 一步修正重试）。Δ = 有插件 − 无插件：<b>负值绿色 = 插件更省</b>，正值红色 = 插件更费。',
+    '</div>',
     '<div class="overflow-x-auto">',
     '<table class="w-full caption-bottom text-sm">',
     '<thead class="bg-muted/50 [&_th]:h-10 [&_th]:px-3 [&_th]:text-left [&_th]:align-middle [&_th]:font-medium [&_th]:text-muted-foreground">',
-    '<tr><th class="w-24">eval</th>',
-    metrics.map(spec => `<th class="text-right">${spec.name}</th>`).join(''),
+    '<tr><th class="w-24">场景</th>',
+    metrics.map(spec => `<th class="text-right"><div>${spec.name}</div><div class="text-[10px] font-normal leading-tight">${spec.hint}</div></th>`).join(''),
     '<th class="w-28 text-center">详情</th>',
     '</tr>',
     '</thead>',
