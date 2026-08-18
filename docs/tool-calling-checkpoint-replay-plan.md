@@ -462,6 +462,8 @@ whether it succeeds or fails: previous/1.json is a shortcut to your most
 recent program, which is kept as by-id/<id>.json, and an index line is
 appended to history.jsonl. Tools called INSIDE a program (including nested
 `run_code`) are not checkpointed separately.
+- A checkpoint's content is byte-for-byte identical to the arguments you sent
+  for that call.
 - Your most recent program is always previous/1.json; older programs are
   under by-id/<id>.json — a failed run's id
   was given in its failure notice, and any id can be looked up in the tail
@@ -484,6 +486,8 @@ appended to history.jsonl. Tools called INSIDE a program (including nested
 
 工具调用检查点与重放
 你的每一次 run_code 调用会保存在 <checkpoint-dir> 下：previous/1.json 是最近一次程序的快捷方式，程序本体按 call id 保存为 by-id/<id>.json，并在 history.jsonl 中追加一行索引。程序内部调用的工具（包括嵌套的 run_code）不会单独保存。
+
+- 检查点内容与你当时发送的参数逐字节一致。
 
 - 最近一次程序永远是 previous/1.json；更早的程序在 by-id/<id>.json 下——失败程序的 id 已在失败通知中给出，任何 id 都可以用 tail 查看 history.jsonl 获得。
 - 程序失败后，会收到一条通知，内含 call id 与 checkpoint 路径。
@@ -534,7 +538,7 @@ AsyncFunction constructor.
 
 - C/D **不再包含「failure」**——harness 的 tool/result 已把失败原因返回给模型，通知只做可选纠错路径指引（十轮评审：注入文本过长，精简）；「call id」由 harness 注入、模型原样回传（§2.2 实证：模型不书写 id，但可回传注入值）；「ordinal」即模型上一条消息里的调用序号（模型知道自己调用的顺序）。
 - 编号/序号约定：`previous/<n>.json` = 上一条消息里第 n 个**并行** tool call block 的别名（软链指向 `by-id/` 下 id 文件）；并行调用也按消息内顺序编号（harness 提交顺序 = 模型顺序，§2.1）。别名每轮重建（新轮重建指向，旧序号失效）。
-- A/C 的「byte-for-byte identical」在 native 下严格成立（落盘即模型发送的原串）；B/D 在 PTC 下落盘的是 `run_code` 的完整参数 JSON（整个程序），重试走「`JSON.parse` → `prev.code.replace`」，格式化不进入匹配串（§7 决策点 10 已定稿）。
+- 「byte-for-byte identical」在 native 与 PTC 下均严格成立（落盘即模型发送的原串：native 为工具参数 JSON，PTC 为 `run_code` 的完整参数 JSON——整个程序）；PTC 重试走「`JSON.parse` → `prev.code.replace`」，格式化不进入匹配串（§7 决策点 10 已定稿）。B 静态段与 A 一样明示「内容即发送的参数」。
 - 使用矩阵（七轮评审）：上一个调用（成败同路）→ 顺序 id 别名；更早 → id（失败：当时注入的 id 仍在 context 可见，或查 history.jsonl；成功：只能查 history.jsonl）。C 通知只给 call id（id 始终有效、可多次重试），D 通知给 by-id 路径（内含 id）；「上一个」用序号在静态段 A 说明（模型知道自己消息里的顺序）。
 - 静态段（A/B）明确两种 access 约定（顺序 id 别名 → id 文件，history.jsonl 索引）与「别名仅保留上一步、新轮重建指向」，防止模型在过期别名上做无谓编辑。
 - 文案长度：静态段 A/B 约 100-180 token、随 system prompt 常驻；动态通知 C/D 约 20-40 token、每次失败注入（极简）。

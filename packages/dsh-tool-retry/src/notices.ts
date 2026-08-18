@@ -69,6 +69,8 @@ export function ptcSection(dir: string): string {
     'recent program, which is kept as by-id/<id>.json, and an index line is',
     'appended to history.jsonl. Tools called INSIDE a program (including nested',
     '`run_code`) are not checkpointed separately.',
+    "- A checkpoint's content is byte-for-byte identical to the arguments you sent",
+    '  for that call.',
     '- Your most recent program is always previous/1.json; older programs are',
     '  under by-id/<id>.json — a failed run\'s id',
     '  was given in its failure notice, and any id can be looked up in the tail',
