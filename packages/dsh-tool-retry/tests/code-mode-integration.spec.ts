@@ -157,7 +157,7 @@ describe('code-mode integration', () => {
     ].join('\n')
     adapter.script.push(
       runCodeResponse('c1', caught, 'call boom and catch the failure'),
-      runCodeResponse('c2', 'throw new Error("uncaught-boom")', 'throw uncaught'),
+      runCodeResponse('c2', 'throw new Error("uncaught-boom"); // ' + 'x'.repeat(180), 'throw uncaught'),
       textResponse('done'),
     )
     liveHandle = await ctx.agents.create({

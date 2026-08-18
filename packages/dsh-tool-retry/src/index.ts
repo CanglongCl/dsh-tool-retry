@@ -32,6 +32,7 @@ import {
   checkpointRootDir,
   findCallEvent,
   isCodeMode,
+  NOTICE_MIN_ARG_BYTES,
   sanitizeId,
 } from './invariant.ts'
 import {
@@ -150,10 +151,11 @@ export function apply(ctx: Context, config: Config): void {
       // block the pipeline.
       ctx.logger.warn(`dsh-tool-retry: checkpoint write failed for ${exec.callId}: ${errorMessage(error)}; notice skipped`)
     }
-    if (result.isError && checkpointed) {
+    const rawArgs = call.arguments ?? ''
+    if (result.isError && checkpointed && (exec.name === REPLAY_TOOL_NAME || Buffer.byteLength(rawArgs, 'utf8') >= NOTICE_MIN_ARG_BYTES)) {
       const notice = agentCodeMode(ctx, agent)
         ? ptcNotice(store.rootDir, `${sanitizeId(String(exec.callId))}.json`)
-        : nativeNotice(String(exec.callId), nativeNoticeHint(call.arguments, exec))
+        : nativeNotice(String(exec.callId), nativeNoticeHint(rawArgs, exec))
       return {
         ...decision,
         additionalContexts: [...(decision.additionalContexts ?? []), notice],

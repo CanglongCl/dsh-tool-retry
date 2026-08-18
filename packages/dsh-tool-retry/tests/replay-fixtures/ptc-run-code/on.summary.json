@@ -21,7 +21,7 @@
       }
     ],
     "byId": {
-      "rc_1.json": "{\"code\":\"// RETRY-TARGET\\nreturn await tools.boom({ value: \\\"v1-marker\\\" })\",\"description\":\"run the failing program\"}",
+      "rc_1.json": "{\"code\":\"// RETRY-TARGET\\n// 本程序用于机制验证：原样提交给 tools.boom，未捕获的失败会触发失败通知。\\n// 真实场景中的 run_code 程序通常包含数十到数百行代码，这里的注释使\\n// 原始参数长度超过通知的 150 字节阈值，与真实程序规模保持一致。\\nreturn await tools.boom({ value: \\\"v1-marker\\\" })\",\"description\":\"run the failing program\"}",
       "rc_2.json": "{\"code\":\"// RETRY-GUARD\\nconst text = (await tools.read({ file_path: \\\"<checkpoint>/previous/1.json\\\" }))\\n  .lines.map(line => line.text).join(\\\"\\\\n\\\")\\nconst prev = JSON.parse(text)\\nif (prev.code.includes(\\\"RETRY-GUARD\\\")) return { selfRead: true }\\nconst AsyncFunction = (async () => {}).constructor\\nconst fixed = prev.code.replace(\\\"v1-\\\" + \\\"marker\\\", \\\"v2-good\\\")\\nreturn await new AsyncFunction(\\\"tools\\\", \\\"console\\\", \\\"'use strict';\\\\n\\\" + fixed)(tools, console)\",\"description\":\"retry with a small correction\"}"
     },
     "aliases": {
@@ -55,8 +55,8 @@
   },
   "tokens": {
     "scriptedRetryOutputTokens": 610,
-    "fullRegenerationOutputTokens": 117,
-    "savingsPercent": -421.4,
+    "fullRegenerationOutputTokens": 243,
+    "savingsPercent": -151,
     "noticeOutputTokens": 268
   }
 }

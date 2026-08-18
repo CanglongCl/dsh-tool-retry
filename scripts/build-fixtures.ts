@@ -140,9 +140,14 @@ function deployArgs(label: string): object {
   }
 }
 
-/** The PTC breakpoint program: an uncaught failure on the marker value. */
+/** The PTC breakpoint program: an uncaught failure on the marker value.
+ * The body is padded past the notice byte threshold (real run_code programs
+ * are far longer than the 150-byte gate this fixture would otherwise trip). */
 const PTC_ORIGINAL = [
   '// RETRY-TARGET',
+  '// 本程序用于机制验证：原样提交给 tools.boom，未捕获的失败会触发失败通知。',
+  '// 真实场景中的 run_code 程序通常包含数十到数百行代码，这里的注释使',
+  '// 原始参数长度超过通知的 150 字节阈值，与真实程序规模保持一致。',
   'return await tools.boom({ value: "v1-marker" })',
 ].join('\n')
 

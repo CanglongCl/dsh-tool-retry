@@ -1,0 +1,28 @@
+{
+  "name": "mini-long-plan",
+  "mode": "native",
+  "kind": "fs",
+  "fresh": true,
+  "targetTool": true,
+  "task": "调用 eval_plan 工具，plan 参数把下面这段 markdown 计划整段原样传入。如果调用失败，就修正后重试成功，然后汇报结果。\n\nplan：\n# abc-db 重构计划\n\n## 目标与成功标准\n\n把整个 abc-db 项目重构为 Rust，行为与 Python 实现完全一致，数据源与产物不变。成功标准：\n1. cargo test 全绿；\n2. Registry 对拍：Rust 解析 967 个 DataDefine proto 与 Python build_registry() 结果完全一致（loaders 584 / super_fields 2990 / refs 738 逐字段比对）；\n3. 输出对拍：wiki build 产物与 build/wiki-before/ 语义等价，roles.json 导出等价；\n4. 性能：TextMap 索引 < 1s，全量 6.3 万 JSON 扫描 < 10s，wiki 全量导出 < 5s；\n5. cargo fmt --check、cargo clippy -D warnings 干净。\n\n## 阶段 0 — 工程迁移与脚手架\n\n- git mv 到 rust/：src tests examples scripts Cargo.toml；\n- Python 代码整体 git mv 到 python/ 作为遗留参考（对拍用，保留不删）；\n- 脚手架：workspace + 三个 crate（core/registry/wiki），CI 加 cargo 门禁。\n\n## 阶段 1 — 核心解析与 Registry\n\n- 用 prost 生成 DataDefine 的 Rust 模型；\n- 移植 build_registry() 的 584 个 loader 与 2990 个 super_field；\n- 对拍脚本 nightly 跑，diff 为空才算过。\n\n## 阶段 2 — 输出与 wiki\n\n- 用自定义 1 空格缩进 writer 达成字节级一致；\n- roles.json 导出等价，wiki 静态资源保持原路径。\n\n## 部署方案\n\n继续使用 Python 2 运行时\n\n## 阶段 3 — 收尾\n\n- make check 走 Rust 门禁，删除过渡脚本。\n",
+  "title": "最小场景：长 markdown 计划被拒绝，改一节后重提",
+  "description": {
+    "input": "任务给出约 900 字的 markdown 计划，其中「部署方案」一节写的是「继续使用 Python 2 运行时」——工具体必然拒绝（运行时必须是 Rust）。失败调用的参数很长。",
+    "expected": "只把这一节改成 Rust（target-result.txt 出现 OK-plan）。长参数下 ON 臂用 patch（.plan 内 old/new 片段）应显著省 token。"
+  },
+  "blocks": [],
+  "continuation": "",
+  "workspaceFiles": [
+    {
+      "path": "README.md",
+      "content": "# mini\n\nmini-long-plan 场景工作区。\n"
+    }
+  ],
+  "successChecks": [
+    {
+      "kind": "fileContains",
+      "path": "target-result.txt",
+      "fragment": "OK-plan"
+    }
+  ]
+}

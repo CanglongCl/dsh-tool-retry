@@ -25,7 +25,7 @@
   3. **`history.jsonl`**：每次直调 append 一行索引，模型可用 `tail` 读最后几条来确定要重放哪一个；
 - **使用矩阵（七轮评审）**：修改**上一个**调用（无论成败，路径相同）→ 顺序 id 别名（`previous/1.json`/`previous/2.json`…）；修改**更早**的调用 → id——失败调用的 id 在它失败时的通知里注入过（模型在 context 中可见，可直接用），也可查 `history.jsonl`；成功调用的 id 只能查 `history.jsonl`；
 - **静态注入**：在 system prompt 中写入该机制说明（目录、编号约定、id/jsonl 约定、重放工具用法），让 AI 提前知悉「可以修改并重试」；
-- **动态注入**：通过 `tools/post-execute` 生命周期钩子，在调用失败后向模型注入**极简提示**——只写「已保存 + 调用 id（PTC 版为 by-id 路径）+ 用法」三件事，不做其他解释（失败原因由 harness 的 tool/result 自行返回）；**每次失败都注入，不做任何工具名/错误码过滤**（五轮评审：覆盖发生在工具体执行之后，零过滤无时序问题，见 §3.3）；
+- **动态注入**：通过 `tools/post-execute` 生命周期钩子，在调用失败后向模型注入**极简提示**——只写「已保存 + 调用 id（PTC 版为 by-id 路径）+ 用法」三件事，不做其他解释（失败原因由 harness 的 tool/result 自行返回）。**落盘零过滤；通知按字节阈值门控**：原始参数字符串 ≥150 UTF-8 字节才注入（低于该量级重发新调用比重放路由结构更便宜，提示是净亏）；`editPreviousToolCalling` 自身失败豁免（其通知携带原调用重试指针，属纠错而非经济性）；
 - 重放：
   - **native 模式**：工具 `editPreviousToolCalling`，输入 **id**（真实 callId 或上一步序号 `"1"/"2"…`）+ `patch: [{path, value | old_string/new_string/replace_all}]` 结构化补丁（path 定位值，value 整值替换、old/new 在字符串值解码文本内做字面替换——转义不进模型视野），内部路由到对应文件完成「补丁 → 持久化 → 以新参数重放原工具」，模型无需填路径；
   - **PTC 模式（code）**：**不注册、不注入该工具**——模型在 `run_code` 程序内用 fs 工具读/编辑 checkpoint 文件，把内容作为新程序或其他工具的输入。

@@ -104,13 +104,13 @@ describe('checkpoint pipeline', () => {
     expect(observed.some(entry => entry.path === `key:${join(root, 'by-id', id)}` && entry.kind === 'present')).toBe(true)
   })
 
-  it('attaches a minimal notice to every failing direct call (zero filtering)', async () => {
+  it('notifies only failures whose raw args are 150+ bytes (short args checkpoint silently)', async () => {
     const { ctx, fs } = await setup()
     const session = newSession(ctx)
     const agent = fakeAgent(session)
 
-    // Plain tool failure.
-    const failed = await call(ctx, 'boom', { tex: 'hi' }, agent)
+    // Long-arg plain tool failure: the notice fires.
+    const failed = await call(ctx, 'boom', { detail: 'x'.repeat(200) }, agent)
     expect(failed.isError).toBe(true)
     const notice = noticeText(failed.additionalContexts)
     expect(notice).toContain("Your failed call's arguments were saved.")
@@ -121,19 +121,22 @@ describe('checkpoint pipeline', () => {
     expect(notice).toContain('path: ".field.to.fix"')
     expect(notice).not.toContain('checkpoint keys')
 
-    // UNKNOWN_TOOL.
-    const unknown = await call(ctx, 'no-such-tool', {}, agent, { step: 2 })
+    // Short-arg failures (fresh re-send is cheaper than a replay call):
+    // checkpointed silently — zero-filtering applies to the STORE, the
+    // notice is gated at NOTICE_MIN_ARG_BYTES.
+    const short = await call(ctx, 'boom', {}, agent, { step: 2 })
+    expect(short.isError).toBe(true)
+    expect((short.additionalContexts ?? []).length).toBe(0)
+    const unknown = await call(ctx, 'no-such-tool', {}, agent, { step: 3 })
     expect(unknown.isError).toBe(true)
-    expect(noticeText(unknown.additionalContexts)).toContain('call id: call-2')
-
-    // INVALID_ARGS (the registry rejects the args before the body).
-    const invalid = await call(ctx, 'ok', {}, agent, { step: 3 })
+    expect((unknown.additionalContexts ?? []).length).toBe(0)
+    const invalid = await call(ctx, 'ok', {}, agent, { step: 4 })
     expect(invalid.isError).toBe(true)
-    expect(noticeText(invalid.additionalContexts)).toContain('call id: call-3')
+    expect((invalid.additionalContexts ?? []).length).toBe(0)
 
     const root = rootOf(String(session.id))
     const history = fs.files.get(`key:${join(root, 'history.jsonl')}`)?.content ?? ''
-    expect(history.trim().split('\n')).toHaveLength(3)
+    expect(history.trim().split('\n')).toHaveLength(4)
   })
 
   it('documents that an aborted-before-dispatch call bypasses post-execute', async () => {
@@ -212,7 +215,7 @@ describe('checkpoint pipeline', () => {
     fs.plainReadFailures = 1
     const session = newSession(ctx)
     const agent = fakeAgent(session)
-    const result = await call(ctx, 'boom', {}, agent)
+    const result = await call(ctx, 'boom', { detail: 'x'.repeat(200) }, agent)
     expect(result.isError).toBe(true)
     // The history write succeeded despite the foreign-class read error, so
     // the failure still got its notice.
@@ -251,7 +254,7 @@ describe('checkpoint pipeline', () => {
         return {}
       },
     }))
-    const result = await call(ctx, 'nested-maker', {}, agent)
+    const result = await call(ctx, 'nested-maker', { detail: 'x'.repeat(200) }, agent)
     expect(result.isError).toBe(true)
     // Only the outer call is checkpointed; the notice is the outer's.
     const notice = noticeText(result.additionalContexts)

@@ -209,6 +209,54 @@ function registerTargetTool(ctx: Context): void {
     },
   }))
   ctx.tools.register(defineTool({
+    name: 'eval_plan',
+    description: 'Submit a long markdown plan for review; the body rejects any plan that still says the runtime stays on Python 2.',
+    parameters: { plan: { type: 'string', required: true, description: 'The complete plan, as markdown.' } },
+    output: {
+      schema: { type: 'object', additionalProperties: false, properties: { ok: { type: 'boolean', required: true } } },
+      render: (_args, value) => [{ type: 'text', text: `plan ok: ${String(value.ok)}` }],
+    },
+    async execute(args) {
+      const plan = String(args.plan)
+      if (plan.includes('继续使用 Python 2 运行时')) {
+        throw new Error('plan rejected: the runtime must be Rust')
+      }
+      await fsWrite('target-result.txt', 'OK-plan\n')
+      return { ok: true }
+    },
+  }))
+  ctx.tools.register(defineTool({
+    name: 'eval_config',
+    description: 'Submit a long service configuration; the body rejects any config whose maxRetries is below 5.',
+    parameters: { config: { type: 'object', required: true, additionalProperties: true, description: 'The full configuration object (one short field of it is wrong and must be fixed).' } },
+    output: {
+      schema: { type: 'object', additionalProperties: false, properties: { ok: { type: 'boolean', required: true } } },
+      render: (_args, value) => [{ type: 'text', text: `config ok: ${String(value.ok)}` }],
+    },
+    async execute(args) {
+      const config = args.config as { maxRetries?: number }
+      if (Number(config.maxRetries) < 5) throw new Error('config rejected: maxRetries must be at least 5')
+      await fsWrite('target-result.txt', 'OK-retries\n')
+      return { ok: true }
+    },
+  }))
+  ctx.tools.register(defineTool({
+    name: 'eval_deploy',
+    description: 'Deploy a service with a long note; the ARGUMENT SCHEMA rejects any call whose replicas is not a number.',
+    parameters: {
+      notes: { type: 'string', required: true, description: 'A long deployment note kept verbatim for the record.' },
+      replicas: { type: 'number', required: true, description: 'The replica count (a number).' },
+    },
+    output: {
+      schema: { type: 'object', additionalProperties: false, properties: { ok: { type: 'boolean', required: true } } },
+      render: (_args, value) => [{ type: 'text', text: `deploy ok: ${String(value.ok)}` }],
+    },
+    async execute(args) {
+      await fsWrite('target-result.txt', `OK-deploy-${String(args.replicas)}\n`)
+      return { ok: true }
+    },
+  }))
+  ctx.tools.register(defineTool({
     name: 'eval_edit',
     description: 'Apply a literal edit to a workspace file; fails when old_string is not in the file (like the fs edit tool).',
     parameters: {

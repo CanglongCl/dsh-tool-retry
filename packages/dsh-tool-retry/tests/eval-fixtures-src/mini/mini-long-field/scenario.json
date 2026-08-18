@@ -1,0 +1,28 @@
+{
+  "name": "mini-long-field",
+  "mode": "native",
+  "kind": "fs",
+  "fresh": true,
+  "targetTool": true,
+  "task": "调用 eval_config 工具，config 参数以对象形式传入下面这段 JSON（键值结构原样保留）。如果调用失败，就修正后重试成功，然后汇报结果。\n\nconfig：\n{\"service\": \"eval-demo\", \"description\": \"本服务负责将上游事件流中的配置变更实时同步到 12 个数据中心的边缘节点，同时承担灰度发布、流量染色、回滚编排与配额审计。同步链路包括：事件采集（每节点 2000 QPS 上限）、去重（以 traceId + eventId 做幂等键，窗口 300 秒）、压缩（zstd level 3，块大小 64KB）、重试（指数退避，抖动 ±20%）、以及对账（每 5 分钟全量 hash 比对，差异超过 0.1% 触发告警并暂停发布）。配置本身为版本化对象，任何字段变更都必须经过四级审批（开发、测试、安全、值班），审批记录写入审计日志并保留 180 天。\", \"maxRetries\": 3, \"endpoint\": \"https://eval.example.com/api/v2\"}",
+  "title": "最小场景：长配置对象里一个短字段不对，整值替换",
+  "description": {
+    "input": "任务给出约 700 字节的配置对象，其中 maxRetries 是 3——工具体必然拒绝（必须至少 5）。失败调用的参数很长，但错的只是一个短字段。",
+    "expected": "用 value 形式把 maxRetries 换成 5（target-result.txt 出现 OK-retries）。长参数下 ON 臂应只重发一个短字段。"
+  },
+  "blocks": [],
+  "continuation": "",
+  "workspaceFiles": [
+    {
+      "path": "README.md",
+      "content": "# mini\n\nmini-long-field 场景工作区。\n"
+    }
+  ],
+  "successChecks": [
+    {
+      "kind": "fileContains",
+      "path": "target-result.txt",
+      "fragment": "OK-retries"
+    }
+  ]
+}

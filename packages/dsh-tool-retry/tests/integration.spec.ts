@@ -130,7 +130,7 @@ describe('agent-loop integration', () => {
     const { ctx, workspace, checkpointDir, adapter } = await harness()
     liveWorkspace = workspace
     adapter.script.push(
-      toolCallResponse('t1', 'boom', { value: 'bad' }),
+      toolCallResponse('t1', 'boom', { value: 'bad', note: 'y'.repeat(200) }),
       textResponse('acknowledged'),
       toolCallResponse('t2', 'editPreviousToolCalling', {
         previous_ordinal: 1,
@@ -148,7 +148,7 @@ describe('agent-loop integration', () => {
     await waitForIdle(ctx, agent)
 
     // 1. The failing call is checkpointed three ways on disk.
-    expect(readFileSync(join(checkpointDir, 'by-id', 't1.json'), 'utf8')).toBe('{"value":"bad"}')
+    expect(readFileSync(join(checkpointDir, 'by-id', 't1.json'), 'utf8')).toContain('"value":"bad"')
     const alias = join(checkpointDir, 'previous', '1.json')
     expect(lstatSync(alias).isSymbolicLink()).toBe(true)
     expect(readlinkSync(alias)).toBe('../by-id/t1.json')
@@ -179,7 +179,7 @@ describe('agent-loop integration', () => {
 
     // 4. The edited arguments replaced the checkpoint; the nested replay was
     // not checkpointed itself.
-    expect(readFileSync(join(checkpointDir, 'by-id', 't1.json'), 'utf8')).toBe('{"value":"good"}')
+    expect(readFileSync(join(checkpointDir, 'by-id', 't1.json'), 'utf8')).toContain('"value":"good"')
     expect(existsSync(join(checkpointDir, 'by-id', 't1:replay.json'))).toBe(false)
     const history = readFileSync(join(checkpointDir, 'history.jsonl'), 'utf8').trim().split('\n')
     expect(history).toHaveLength(2)
@@ -191,8 +191,8 @@ describe('agent-loop integration', () => {
     liveWorkspace = workspace
     adapter.script.push(
       parallelToolCallResponse([
-        { rawCallId: 'p1', name: 'boom', args: { value: 'bad-one' } },
-        { rawCallId: 'p2', name: 'boom', args: { value: 'bad-two' } },
+        { rawCallId: 'p1', name: 'boom', args: { value: 'bad-one', note: 'y'.repeat(200) } },
+        { rawCallId: 'p2', name: 'boom', args: { value: 'bad-two', note: 'y'.repeat(200) } },
       ]),
       // The second model request is generated BEFORE round 2's first direct
       // call runs its post-execute, so the aliases still point at round 1's
@@ -262,7 +262,7 @@ describe('agent-loop integration', () => {
     const { ctx, workspace, checkpointDir, adapter } = await harness()
     liveWorkspace = workspace
     adapter.script.push(
-      toolCallResponse('m1', 'boom', { value: 'bad' }),
+      toolCallResponse('m1', 'boom', { value: 'bad', note: 'y'.repeat(200) }),
       // First retry: the edited arguments still fail, so the replay errors.
       toolCallResponse('m2', 'editPreviousToolCalling', {
         call_id: 'm1', patch: [{ path: '.value', old_string: 'bad', new_string: 'bad-again' }],
@@ -301,7 +301,7 @@ describe('agent-loop integration', () => {
     expect(resultText('m3')).toContain('boom ok: true')
     // The by-id file ends at the final edit; the failed edit itself was also
     // checkpointed and noticed (zero filtering), replay sub-calls were not.
-    expect(readFileSync(join(checkpointDir, 'by-id', 'm1.json'), 'utf8')).toBe('{"value":"good"}')
+    expect(readFileSync(join(checkpointDir, 'by-id', 'm1.json'), 'utf8')).toContain('"value":"good"')
     expect(existsSync(join(checkpointDir, 'by-id', 'm1:replay.json'))).toBe(false)
     const history = readFileSync(join(checkpointDir, 'history.jsonl'), 'utf8').trim().split('\n')
     expect(history.map(line => (JSON.parse(line) as { id: string }).id)).toEqual(['m1', 'm2', 'm3'])

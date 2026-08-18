@@ -414,7 +414,7 @@ describe('mode detection', () => {
 
     // A failing outer run_code gets the PTC notice: saved + by-id path, and
     // the recipe pointer (the recipe itself lives in the static section).
-    const failed = await call(ctx, 'run_code', { code: 'throw new Error("boom")' }, agent)
+    const failed = await call(ctx, 'run_code', { code: 'throw new Error("boom"); // ' + 'x'.repeat(180) }, agent)
     expect(failed.isError).toBe(true)
     const notice = noticeText(failed.additionalContexts)
     expect(notice).toContain('Your failed `run_code` program was saved.')

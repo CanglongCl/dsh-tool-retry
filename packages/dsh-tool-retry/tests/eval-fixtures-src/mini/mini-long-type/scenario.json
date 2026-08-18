@@ -1,0 +1,28 @@
+{
+  "name": "mini-long-type",
+  "mode": "native",
+  "kind": "fs",
+  "fresh": true,
+  "targetTool": true,
+  "task": "调用 eval_deploy 工具：notes 参数把下面这段运维备注整段原样传入，replicas 参数传 \"4\"（注意：按任务要求传字符串）。如果调用失败，就修正后重试成功，然后汇报结果。\n\nnotes：\n本次发布将服务从同城双活升级为三地五中心部署：华北机房承担 40% 流量，华东承担 35%，华南承担 25%，全部通过智能 DNS 加权路由接入。升级窗口定在周六凌晨 2 点到 4 点，期间先做只读切换，再逐机房摘流、升级、回灌，最后全量校验 15 分钟无差异后宣布完成。回滚预案：任一机房升级失败立即切回旧版本镜像（保留最近 5 个镜像 tag），并通过熔断器自动把流量转移至其余机房；预案演练已在上月完成，RTO 目标 3 分钟。发布后 24 小时内保持双倍监控与值班。以上内容为运维交接备注，请原样保留。\n\nreplicas：\"4\"",
+  "title": "最小场景：长参数里一个字段类型不对，整值替换改类型",
+  "description": {
+    "input": "任务给出约 500 字节的运维备注（notes），replicas 按要求传字符串 \"4\"——参数 schema 必然拒绝（replicas 必须是 number）。失败调用的参数很长，但错的只是一个短字段的类型。",
+    "expected": "用 value 形式把 replicas 换成数字 4（target-result.txt 出现 OK-deploy-4）。长参数下 ON 臂应只重发一个短字段。"
+  },
+  "blocks": [],
+  "continuation": "",
+  "workspaceFiles": [
+    {
+      "path": "README.md",
+      "content": "# mini\n\nmini-long-type 场景工作区。\n"
+    }
+  ],
+  "successChecks": [
+    {
+      "kind": "fileContains",
+      "path": "target-result.txt",
+      "fragment": "OK-deploy-4"
+    }
+  ]
+}

@@ -19,7 +19,7 @@
         "index": 0,
         "id": "rc_1",
         "name": "run_code",
-        "argumentsDelta": "RETRY-TARGET\\nreturn await tools.boom({ value: \\\"v1-marker\\\" })\",\"description\":\"run the failing program\"}"
+        "argumentsDelta": "RETRY-TARGET\\n// 本程序用于机制验证：原样提交给 tools.boom，未捕获的失败会触发失败通知。\\n// 真实场景中的 run_code 程序通常包含数十到数百行代码，这里的注释使\\n// 原始参数长度超过通知的 150 字节阈值，与真实程序规模保持一致。\\nreturn await tools.boom({ value: \\\"v1-marker\\\" })\",\"description\":\"run the failing program\"}"
       },
       {
         "type": "block-end",
@@ -28,7 +28,7 @@
           "type": "tool-call",
           "id": "rc_1",
           "name": "run_code",
-          "arguments": "{\"code\":\"// RETRY-TARGET\\nreturn await tools.boom({ value: \\\"v1-marker\\\" })\",\"description\":\"run the failing program\"}"
+          "arguments": "{\"code\":\"// RETRY-TARGET\\n// 本程序用于机制验证：原样提交给 tools.boom，未捕获的失败会触发失败通知。\\n// 真实场景中的 run_code 程序通常包含数十到数百行代码，这里的注释使\\n// 原始参数长度超过通知的 150 字节阈值，与真实程序规模保持一致。\\nreturn await tools.boom({ value: \\\"v1-marker\\\" })\",\"description\":\"run the failing program\"}"
         }
       },
       {

@@ -49,6 +49,16 @@ export function findCallEvent(session: Session, callId: string): ToolCallData | 
   return undefined
 }
 
+/**
+ * Failure notices are gated to calls whose RAW argument string is at least
+ * this many UTF-8 bytes — below it, a fresh re-send is cheaper than the
+ * replay call's routing structure (call_id + patch wrapper). The checkpoint
+ * itself is still written for every call; only the notice is gated.
+ * `editPreviousToolCalling`'s own failures are exempt: their notice carries
+ * the original-call retry pointer, which is corrective, not economic.
+ */
+export const NOTICE_MIN_ARG_BYTES = 150
+
 /** File-name sanitization: any byte outside `[A-Za-z0-9._-]` becomes `_`. */
 export function sanitizeId(id: string): string {
   return id.replace(/[^A-Za-z0-9._-]/g, '_')
