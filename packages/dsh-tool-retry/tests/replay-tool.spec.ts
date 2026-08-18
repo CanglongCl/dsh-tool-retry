@@ -442,10 +442,11 @@ describe('mode detection', () => {
     expect(rendered).not.toContain('Tools called INSIDE a program')
     // The static section carries three XML-shaped retry examples (one field,
     // not the whole call); the rules live in the tool's own description.
-    expect(rendered).toContain('wrong fragment inside one of my own args')
+    expect(rendered).toContain('plan rejected — fix the section the user pointed out and resubmit')
+    expect(rendered).toContain('{ path: ".plan", old_string: "继续用 Python 实现", new_string: "改为 Rust 实现" }')
+    expect(rendered).toContain('<tool_call>editPreviousToolCalling')
     expect(rendered).toContain('{ path: ".old_string", old_string: "2.0.0。", new_string: "2.1.0。" }')
-    expect(rendered).toContain('old_string: "dev", new_string: "prod"')
-    expect(rendered).toContain('{ path: ".version", value: 2 }')
+    expect(rendered).toContain('{ path: ".offset", value: 1 }')
     expect(rendered).not.toContain('patch (preferred for JSON arguments)')
   })
 })
