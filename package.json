@@ -1,7 +1,7 @@
 {
   "name": "dsh-tool-retry",
   "private": true,
-  "version": "0.2.0",
+  "version": "0.2.1",
   "type": "module",
   "packageManager": "pnpm@11.20.0",
   "description": "dsh-tool-retry plugin repo: automatic tool-call checkpointing, failure notices, and local-edit replay",
